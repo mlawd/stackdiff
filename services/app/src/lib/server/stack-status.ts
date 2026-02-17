@@ -1,7 +1,7 @@
 import type { StackMetadata, StackPullRequest, StackSyncState, StackViewModel } from '$lib/types/stack';
 
 import { runCommand } from '$lib/server/command';
-import { resolveRepoPath } from '$lib/server/stack-store';
+import { getRuntimeRepositoryPath } from '$lib/server/stack-store';
 
 interface GitHubPullRequestPayload {
 	number: number;
@@ -28,22 +28,20 @@ function toPullRequest(payload: GitHubPullRequestPayload | undefined): StackPull
 }
 
 export async function enrichStackStatus(stack: StackMetadata): Promise<StackViewModel> {
-	const repositoryAbsolutePath = resolveRepoPath(stack.repositoryPath);
-	const tipBranch = stack.branches.at(-1) ?? 'unknown';
+	const repositoryAbsolutePath = await getRuntimeRepositoryPath();
 
 	const gitStatus = await runCommand('git', ['status', '--porcelain', '--branch'], repositoryAbsolutePath);
 	if (!gitStatus.ok) {
 		return {
 			...stack,
 			repositoryAbsolutePath,
-			tipBranch,
+			currentBranch: 'unknown',
 			syncState: 'repo-error',
 			workingTreeDirty: false,
 			gitError: gitStatus.stderr || gitStatus.error
 		};
 	}
 
-	const branchCheck = await runCommand('git', ['rev-parse', '--verify', tipBranch], repositoryAbsolutePath);
 	const currentBranch = await runCommand('git', ['branch', '--show-current'], repositoryAbsolutePath);
 
 	const workingTreeDirty = gitStatus.stdout
@@ -51,11 +49,13 @@ export async function enrichStackStatus(stack: StackMetadata): Promise<StackView
 		.some((line) => line.length > 0 && !line.startsWith('##'));
 
 	let syncState: StackSyncState = 'clean';
-	if (!branchCheck.ok) {
-		syncState = 'missing-branch';
-	} else if (workingTreeDirty || currentBranch.stdout !== tipBranch) {
+	if (!currentBranch.ok) {
+		syncState = 'repo-error';
+	} else if (workingTreeDirty) {
 		syncState = 'dirty';
 	}
+
+	const activeBranch = currentBranch.ok ? currentBranch.stdout || 'detached-head' : 'unknown';
 
 	let ghError: string | undefined;
 	let pullRequest: StackPullRequest | undefined;
@@ -70,7 +70,7 @@ export async function enrichStackStatus(stack: StackMetadata): Promise<StackView
 				'pr',
 				'list',
 				'--head',
-				tipBranch,
+				activeBranch,
 				'--state',
 				'all',
 				'--limit',
@@ -96,7 +96,7 @@ export async function enrichStackStatus(stack: StackMetadata): Promise<StackView
 	return {
 		...stack,
 		repositoryAbsolutePath,
-		tipBranch,
+		currentBranch: activeBranch,
 		syncState,
 		workingTreeDirty,
 		pullRequest,

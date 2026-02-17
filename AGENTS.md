@@ -20,9 +20,16 @@ Build and maintain `stacked`, a local-first tool for reviewing and editing stack
 
 ## Storage strategy
 
-- Source of truth for stack hierarchy is JSON (`services/app/data/stacks.json`).
+- Source of truth for stack metadata is JSON (`services/app/data/stacks.json`).
 - Runtime page load enriches each stack with live git/gh status.
 - Keep storage behind an interface so SQLite can replace JSON later.
+- No backward compatibility requirements for early schema iterations.
+
+## Runtime repository model
+
+- The app operates on the repository containing the running server process.
+- Do not store per-stack repository paths.
+- Do not store branch hierarchy in stack metadata for now.
 
 ## Coding guidelines
 

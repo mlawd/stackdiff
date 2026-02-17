@@ -1,11 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { resolve } from 'node:path';
 
 import type { StackFile, StackMetadata, StackUpsertInput } from '$lib/types/stack';
+import { runCommand } from '$lib/server/command';
 
 const STACKS_FILE = new URL('../../../data/stacks.json', import.meta.url);
-const APP_ROOT = new URL('../../../', import.meta.url);
 
 function isStackMetadata(value: unknown): value is StackMetadata {
 	if (typeof value !== 'object' || value === null) {
@@ -17,9 +15,7 @@ function isStackMetadata(value: unknown): value is StackMetadata {
 	return (
 		typeof stack.id === 'string' &&
 		typeof stack.name === 'string' &&
-		typeof stack.repositoryPath === 'string' &&
-		Array.isArray(stack.branches) &&
-		stack.branches.every((branch) => typeof branch === 'string' && branch.length > 0)
+		(stack.notes === undefined || typeof stack.notes === 'string')
 	);
 }
 
@@ -68,8 +64,6 @@ function createId(name: string): string {
 function normalizeInput(input: StackUpsertInput): StackUpsertInput {
 	return {
 		name: input.name.trim(),
-		repositoryPath: input.repositoryPath.trim(),
-		branches: input.branches.map((branch) => branch.trim()).filter(Boolean),
 		notes: input.notes?.trim() || undefined
 	};
 }
@@ -79,18 +73,22 @@ function validateUpsertInput(input: StackUpsertInput): void {
 		throw new Error('Stack name is required.');
 	}
 
-	if (!input.repositoryPath) {
-		throw new Error('Repository path is required.');
-	}
-
-	if (input.branches.length === 0) {
-		throw new Error('At least one branch is required.');
-	}
 }
 
 export async function getStackById(id: string): Promise<StackMetadata | undefined> {
 	const file = await readStackFile();
 	return file.stacks.find((stack) => stack.id === id);
+}
+
+export async function getRuntimeRepositoryPath(): Promise<string> {
+	const cwd = process.cwd();
+	const repoRootResult = await runCommand('git', ['rev-parse', '--show-toplevel'], cwd);
+
+	if (repoRootResult.ok && repoRootResult.stdout) {
+		return repoRootResult.stdout;
+	}
+
+	return cwd;
 }
 
 export async function createStack(input: StackUpsertInput): Promise<StackMetadata> {
@@ -143,8 +141,4 @@ export async function deleteStack(id: string): Promise<void> {
 		...file,
 		stacks: nextStacks
 	});
-}
-
-export function resolveRepoPath(repositoryPath: string): string {
-	return resolve(fileURLToPath(APP_ROOT), repositoryPath);
 }

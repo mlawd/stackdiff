@@ -9,7 +9,6 @@
 	const syncColor = {
 		clean: 'green',
 		dirty: 'yellow',
-		'missing-branch': 'indigo',
 		'repo-error': 'red'
 	} as const;
 </script>
@@ -26,8 +25,7 @@
 
 		<div class="mt-5 flex flex-wrap gap-3 text-sm">
 			<Badge color={syncColor[data.stack.syncState]}>{data.stack.syncState.replace(/-/g, ' ')}</Badge>
-			<span class="rounded-lg bg-slate-100 px-3 py-1 font-mono text-xs text-slate-700">{data.stack.repositoryPath}</span>
-			<span class="rounded-lg bg-slate-100 px-3 py-1 text-xs text-slate-700">Tip: {data.stack.tipBranch}</span>
+			<span class="rounded-lg bg-slate-100 px-3 py-1 text-xs text-slate-700">Current branch: {data.stack.currentBranch}</span>
 		</div>
 
 		{#if data.stack.pullRequest}
@@ -49,18 +47,8 @@
 			</div>
 		{/if}
 
-		<div class="mt-6 rounded-2xl border border-[var(--stacked-border)] bg-white/80 p-4">
-			<p class="mb-3 text-xs uppercase tracking-wide text-slate-500">Branch hierarchy</p>
-			<ol class="space-y-2">
-				{#each data.stack.branches as branch, index (`${branch}-${index}`)}
-					<li class="flex items-center gap-2 text-sm">
-						<span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-xs text-slate-700">
-							{index + 1}
-						</span>
-						<span class="font-mono text-slate-800">{branch}</span>
-					</li>
-				{/each}
-			</ol>
-		</div>
+		<p class="mt-6 text-sm text-slate-500">
+			Stack entries are metadata labels only for now. Runtime status is derived from the repository where the server is running.
+		</p>
 	</section>
 </main>

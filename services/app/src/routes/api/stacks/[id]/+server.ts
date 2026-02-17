@@ -15,14 +15,8 @@ function parseUpsertInput(body: unknown): StackUpsertInput {
 
 	const candidate = body as Partial<StackUpsertInput>;
 
-	if (!Array.isArray(candidate.branches)) {
-		throw new Error('branches must be an array of strings.');
-	}
-
 	return {
 		name: String(candidate.name ?? ''),
-		repositoryPath: String(candidate.repositoryPath ?? ''),
-		branches: candidate.branches.map((branch) => String(branch)),
 		notes: candidate.notes ? String(candidate.notes) : undefined
 	};
 }

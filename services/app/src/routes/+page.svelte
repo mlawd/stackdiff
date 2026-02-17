@@ -27,14 +27,11 @@
 	let isFormOpen = $state(false);
 	let editingId = $state<string | null>(null);
 	let formName = $state('');
-	let formRepoPath = $state('');
-	let formBranches = $state('main');
 	let formNotes = $state('');
 
 	const syncColor = {
 		clean: 'green',
 		dirty: 'yellow',
-		'missing-branch': 'indigo',
 		'repo-error': 'red'
 	} as const;
 
@@ -60,8 +57,6 @@
 	function resetForm(): void {
 		editingId = null;
 		formName = '';
-		formRepoPath = '';
-		formBranches = 'main';
 		formNotes = '';
 	}
 
@@ -73,22 +68,13 @@
 	function openEditForm(stack: StackViewModel): void {
 		editingId = stack.id;
 		formName = stack.name;
-		formRepoPath = stack.repositoryPath;
-		formBranches = stack.branches.join('\n');
 		formNotes = stack.notes ?? '';
 		isFormOpen = true;
 	}
 
 	function toUpsertInput(): StackUpsertInput {
-		const branches = formBranches
-			.split(/\n|,/g)
-			.map((value) => value.trim())
-			.filter(Boolean);
-
 		return {
 			name: formName,
-			repositoryPath: formRepoPath,
-			branches,
 			notes: formNotes
 		};
 	}
@@ -228,16 +214,8 @@
 					<input bind:value={formName} required class="rounded-lg border border-slate-300 px-3 py-2" />
 				</label>
 				<label class="flex flex-col gap-1 text-sm sm:col-span-1">
-					<span class="font-medium text-slate-700">Repository path</span>
-					<input bind:value={formRepoPath} required class="rounded-lg border border-slate-300 px-3 py-2" />
-				</label>
-				<label class="flex flex-col gap-1 text-sm sm:col-span-2">
-					<span class="font-medium text-slate-700">Branches (comma or newline separated)</span>
-					<textarea bind:value={formBranches} rows="4" required class="rounded-lg border border-slate-300 px-3 py-2"></textarea>
-				</label>
-				<label class="flex flex-col gap-1 text-sm sm:col-span-2">
 					<span class="font-medium text-slate-700">Notes</span>
-					<textarea bind:value={formNotes} rows="2" class="rounded-lg border border-slate-300 px-3 py-2"></textarea>
+					<textarea bind:value={formNotes} rows="3" class="rounded-lg border border-slate-300 px-3 py-2"></textarea>
 				</label>
 				<div class="flex items-center justify-end gap-3 sm:col-span-2">
 					<button
@@ -272,9 +250,8 @@
 					<thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
 						<tr>
 							<th class="px-4 py-3">Stack</th>
-							<th class="px-4 py-3">Hierarchy</th>
 							<th class="px-4 py-3">Sync</th>
-							<th class="px-4 py-3">Top PR</th>
+							<th class="px-4 py-3">Current branch PR</th>
 							<th class="px-4 py-3">Actions</th>
 						</tr>
 					</thead>
@@ -288,11 +265,7 @@
 									{#if stack.notes}
 										<p class="mt-1 text-xs text-slate-500">{stack.notes}</p>
 									{/if}
-									<p class="mt-1 font-mono text-[11px] text-slate-500">{stack.repositoryPath}</p>
-								</td>
-								<td class="px-4 py-3 align-top">
-									<p class="font-mono text-xs text-slate-600">{stack.branches.join(' -> ')}</p>
-									<p class="mt-1 text-xs text-slate-500">Depth {stack.branches.length}</p>
+									<p class="mt-1 font-mono text-[11px] text-slate-500">{stack.currentBranch}</p>
 								</td>
 								<td class="px-4 py-3 align-top">
 									<Badge color={syncColor[stack.syncState]}>{titleCase(stack.syncState)}</Badge>
@@ -316,7 +289,7 @@
 											{stack.pullRequest.state}{stack.pullRequest.isDraft ? ' (draft)' : ''}
 										</p>
 									{:else}
-										<p class="text-slate-500">No PR linked to {stack.tipBranch}</p>
+										<p class="text-slate-500">No PR linked to {stack.currentBranch}</p>
 									{/if}
 								</td>
 								<td class="px-4 py-3 align-top">

@@ -1,17 +1,13 @@
-export type StackSyncState = 'clean' | 'dirty' | 'missing-branch' | 'repo-error';
+export type StackSyncState = 'clean' | 'dirty' | 'repo-error';
 
 export interface StackMetadata {
 	id: string;
 	name: string;
-	repositoryPath: string;
-	branches: string[];
 	notes?: string;
 }
 
 export interface StackUpsertInput {
 	name: string;
-	repositoryPath: string;
-	branches: string[];
 	notes?: string;
 }
 
@@ -31,7 +27,7 @@ export interface StackPullRequest {
 
 export interface StackViewModel extends StackMetadata {
 	repositoryAbsolutePath: string;
-	tipBranch: string;
+	currentBranch: string;
 	syncState: StackSyncState;
 	workingTreeDirty: boolean;
 	gitError?: string;
