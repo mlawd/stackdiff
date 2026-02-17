@@ -1,0 +1,22 @@
+@import 'tailwindcss';
+
+@plugin 'flowbite/plugin';
+@source '../node_modules/flowbite-svelte/dist';
+
+:root {
+	--stacked-bg: #f3f5ef;
+	--stacked-surface: #fffef7;
+	--stacked-border: #d9ddcf;
+	--stacked-accent: #0f766e;
+	--stacked-text: #1f2937;
+}
+
+body {
+	min-height: 100vh;
+	background:
+		radial-gradient(circle at 10% 10%, #dbeee6 0, transparent 45%),
+		radial-gradient(circle at 90% 0%, #efe6d7 0, transparent 40%),
+		var(--stacked-bg);
+	color: var(--stacked-text);
+	font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+}
