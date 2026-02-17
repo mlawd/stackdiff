@@ -27,13 +27,35 @@ function toPullRequest(payload: GitHubPullRequestPayload | undefined): StackPull
 	};
 }
 
-export async function enrichStackStatus(stack: StackMetadata): Promise<StackViewModel> {
+interface RuntimeStatus {
+	repositoryAbsolutePath: string;
+	currentBranch: string;
+	syncState: StackSyncState;
+	workingTreeDirty: boolean;
+	gitError?: string;
+	ghError?: string;
+	pullRequest?: StackPullRequest;
+}
+
+function applyRuntimeStatus(stack: StackMetadata, runtime: RuntimeStatus): StackViewModel {
+	return {
+		...stack,
+		repositoryAbsolutePath: runtime.repositoryAbsolutePath,
+		currentBranch: runtime.currentBranch,
+		syncState: runtime.syncState,
+		workingTreeDirty: runtime.workingTreeDirty,
+		gitError: runtime.gitError,
+		ghError: runtime.ghError,
+		pullRequest: runtime.pullRequest
+	};
+}
+
+async function getRuntimeStatus(): Promise<RuntimeStatus> {
 	const repositoryAbsolutePath = await getRuntimeRepositoryPath();
 
 	const gitStatus = await runCommand('git', ['status', '--porcelain', '--branch'], repositoryAbsolutePath);
 	if (!gitStatus.ok) {
 		return {
-			...stack,
 			repositoryAbsolutePath,
 			currentBranch: 'unknown',
 			syncState: 'repo-error',
@@ -94,12 +116,21 @@ export async function enrichStackStatus(stack: StackMetadata): Promise<StackView
 	}
 
 	return {
-		...stack,
 		repositoryAbsolutePath,
 		currentBranch: activeBranch,
 		syncState,
 		workingTreeDirty,
-		pullRequest,
-		ghError
+		ghError,
+		pullRequest
 	};
+}
+
+export async function enrichStacksStatus(stacks: StackMetadata[]): Promise<StackViewModel[]> {
+	const runtime = await getRuntimeStatus();
+	return stacks.map((stack) => applyRuntimeStatus(stack, runtime));
+}
+
+export async function enrichStackStatus(stack: StackMetadata): Promise<StackViewModel> {
+	const runtime = await getRuntimeStatus();
+	return applyRuntimeStatus(stack, runtime);
 }

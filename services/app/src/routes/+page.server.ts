@@ -1,12 +1,12 @@
 import type { PageServerLoad } from './$types';
 
-import { enrichStackStatus } from '$lib/server/stack-status';
+import { enrichStacksStatus } from '$lib/server/stack-status';
 import { readStacksFromFile } from '$lib/server/stack-store';
 
 export const load: PageServerLoad = async () => {
 	try {
 		const stacks = await readStacksFromFile();
-		const enrichedStacks = await Promise.all(stacks.map((stack) => enrichStackStatus(stack)));
+		const enrichedStacks = await enrichStacksStatus(stacks);
 
 		return {
 			stacks: enrichedStacks,
