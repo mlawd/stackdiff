@@ -152,6 +152,69 @@ a:focus-visible {
 	text-decoration: underline;
 }
 
+.stacked-chat-font {
+	font-family: 'IBM Plex Sans', 'Avenir Next', 'Segoe UI', sans-serif;
+	line-height: 1.62;
+	letter-spacing: 0.005em;
+}
+
+.stacked-markdown {
+	font-size: 0.95rem;
+	color: inherit;
+}
+
+.stacked-markdown p {
+	margin: 0;
+}
+
+.stacked-markdown p + p {
+	margin-top: 0.75rem;
+}
+
+.stacked-markdown ul,
+.stacked-markdown ol {
+	margin: 0.75rem 0;
+	padding-left: 1.3rem;
+}
+
+.stacked-markdown ul {
+	list-style: disc;
+}
+
+.stacked-markdown ol {
+	list-style: decimal;
+}
+
+.stacked-markdown li + li {
+	margin-top: 0.38rem;
+}
+
+.stacked-markdown pre {
+	margin: 0.75rem 0;
+	overflow-x: auto;
+	border: 1px solid color-mix(in oklab, var(--stacked-border-soft) 88%, #6f7890 12%);
+	border-radius: 12px;
+	background: color-mix(in oklab, var(--stacked-bg-soft) 90%, #05070d 10%);
+	padding: 0.8rem 0.9rem;
+}
+
+.stacked-markdown pre code {
+	background: transparent;
+	padding: 0;
+	font-size: 0.83rem;
+	line-height: 1.55;
+	color: #dce9ff;
+}
+
+.stacked-markdown :not(pre) > code {
+	border: 1px solid color-mix(in oklab, var(--stacked-border-soft) 88%, #6f7890 12%);
+	border-radius: 8px;
+	background: color-mix(in oklab, var(--stacked-bg-soft) 92%, #05070d 8%);
+	padding: 0.08rem 0.4rem;
+	font-size: 0.84em;
+	color: #b7d4ff;
+}
+
 .stacked-scroll {
 	scrollbar-width: thin;
 	scrollbar-color: var(--stacked-border-soft) transparent;

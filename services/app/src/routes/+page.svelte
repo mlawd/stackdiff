@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 
-	import type { StackUpsertInput, StackViewModel } from '$lib/types/stack';
+	import type { StackViewModel } from '$lib/types/stack';
 	import type { PageData } from './$types';
 
 	interface ApiStackResponse {
@@ -20,19 +19,25 @@
 	let stacks = $state<StackViewModel[]>([]);
 	let loadedAt = $state('');
 	let message = $state<UiMessage | null>(null);
-	let submitting = $state(false);
 	let activeRowId = $state<string | null>(null);
 	let initialized = false;
-
-	let isFormOpen = $state(false);
-	let editingId = $state<string | null>(null);
-	let formName = $state('');
-	let formNotes = $state('');
 
 	const syncColor = {
 		clean: 'stacked-chip stacked-chip-success',
 		dirty: 'stacked-chip stacked-chip-warning',
 		'repo-error': 'stacked-chip stacked-chip-danger'
+	} as const;
+
+	const typeLabel = {
+		feature: 'Feature',
+		bugfix: 'Bugfix',
+		chore: 'Chore'
+	} as const;
+
+	const typeClass = {
+		feature: 'stacked-chip stacked-chip-review',
+		bugfix: 'stacked-chip stacked-chip-danger',
+		chore: 'stacked-chip'
 	} as const;
 
 	$effect(() => {
@@ -88,73 +93,6 @@
 
 	function setMessage(kind: UiMessage['kind'], text: string): void {
 		message = { kind, text };
-	}
-
-	function resetForm(): void {
-		editingId = null;
-		formName = '';
-		formNotes = '';
-	}
-
-	function openCreateForm(): void {
-		resetForm();
-		isFormOpen = true;
-	}
-
-	function openEditForm(stack: StackViewModel): void {
-		editingId = stack.id;
-		formName = stack.name;
-		formNotes = stack.notes ?? '';
-		isFormOpen = true;
-	}
-
-	function toUpsertInput(): StackUpsertInput {
-		return {
-			name: formName,
-			notes: formNotes
-		};
-	}
-
-	async function submitStackForm(event: SubmitEvent): Promise<void> {
-		event.preventDefault();
-		submitting = true;
-		message = null;
-
-		try {
-			const payload = toUpsertInput();
-			const url = editingId ? `/api/stacks/${editingId}` : '/api/stacks';
-			const method = editingId ? 'PATCH' : 'POST';
-
-			const response = await fetch(url, {
-				method,
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(payload)
-			});
-
-			const body = (await response.json()) as ApiStackResponse;
-			if (!response.ok || !body.stack) {
-				throw new Error(body.error ?? 'Unable to save feature.');
-			}
-
-			const savedStack = body.stack;
-
-			if (editingId) {
-				stacks = stacks.map((item) => (item.id === savedStack.id ? savedStack : item));
-				setMessage('success', `Updated ${savedStack.name}.`);
-			} else {
-				stacks = [savedStack, ...stacks];
-				await goto(resolve(`/stacks/${savedStack.id}/plan`));
-				return;
-			}
-
-			loadedAt = new Date().toISOString();
-			isFormOpen = false;
-			resetForm();
-		} catch (error) {
-			setMessage('error', error instanceof Error ? error.message : 'Unable to save feature.');
-		} finally {
-			submitting = false;
-		}
 	}
 
 	async function refreshStack(id: string): Promise<void> {
@@ -222,13 +160,12 @@
 			</div>
 			<div class="flex flex-col gap-3 sm:items-end">
 				<p class="text-xs stacked-subtle">Synced {new Date(loadedAt).toLocaleString()}</p>
-				<button
-					type="button"
-					onclick={openCreateForm}
+				<a
+					href={resolve('/stacks/new')}
 					class="stacked-pulse cursor-pointer rounded-lg border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2a97ff]"
 				>
 					Create Feature
-				</button>
+				</a>
 			</div>
 		</div>
 
@@ -240,48 +177,6 @@
 			>
 				{message.text}
 			</div>
-		{/if}
-
-		{#if isFormOpen}
-			<form onsubmit={submitStackForm} class="stacked-panel-elevated mb-6 grid gap-4 p-4 sm:grid-cols-2 sm:p-5">
-				<label class="flex flex-col gap-2 text-sm">
-					<span class="font-medium text-[var(--stacked-text)]">Feature Title</span>
-					<input
-						bind:value={formName}
-						required
-						placeholder="e.g. User authentication system"
-						class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 text-sm text-[var(--stacked-text)] outline-none ring-0 transition focus:border-[var(--stacked-accent)]"
-					/>
-				</label>
-				<label class="flex flex-col gap-2 text-sm">
-					<span class="font-medium text-[var(--stacked-text)]">Description</span>
-					<textarea
-						bind:value={formNotes}
-						rows="3"
-						placeholder="Scope, constraints, and intended outcome"
-						class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 text-sm text-[var(--stacked-text)] outline-none ring-0 transition focus:border-[var(--stacked-accent)]"
-					></textarea>
-				</label>
-				<div class="flex items-center justify-end gap-3 sm:col-span-2">
-					<button
-						type="button"
-						onclick={() => {
-							isFormOpen = false;
-							resetForm();
-						}}
-						class="cursor-pointer rounded-lg border border-[var(--stacked-border-soft)] bg-transparent px-3 py-2 text-sm font-medium text-[var(--stacked-text-muted)] transition hover:border-[var(--stacked-border)] hover:text-[var(--stacked-text)]"
-					>
-						Cancel
-					</button>
-					<button
-						type="submit"
-						disabled={submitting}
-						class="cursor-pointer rounded-lg border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-70"
-					>
-						{submitting ? 'Saving...' : editingId ? 'Update Feature' : 'Create & Plan'}
-					</button>
-				</div>
-			</form>
 		{/if}
 
 		{#if stacks.length === 0}
@@ -297,6 +192,7 @@
 							<div>
 								<div class="mb-2 flex flex-wrap items-center gap-2">
 									<a href={resolve(`/stacks/${stack.id}`)} class="stacked-link text-base font-semibold">{stack.name}</a>
+									<span class={typeClass[stack.type]}>{typeLabel[stack.type]}</span>
 									<span class={stageClass(stackStageLabel(stack))}>{stackStageLabel(stack)}</span>
 									<span class={syncColor[stack.syncState]}>{titleCase(stack.syncState)}</span>
 								</div>
@@ -313,13 +209,6 @@
 									class="cursor-pointer rounded-md border border-[var(--stacked-border-soft)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--stacked-text-muted)] transition hover:border-[var(--stacked-accent)] hover:text-[var(--stacked-text)] sm:px-3 sm:text-xs disabled:cursor-not-allowed disabled:opacity-60"
 								>
 									Refresh
-								</button>
-								<button
-									type="button"
-									onclick={() => openEditForm(stack)}
-									class="cursor-pointer rounded-md border border-[var(--stacked-border-soft)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--stacked-text-muted)] transition hover:border-[var(--stacked-accent)] hover:text-[var(--stacked-text)] sm:px-3 sm:text-xs"
-								>
-									Edit
 								</button>
 								<a
 									href={resolve(`/stacks/${stack.id}/plan`)}

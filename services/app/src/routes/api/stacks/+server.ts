@@ -17,7 +17,8 @@ function parseUpsertInput(body: unknown): StackUpsertInput {
 
 	return {
 		name: String(candidate.name ?? ''),
-		notes: candidate.notes ? String(candidate.notes) : undefined
+		notes: candidate.notes ? String(candidate.notes) : undefined,
+		type: String(candidate.type ?? 'feature') as StackUpsertInput['type']
 	};
 }
 

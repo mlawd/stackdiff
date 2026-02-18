@@ -11,6 +11,18 @@
 		'repo-error': 'stacked-chip stacked-chip-danger'
 	} as const;
 
+	const typeLabel = {
+		feature: 'Feature',
+		bugfix: 'Bugfix',
+		chore: 'Chore'
+	} as const;
+
+	const typeClass = {
+		feature: 'stacked-chip stacked-chip-review',
+		bugfix: 'stacked-chip stacked-chip-danger',
+		chore: 'stacked-chip'
+	} as const;
+
 	const stages = ['Planned', 'In Progress', 'PR Open', 'In Review', 'Merged'] as const;
 
 	function currentStage(): (typeof stages)[number] {
@@ -49,6 +61,30 @@
 		return 'stacked-chip';
 	}
 
+	function implementationStageClass(status: string): string {
+		if (status === 'done') {
+			return 'stacked-chip stacked-chip-success';
+		}
+
+		if (status === 'in-progress') {
+			return 'stacked-chip stacked-chip-warning';
+		}
+
+		return 'stacked-chip';
+	}
+
+	function implementationStageLabel(status: string): string {
+		if (status === 'done') {
+			return 'Done';
+		}
+
+		if (status === 'in-progress') {
+			return 'In progress';
+		}
+
+		return 'Not started';
+	}
+
 	function stageContainerClass(stage: (typeof stages)[number]): string {
 		const active = stages.indexOf(currentStage());
 		const index = stages.indexOf(stage);
@@ -84,6 +120,9 @@
 			<p class="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--stacked-accent-strong)]">Feature</p>
 			<h1 class="stacked-title">{data.stack.name}</h1>
 			<p class="mt-2 text-sm stacked-subtle">{data.stack.notes ?? 'No description provided for this feature yet.'}</p>
+			<div class="mt-3">
+				<span class={typeClass[data.stack.type]}>{typeLabel[data.stack.type]}</span>
+			</div>
 		</div>
 
 		<div class="mb-6 flex flex-wrap items-center gap-2">
@@ -101,6 +140,27 @@
 					</div>
 				{/each}
 			</div>
+		</div>
+
+		<div class="stacked-panel-elevated mb-6 p-4">
+			<p class="mb-3 text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle">Implementation Stages</p>
+			{#if data.stack.stages && data.stack.stages.length > 0}
+				<div class="space-y-2">
+					{#each data.stack.stages as implementationStage (implementationStage.id)}
+						<div class="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2">
+							<div>
+								<p class="text-sm font-medium text-[var(--stacked-text)]">{implementationStage.title}</p>
+								{#if implementationStage.details}
+									<p class="mt-1 text-xs stacked-subtle">{implementationStage.details}</p>
+								{/if}
+							</div>
+							<span class={implementationStageClass(implementationStage.status)}>{implementationStageLabel(implementationStage.status)}</span>
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<p class="text-sm stacked-subtle">Save a plan in Planning Chat to generate implementation stages.</p>
+			{/if}
 		</div>
 
 		{#if data.stack.pullRequest}

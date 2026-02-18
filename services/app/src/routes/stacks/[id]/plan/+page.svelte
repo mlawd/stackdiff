@@ -72,7 +72,7 @@
 			messageInput = '';
 
 			if (body.autoSavedPlanPath) {
-				successMessage = `Saved plan to ${body.autoSavedPlanPath}.`;
+				successMessage = `Saved plan to ${body.autoSavedPlanPath} and generated implementation stages.`;
 			}
 		} catch (error) {
 			errorMessage = error instanceof Error ? error.message : 'Unable to send message.';
@@ -95,7 +95,7 @@
 			}
 
 			session = body.session;
-			successMessage = `Saved plan to ${body.savedPlanPath}.`;
+			successMessage = `Saved plan to ${body.savedPlanPath} and generated implementation stages.`;
 		} catch (error) {
 			errorMessage = error instanceof Error ? error.message : 'Unable to save plan.';
 		} finally {
@@ -104,13 +104,16 @@
 	}
 </script>
 
-<main class="stacked-shell mx-auto w-full max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+<main class="stacked-shell w-full px-3 py-5 sm:px-6 sm:py-7 lg:px-8">
 	<section class="stacked-panel stacked-fade-in p-4 sm:p-7">
 		<div class="mb-6 flex flex-wrap items-center justify-between gap-3 border-b stacked-divider pb-4">
 			<div>
 				<a href={resolve(`/stacks/${data.stack.id}`)} class="stacked-link text-sm font-semibold">Return to feature</a>
 				<h1 class="mt-2 text-3xl font-semibold tracking-tight">Planning Chat - {data.stack.name}</h1>
 				<p class="mt-1 text-sm stacked-subtle">Talk through requirements, lock the implementation plan, then ship by stages.</p>
+				<div class="mt-3">
+					<span class="stacked-chip stacked-chip-review">Planning Mode</span>
+				</div>
 			</div>
 			<div class="text-right">
 				<p class="text-xs stacked-subtle">Session {session.id}</p>
@@ -134,22 +137,21 @@
 			</div>
 		{/if}
 
-		<div class="grid gap-3 sm:gap-4 lg:grid-cols-[1fr_18rem]">
-			<div>
-				<div class="stacked-panel-elevated stacked-scroll mb-3 h-[24rem] overflow-y-auto p-3.5 sm:h-[29rem] sm:p-5">
+		<div>
+			<div class="stacked-panel-elevated stacked-scroll mb-3 h-[26rem] overflow-y-auto p-3.5 sm:h-[35rem] sm:p-5">
 					{#if session.messages.length === 0}
-						<div class="h-full content-center text-sm stacked-subtle">
+						<div class="stacked-chat-font h-full content-center text-sm stacked-subtle">
 							<p class="mb-2 font-semibold text-[var(--stacked-text)]">No stages yet.</p>
 							<p>Start by describing what you want to ship. Ask questions and iterate until the plan is clear.</p>
 						</div>
 					{:else}
 						<div class="space-y-3">
 							{#each session.messages as message (message.id)}
-								<div class={`max-w-[92%] rounded-2xl border px-4 py-3 text-sm ${message.role === 'user'
+								<div class={`stacked-chat-font max-w-[90%] rounded-2xl border px-4 py-3 text-sm ${message.role === 'user'
 									? 'ml-auto border-[var(--stacked-accent)] bg-blue-500/20 text-blue-50'
 									: 'mr-auto border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] text-[var(--stacked-text)]'}`}>
 									<p class="mb-1 text-[11px] uppercase tracking-wide opacity-70">{message.role === 'assistant' ? 'agent' : message.role}</p>
-									<div class="prose prose-sm max-w-none prose-invert prose-p:my-1 prose-headings:my-2 prose-pre:my-2 prose-code:before:content-none prose-code:after:content-none">
+									<div class="stacked-markdown">
 										{@html renderMarkdown(message.content)}
 									</div>
 								</div>
@@ -158,12 +160,12 @@
 					{/if}
 				</div>
 
-				<form onsubmit={sendMessage} class="stacked-panel-elevated grid gap-2.5 p-3 sm:gap-3 sm:grid-cols-[1fr_auto] sm:p-4">
+			<form onsubmit={sendMessage} class="stacked-panel-elevated stacked-chat-font grid gap-2.5 p-3 sm:gap-3 sm:grid-cols-[1fr_auto] sm:p-4">
 					<textarea
 						bind:value={messageInput}
 						rows="3"
 						placeholder="Reply to the agent..."
-						class="rounded-xl border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 text-sm text-[var(--stacked-text)] outline-none transition focus:border-[var(--stacked-accent)]"
+						class="rounded-xl border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 text-[0.95rem] text-[var(--stacked-text)] outline-none transition focus:border-[var(--stacked-accent)]"
 					></textarea>
 					<div class="flex gap-2 sm:flex-col sm:items-stretch">
 						<button
@@ -184,11 +186,10 @@
 					</div>
 					<p class="text-xs stacked-subtle sm:col-span-2">Shift+Enter for new line - Enter to send</p>
 				</form>
-			</div>
 
-			<aside class="stacked-panel-elevated p-4 text-sm lg:sticky lg:top-6 lg:self-start">
+			<div class="stacked-panel-elevated mt-3 p-4 text-sm">
 				<p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle">Workflow</p>
-				<ol class="space-y-2 text-xs stacked-subtle">
+				<ol class="stacked-chat-font space-y-1.5 text-sm stacked-subtle">
 					<li>1. Clarify requirements with the agent.</li>
 					<li>2. Save the plan when scope is locked.</li>
 					<li>3. Implement stage-by-stage on branch.</li>
@@ -197,10 +198,10 @@
 				{#if session.savedPlanPath}
 					<div class="mt-4 rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] p-3">
 						<p class="mb-1 text-[11px] uppercase tracking-wide stacked-subtle">Saved plan path</p>
-						<p class="break-all text-xs text-[var(--stacked-text)]">{session.savedPlanPath}</p>
+						<p class="stacked-chat-font break-all text-sm text-[var(--stacked-text)]">{session.savedPlanPath}</p>
 					</div>
 				{/if}
-			</aside>
+			</div>
 		</div>
 	</section>
 </main>

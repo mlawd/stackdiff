@@ -10,7 +10,7 @@ const markdown = new MarkdownIt({
 const originalLinkOpenRule = markdown.renderer.rules.link_open;
 
 markdown.renderer.rules.link_open = (tokens, idx, options, env, self) => {
-	tokens[idx].attrSet('class', 'text-teal-700 underline hover:text-teal-800');
+	tokens[idx].attrSet('class', 'text-blue-300 underline hover:text-blue-200');
 	tokens[idx].attrSet('target', '_blank');
 	tokens[idx].attrSet('rel', 'noopener noreferrer');
 

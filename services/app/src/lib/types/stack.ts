@@ -1,14 +1,28 @@
 export type StackSyncState = 'clean' | 'dirty' | 'repo-error';
 
+export type FeatureType = 'feature' | 'bugfix' | 'chore';
+
+export type FeatureStageStatus = 'not-started' | 'in-progress' | 'done';
+
+export interface FeatureStage {
+	id: string;
+	title: string;
+	details?: string;
+	status: FeatureStageStatus;
+}
+
 export interface StackMetadata {
 	id: string;
 	name: string;
 	notes?: string;
+	type: FeatureType;
+	stages?: FeatureStage[];
 }
 
 export interface StackUpsertInput {
 	name: string;
 	notes?: string;
+	type: FeatureType;
 }
 
 export interface StackFile {

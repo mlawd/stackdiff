@@ -14,7 +14,7 @@ export async function POST({ params }) {
 			return json({ error: 'Feature not found.' }, { status: 404 });
 		}
 
-		const session = await ensurePlanningSession(params.id);
+		const session = await ensurePlanningSession(params.id, stack);
 		return json({ session });
 	} catch (error) {
 		return json({ error: toErrorMessage(error) }, { status: 400 });

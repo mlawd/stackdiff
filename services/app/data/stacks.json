@@ -2,61 +2,60 @@
 	"version": 1,
 	"stacks": [
 		{
-			"id": "some-new-stack-15gpw0",
-			"name": "Some new stack"
+			"id": "branch-creation-sbel01",
+			"stages": [],
+			"name": "Branch creation",
+			"notes": "When starting a new feature that has been fully planned and the stages configured, I want the AI Agent to create a new git worktree and start a new session within that worktree that implements the stage as per the implementation plan.",
+			"type": "feature"
 		}
 	],
 	"planningSessions": [
 		{
-			"id": "session-6atjfvp1",
-			"stackId": "some-new-stack-15gpw0",
+			"id": "session-vybzwukj",
+			"stackId": "branch-creation-o23jtg",
 			"messages": [
 				{
-					"id": "message-87a9gn0c",
-					"role": "user",
-					"content": "What day is it?",
-					"createdAt": "2026-02-17T22:39:19.350Z"
-				},
-				{
-					"id": "message-1zvemsym",
-					"role": "user",
-					"content": "What day is it?",
-					"createdAt": "2026-02-17T22:42:23.584Z"
-				},
-				{
-					"id": "message-xbqcpamo",
+					"id": "message-sbpgarxc",
 					"role": "assistant",
-					"content": "It’s Tuesday, February 17, 2026.",
-					"createdAt": "2026-02-17T22:42:27.351Z"
-				},
-				{
-					"id": "message-hq82phto",
-					"role": "user",
-					"content": "Awesome, let's plan to change the theme from green to blue",
-					"createdAt": "2026-02-17T22:42:41.585Z"
-				},
-				{
-					"id": "message-jxaxz7uo",
-					"role": "assistant",
-					"content": "Love it — clean visual shift.\n\nHere’s a practical plan to move the app theme from green to blue with low risk:\n\n- Audit where green is defined (global CSS variables, Tailwind classes, component-level hardcoded colors).\n- Introduce/replace semantic theme tokens (e.g. `--color-primary`, `--color-primary-600`) so blue is centralized.\n- Update shared UI primitives first (buttons, links, badges, focus rings), then page-specific accents.\n- Verify contrast/accessibility for blue states (normal, hover, disabled, text on blue backgrounds).\n- Run `npm run check` and `npm run build` to catch regressions.\n- Do a quick visual pass on key screens (desktop + mobile, light/dark if supported).\n\nRecommended implementation approach:\n- Prefer changing design tokens/variables once rather than touching lots of scattered `text-green-*` / `bg-green-*` usages.\n- Keep one canonical blue palette (e.g. 50–900 scale) to avoid inconsistent shades.\n\nIf you want, I can do the audit now and give you an exact file-by-file change list before editing.",
-					"createdAt": "2026-02-17T22:42:49.756Z"
-				},
-				{
-					"id": "message-9izgq1hz",
-					"role": "user",
-					"content": "Yes",
-					"createdAt": "2026-02-17T22:43:05.353Z"
-				},
-				{
-					"id": "message-4s61a3v7",
-					"role": "assistant",
-					"content": "Great call. I audited the app and found all theme-related green usage. No edits made yet.\n\n**File-by-file change list**\n- `services/app/src/app.css:7` update core palette vars from green-tinted neutrals to blue-tinted neutrals (`--stacked-bg`, `--stacked-surface`, `--stacked-border`), and set `--stacked-accent` to a blue.\n- `services/app/src/app.css:17` change the first radial background accent (`#dbeee6`) to a blue family tone so the page atmosphere matches the new theme.\n\n- `services/app/src/routes/+page.svelte:34` change Flowbite badge mapping for `clean` from `'green'` to `'blue'`.\n- `services/app/src/routes/+page.svelte:184` switch all teal/emerald UI accents to blue (`text-teal-700`, `bg-teal-700`, `hover:bg-teal-800`, `disabled:bg-teal-500`, `hover:bg-teal-50/50`, `text-teal-800`, `text-teal-700`, success alert emerald classes).\n\n- `services/app/src/routes/stacks/[id]/+page.svelte:10` change Flowbite badge mapping for `clean` from `'green'` to `'blue'`.\n- `services/app/src/routes/stacks/[id]/+page.svelte:19` switch teal/emerald accents to blue for nav links and “Top PR” card styles.\n\n- `services/app/src/routes/stacks/[id]/plan/+page.svelte:110` switch teal/emerald accents to blue for back link, saved-state text, success alert, user message bubble, primary button, and “Save plan” secondary button.\n\n**Notes**\n- `services/app/data/stacks.json:41` contains “green to blue” only as conversation text history, not UI theme logic; I recommend leaving it unchanged.\n- No other code files in the repo currently use green/teal/emerald theme classes.\n\nIf you want, I can apply these changes now in one pass and run `npm run check` + `npm run build`.",
-					"createdAt": "2026-02-17T22:43:43.949Z"
+					"content": "Great work item. This is a meaningful feature because it bridges planning -> execution and introduces lifecycle state, git orchestration, and AI kickoff in one flow.\n\nBefore implementation, here are the most important clarifying questions:\n\n- Branch strategy: Should each feature get one branch (used across all stages), or should stage 1 get its own branch now and future stages branch later?\n- Base branch source: Should new branches always start from a fixed base (for example `main`), or from a user-selected base per feature?\n- Naming convention: Do you want deterministic branch names (example: `feature/<stack-slug>`), and what should happen if the name already exists?\n- Worktree location: Where should worktrees live (for example a dedicated `.worktrees/<branch>` under repo root), and should location be configurable?\n- Idempotency behavior: If the user clicks “Start feature” twice, should we treat it as success if branch/worktree already exists and simply resume stage 1 kickoff?\n- Stage 1 kickoff scope: Does “starts stage 1 implementation” mean only creating an AI task/run record, or should the agent immediately modify files and attempt a commit?\n- Human approval step: Should there be a confirmation/review step before the AI writes code, or should kickoff be immediate?\n- Failure policy: If branch/worktree creation succeeds but AI kickoff fails, should we keep the branch/worktree and mark stage status as “needs attention” rather than rolling back?\n- Single active run rule: Can multiple features be started in parallel in the same repo, or do we enforce one active “implementation run” at a time?\n- UI surface: Should “Start feature” live at feature-level only, or also on stage 1 card if feature is planned but not started?\n\nIf you want, I can refine this into an exact spec after your answers.  \nIn parallel, here is a staged implementation approach with sensible defaults.\n\n**Proposed Staged Plan**\n- Stage 1: Define workflow contract and statuses\n  - Add explicit feature/stage lifecycle states (`planned` -> `starting` -> `in_progress` / `failed_to_start`).\n  - Define a single orchestration command: `startFeature(featureId)` with deterministic behavior and idempotency.\n  - Lock in defaults: base branch `main`, branch pattern `feature/<feature-slug>`, keep partial success (no rollback on AI failure).\n\n- Stage 2: Server-side git/worktree orchestration layer\n  - Add typed utility methods around `git` for: verify clean preconditions (if needed), resolve base commit, create branch, create worktree, detect existing branch/worktree.\n  - Return UI-safe structured error objects (actionable messages and machine-readable codes).\n  - Ensure commands are deterministic and safe under AGENTS constraints (repo-local, no per-stack repo path).\n\n- Stage 3: Persist runtime metadata and start markers\n  - Extend `services/app/data/stacks.json` schema behind storage interface with:\n    - `feature.branchName`\n    - `feature.baseBranch`\n    - `feature.worktreePath`\n    - `feature.startedAt`\n    - `feature.startStatus`\n    - `stage1.run` metadata (queued/running/failed/completed + timestamps)\n  - Keep schema evolution simple (no backward compatibility required right now, per AGENTS).\n\n- Stage 4: AI kickoff integration for stage 1\n  - Implement `kickoffStage1(featureId)` after successful branch/worktree readiness.\n  - Build deterministic prompt context from planned feature + stage 1 scope.\n  - Run via existing server-side agent execution path; capture run id/log reference in stage metadata.\n  - Make kickoff resilient: retryable, idempotent, and clearly surfaced if startup fails.\n\n- Stage 5: UI action and progress feedback\n  - Add “Start feature” action in feature detail view.\n  - Show progressive states: creating branch/worktree -> starting AI -> running stage 1.\n  - Display success artifacts (branch name, worktree path, run id) and failure guidance (“retry kickoff”, “open logs”, etc.).\n  - Disable duplicate starts while in-flight; allow safe retry after failure.\n\n- Stage 6: Validation, tests, and operational hardening\n  - Unit tests for branch/worktree decision logic and error mapping.\n  - Integration tests for start flow with mocked git/agent adapters.\n  - Manual happy-path + failure-path checks (`branch exists`, `worktree exists`, `base branch missing`, `agent timeout`).\n  - Add lightweight telemetry/logging for start latency and failure reasons.\n\n**Suggested Acceptance Criteria**\n- Starting a planned feature creates/uses the expected branch and worktree deterministically.\n- Stage 1 transitions to an active AI run automatically with visible status.\n- Re-running “Start feature” is safe and does not duplicate resources.\n- Failures return actionable UI-safe errors and preserve recoverable state.\n- Metadata persists in JSON via the storage interface and is visible on reload.\n\n**Key Risks to Manage Early**\n- Git state drift (local repo state changes between checks and execution).\n- Ambiguous retries causing duplicate AI runs.\n- Tight coupling between orchestration and UI state without clear status machine.\n- Worktree path collisions across similarly named features.\n\nIf you answer the questions above, I can give you a concrete v1 spec with exact state machine, API shapes, and task breakdown by file/module.",
+					"createdAt": "2026-02-18T20:51:17.143Z"
 				}
 			],
-			"createdAt": "2026-02-17T22:29:14.864Z",
-			"updatedAt": "2026-02-17T22:43:43.949Z",
-			"opencodeSessionId": "ses_3923eef93ffejm1YscYhb9xR76"
+			"createdAt": "2026-02-18T20:51:17.143Z",
+			"updatedAt": "2026-02-18T20:51:17.143Z"
+		},
+		{
+			"id": "session-3rzdfh2n",
+			"stackId": "branch-creation-sbel01",
+			"messages": [
+				{
+					"id": "message-pm220osy",
+					"role": "user",
+					"content": "Help me create an implementation plan for this work item:\n- Type: feature\n- Name: Branch creation\n- Description: When starting a new feature that has been fully planned and the stages configured, I want the AI Agent to create a new git worktree and start a new session within that worktree that implements the stage as per the implementation plan.\n\nPlease ask any important clarifying questions, then propose a staged implementation approach.",
+					"createdAt": "2026-02-18T20:53:55.434Z"
+				},
+				{
+					"id": "message-h77lhx3y",
+					"role": "assistant",
+					"content": "Great feature idea — it closes the loop from planning to execution.\n\nImportant clarifying questions before implementation (with my recommended defaults):\n\n- Should we create **one worktree per stage** or **one worktree per feature stack**?\n  - Recommended: one per stage, so each stage is isolated and reviewable.\n- Can multiple stages be `in-progress` at once for the same stack?\n  - Recommended: no, enforce a single active stage per stack initially.\n- What should the **branch naming convention** be?\n  - Recommended: `stack/<stack-id>/<stage-id>-<slug>` (deterministic, collision-safe).\n- What should be the default **base branch** for new stage branches?\n  - Recommended: current repo default branch (`origin/HEAD` fallback to `main`).\n- Where should worktrees live on disk?\n  - Recommended: `<repo>/.stacked/worktrees/<stack-id>/<stage-id>`.\n- Should “start stage” automatically send an implementation kickoff prompt to the new AI session?\n  - Recommended: yes, seed it with stage details + saved plan markdown.\n- If the branch/worktree already exists, should start be idempotent and reattach?\n  - Recommended: yes, return existing metadata/session instead of failing.\n- What is expected cleanup behavior after stage completion/cancel?\n  - Recommended: keep worktree by default; add explicit “cleanup worktree” action later.\n\nAssuming those defaults, here’s a staged implementation approach.\n\n**Stage 1: Domain + persistence groundwork**\n- Extend stack domain types in `services/app/src/lib/types/stack.ts` to track stage execution metadata (branch, worktree path, implementation session id, timestamps, error state).\n- Persist this in `services/app/data/stacks.json` via `services/app/src/lib/server/stack-store.ts`.\n- Add small helper methods: `startStageExecution`, `setStageStatus`, `getActiveStageExecution`, `setImplementationSessionId`.\n\n**Stage 2: Git/worktree orchestration service**\n- Add `services/app/src/lib/server/worktree-service.ts` with typed, deterministic wrappers around `git` via `runCommand` from `services/app/src/lib/server/command.ts`.\n- Implement:\n  - base branch resolution\n  - branch name generation\n  - worktree path generation\n  - `git worktree add -b ...`\n  - preflight checks (repo validity, path collision, branch collision, lock on active stage)\n- Return UI-safe structured errors (actionable text, no raw stack traces).\n\n**Stage 3: Implementation session bootstrapping**\n- Add an implementation-session service (parallel to planning) that creates/uses an AI session tied to the stage execution.\n- Seed prompt with:\n  - feature type/name/notes\n  - selected stage title/details\n  - full saved plan (from `savedPlanPath`)\n  - constraints from AGENTS/local-first model\n- Persist implementation session messages separately from planning messages so flows remain distinct.\n\n**Stage 4: API endpoints for stage start + chat**\n- Add endpoint: `POST /api/stacks/[id]/stages/[stageId]/start`\n  - validates prerequisites (plan exists, stages configured, stage not done, no active stage conflict)\n  - creates worktree + branch\n  - creates implementation session\n  - marks stage `in-progress`\n  - returns execution/session payload\n- Add message endpoint for implementation session (similar to planning message/save endpoints).\n- Add robust error mapping (409 for conflicts, 400 for invalid state, 404 for missing stack/stage).\n\n**Stage 5: UI integration**\n- In `services/app/src/routes/stacks/[id]/+page.svelte`, add “Start Stage” action on `not-started` stages.\n- Show execution metadata on the stage card (branch, worktree relative path, started time, session link).\n- Add implementation chat page route (e.g. `/stacks/[id]/implement/[stageId]`) mirroring planning chat UX but scoped to execution.\n\n**Stage 6: Validation + operational safeguards**\n- Add tests for:\n  - branch/worktree naming and idempotency\n  - state transitions (`not-started` -> `in-progress`)\n  - conflict handling (active stage already exists)\n  - API contract/error shapes\n- Add manual verification script:\n  - create feature + saved plan -> start stage -> confirm worktree exists -> confirm seeded session -> send first message.\n- Ensure all shell execution remains server-side and typed.\n\n**Stage 7: Follow-up hardening (optional but valuable)**\n- Add “Resume stage” and “Open worktree in terminal/editor” convenience actions.\n- Add stage completion flow (set `done`, optional PR creation hook).\n- Add cleanup endpoint for worktree removal once merged/completed.\n\nIf you answer the 8 questions, I can convert this into a concrete ticket breakdown with exact API contracts and type shapes next.",
+					"createdAt": "2026-02-18T20:54:58.898Z"
+				},
+				{
+					"id": "message-s9q3sk5z",
+					"role": "user",
+					"content": "Anything else",
+					"createdAt": "2026-02-18T20:55:11.115Z"
+				},
+				{
+					"id": "message-xgqizsce",
+					"role": "assistant",
+					"content": "A few important extras worth planning now:\n\n- Add a lightweight lock to prevent double-start races (`start` clicked twice, two browser tabs).\n- Make `start stage` transactional: if session creation fails after worktree create, either roll back worktree or mark a recoverable partial state.\n- Validate/sanitize all path/slug inputs to avoid path traversal; only derive branch/worktree names from trusted IDs.\n- Decide whether worktree bootstrap runs `npm install` automatically or leaves that to the implementation agent (recommended: leave to agent, but surface clear first-step instructions).\n- Store only repo-relative paths in metadata; compute absolute paths at runtime (keeps future repo moves safer).\n- Add a dedicated status for “blocked/error” stage execution so users can recover without manual JSON edits.\n- Ensure `.stacked/worktrees` behavior is documented in README and considered in `.gitignore` policy.\n- Capture command telemetry in logs (command, duration, sanitized stderr) so failures are diagnosable without exposing secrets.\n\nIf useful, I can now turn this into a ready-to-implement spec with:\n1) exact TypeScript interfaces,\n2) endpoint request/response schemas,\n3) state transition table.",
+					"createdAt": "2026-02-18T20:55:24.546Z"
+				}
+			],
+			"createdAt": "2026-02-18T20:53:55.434Z",
+			"updatedAt": "2026-02-18T20:55:24.546Z",
+			"opencodeSessionId": "ses_38d781790ffe9yvrr467i5H6fX"
 		}
 	]
 }

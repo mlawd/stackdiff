@@ -11,7 +11,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		throw error(404, 'Feature not found');
 	}
 
-	const session = await ensurePlanningSession(params.id);
+	const session = await ensurePlanningSession(params.id, stack);
 
 	return {
 		stack,
