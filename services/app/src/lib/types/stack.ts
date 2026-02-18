@@ -14,6 +14,27 @@ export interface StackUpsertInput {
 export interface StackFile {
 	version: number;
 	stacks: StackMetadata[];
+	planningSessions?: StackPlanningSession[];
+}
+
+export type PlanningRole = 'user' | 'assistant' | 'system';
+
+export interface PlanningMessage {
+	id: string;
+	role: PlanningRole;
+	content: string;
+	createdAt: string;
+}
+
+export interface StackPlanningSession {
+	id: string;
+	stackId: string;
+	opencodeSessionId?: string;
+	messages: PlanningMessage[];
+	createdAt: string;
+	updatedAt: string;
+	savedPlanPath?: string;
+	savedAt?: string;
 }
 
 export interface StackPullRequest {

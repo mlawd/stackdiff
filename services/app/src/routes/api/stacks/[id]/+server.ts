@@ -31,7 +31,7 @@ export async function PATCH({ params, request }) {
 		return json({ stack: enriched });
 	} catch (error) {
 		const message = toErrorMessage(error);
-		const status = message === 'Stack not found.' ? 404 : 400;
+		const status = message === 'Feature not found.' ? 404 : 400;
 		return json({ error: message }, { status });
 	}
 }
@@ -42,7 +42,7 @@ export async function DELETE({ params }) {
 		return json({ ok: true });
 	} catch (error) {
 		const message = toErrorMessage(error);
-		const status = message === 'Stack not found.' ? 404 : 400;
+		const status = message === 'Feature not found.' ? 404 : 400;
 		return json({ error: message }, { status });
 	}
 }
@@ -51,7 +51,7 @@ export async function GET({ params }) {
 	try {
 		const stack = await getStackById(params.id);
 		if (!stack) {
-			return json({ error: 'Stack not found.' }, { status: 404 });
+			return json({ error: 'Feature not found.' }, { status: 404 });
 		}
 
 		const enriched = await enrichStackStatus(stack);

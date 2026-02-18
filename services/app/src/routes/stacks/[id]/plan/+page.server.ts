@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
-import { enrichStackStatus } from '$lib/server/stack-status';
+import { ensurePlanningSession } from '$lib/server/planning-service';
 import { getStackById } from '$lib/server/stack-store';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -11,10 +11,11 @@ export const load: PageServerLoad = async ({ params }) => {
 		throw error(404, 'Feature not found');
 	}
 
-	const enriched = await enrichStackStatus(stack);
+	const session = await ensurePlanningSession(params.id);
 
 	return {
-		stack: enriched,
+		stack,
+		session,
 		loadedAt: new Date().toISOString()
 	};
 };

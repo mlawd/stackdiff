@@ -1,6 +1,13 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
-import type { StackFile, StackMetadata, StackUpsertInput } from '$lib/types/stack';
+import type {
+	PlanningMessage,
+	PlanningRole,
+	StackFile,
+	StackMetadata,
+	StackPlanningSession,
+	StackUpsertInput
+} from '$lib/types/stack';
 import { runCommand } from '$lib/server/command';
 
 const STACKS_FILE = new URL('../../../data/stacks.json', import.meta.url);
@@ -26,7 +33,59 @@ function isStackFile(value: unknown): value is StackFile {
 
 	const file = value as Partial<StackFile>;
 
-	return typeof file.version === 'number' && Array.isArray(file.stacks) && file.stacks.every(isStackMetadata);
+	return (
+		typeof file.version === 'number' &&
+		Array.isArray(file.stacks) &&
+		file.stacks.every(isStackMetadata) &&
+		(file.planningSessions === undefined ||
+			(Array.isArray(file.planningSessions) && file.planningSessions.every(isStackPlanningSession)))
+	);
+}
+
+function isPlanningRole(value: unknown): value is PlanningRole {
+	return value === 'user' || value === 'assistant' || value === 'system';
+}
+
+function isPlanningMessage(value: unknown): value is PlanningMessage {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const message = value as Partial<PlanningMessage>;
+
+	return (
+		typeof message.id === 'string' &&
+		isPlanningRole(message.role) &&
+		typeof message.content === 'string' &&
+		typeof message.createdAt === 'string'
+	);
+}
+
+function isStackPlanningSession(value: unknown): value is StackPlanningSession {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const session = value as Partial<StackPlanningSession>;
+
+	return (
+		typeof session.id === 'string' &&
+		typeof session.stackId === 'string' &&
+		(session.opencodeSessionId === undefined || typeof session.opencodeSessionId === 'string') &&
+		Array.isArray(session.messages) &&
+		session.messages.every(isPlanningMessage) &&
+		typeof session.createdAt === 'string' &&
+		typeof session.updatedAt === 'string' &&
+		(session.savedPlanPath === undefined || typeof session.savedPlanPath === 'string') &&
+		(session.savedAt === undefined || typeof session.savedAt === 'string')
+	);
+}
+
+function normalizeStackFile(file: StackFile): StackFile {
+	return {
+		...file,
+		planningSessions: file.planningSessions ?? []
+	};
 }
 
 export async function readStacksFromFile(): Promise<StackMetadata[]> {
@@ -42,7 +101,7 @@ async function readStackFile(): Promise<StackFile> {
 		throw new Error('Invalid stacks.json shape. Expected { version: number, stacks: StackMetadata[] }.');
 	}
 
-	return parsed;
+	return normalizeStackFile(parsed);
 }
 
 async function writeStackFile(file: StackFile): Promise<void> {
@@ -59,6 +118,14 @@ function createId(name: string): string {
 
 	const seed = Math.random().toString(36).slice(2, 8);
 	return `${base || 'stack'}-${seed}`;
+}
+
+function createSessionId(): string {
+	return `session-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function createMessageId(): string {
+	return `message-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function normalizeInput(input: StackUpsertInput): StackUpsertInput {
@@ -107,6 +174,108 @@ export async function createStack(input: StackUpsertInput): Promise<StackMetadat
 	return created;
 }
 
+export async function getPlanningSessionByStackId(id: string): Promise<StackPlanningSession | undefined> {
+	const file = await readStackFile();
+	return file.planningSessions?.find((session) => session.stackId === id);
+}
+
+export async function createOrGetPlanningSession(id: string): Promise<StackPlanningSession> {
+	const file = await readStackFile();
+	const existing = file.planningSessions?.find((session) => session.stackId === id);
+
+	if (existing) {
+		return existing;
+	}
+
+	const now = new Date().toISOString();
+	const created: StackPlanningSession = {
+		id: createSessionId(),
+		stackId: id,
+		opencodeSessionId: undefined,
+		messages: [],
+		createdAt: now,
+		updatedAt: now
+	};
+
+	file.planningSessions = [...(file.planningSessions ?? []), created];
+	await writeStackFile(file);
+
+	return created;
+}
+
+export async function appendPlanningMessage(
+	id: string,
+	role: PlanningRole,
+	content: string
+): Promise<StackPlanningSession> {
+	const file = await readStackFile();
+	const now = new Date().toISOString();
+
+	let session = file.planningSessions?.find((candidate) => candidate.stackId === id);
+	if (!session) {
+		session = {
+			id: createSessionId(),
+			stackId: id,
+			opencodeSessionId: undefined,
+			messages: [],
+			createdAt: now,
+			updatedAt: now
+		};
+		file.planningSessions = [...(file.planningSessions ?? []), session];
+	}
+
+	const message: PlanningMessage = {
+		id: createMessageId(),
+		role,
+		content,
+		createdAt: now
+	};
+
+	session.messages = [...session.messages, message];
+	session.updatedAt = now;
+
+	await writeStackFile(file);
+
+	return session;
+}
+
+export async function setPlanningSessionOpencodeId(
+	id: string,
+	opencodeSessionId: string
+): Promise<StackPlanningSession> {
+	const file = await readStackFile();
+	const session = file.planningSessions?.find((candidate) => candidate.stackId === id);
+
+	if (!session) {
+		throw new Error('Planning session not found.');
+	}
+
+	session.opencodeSessionId = opencodeSessionId;
+	session.updatedAt = new Date().toISOString();
+
+	await writeStackFile(file);
+
+	return session;
+}
+
+export async function markPlanningSessionSaved(id: string, savedPlanPath: string): Promise<StackPlanningSession> {
+	const file = await readStackFile();
+	const session = file.planningSessions?.find((candidate) => candidate.stackId === id);
+
+	if (!session) {
+		throw new Error('Planning session not found.');
+	}
+
+	const now = new Date().toISOString();
+	session.savedPlanPath = savedPlanPath;
+	session.savedAt = now;
+	session.updatedAt = now;
+
+	await writeStackFile(file);
+
+	return session;
+}
+
 export async function updateStack(id: string, input: StackUpsertInput): Promise<StackMetadata> {
 	const normalized = normalizeInput(input);
 	validateUpsertInput(normalized);
@@ -139,6 +308,7 @@ export async function deleteStack(id: string): Promise<void> {
 
 	await writeStackFile({
 		...file,
-		stacks: nextStacks
+		stacks: nextStacks,
+		planningSessions: (file.planningSessions ?? []).filter((session) => session.stackId !== id)
 	});
 }

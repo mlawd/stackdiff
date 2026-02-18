@@ -4,19 +4,253 @@
 @source '../node_modules/flowbite-svelte/dist';
 
 :root {
-	--stacked-bg: #f3f5ef;
-	--stacked-surface: #fffef7;
-	--stacked-border: #d9ddcf;
-	--stacked-accent: #0f766e;
-	--stacked-text: #1f2937;
+	--stacked-bg: #121317;
+	--stacked-bg-soft: #171922;
+	--stacked-surface: #1b1d26;
+	--stacked-surface-elevated: #202331;
+	--stacked-border: #2b2f3b;
+	--stacked-border-soft: #333847;
+	--stacked-accent: #1f8fff;
+	--stacked-accent-strong: #3ea0ff;
+	--stacked-text: #e7ecf5;
+	--stacked-text-muted: #8f98ac;
+	--stacked-success: #28bd66;
+	--stacked-warning: #f9c31f;
+	--stacked-danger: #e03e3e;
+	--stacked-review: #b152e0;
+}
+
+* {
+	box-sizing: border-box;
 }
 
 body {
 	min-height: 100vh;
 	background:
-		radial-gradient(circle at 10% 10%, #dbeee6 0, transparent 45%),
-		radial-gradient(circle at 90% 0%, #efe6d7 0, transparent 40%),
+		radial-gradient(circle at 10% 8%, #1c2d47 0, transparent 38%),
+		radial-gradient(circle at 92% 0%, #21213b 0, transparent 42%),
+		radial-gradient(circle at 50% 100%, #0f1015 0, transparent 40%),
 		var(--stacked-bg);
 	color: var(--stacked-text);
-	font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+	font-family: 'JetBrains Mono', 'Fira Code', 'IBM Plex Mono', 'Menlo', monospace;
+	line-height: 1.45;
+}
+
+a {
+	color: inherit;
+}
+
+button,
+input,
+textarea {
+	font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+	outline: 2px solid color-mix(in oklab, var(--stacked-accent) 75%, white 15%);
+	outline-offset: 2px;
+}
+
+::selection {
+	background: color-mix(in oklab, var(--stacked-accent) 42%, transparent);
+	color: #ffffff;
+}
+
+.stacked-shell {
+	position: relative;
+	isolation: isolate;
+}
+
+.stacked-panel {
+	border: 1px solid var(--stacked-border);
+	border-radius: 18px;
+	background: color-mix(in oklab, var(--stacked-surface) 94%, #0b0c10 6%);
+	box-shadow:
+		0 0 0 1px color-mix(in oklab, var(--stacked-accent) 7%, transparent),
+		0 14px 36px -26px rgba(2, 6, 23, 0.9);
+}
+
+.stacked-panel-elevated {
+	border: 1px solid var(--stacked-border-soft);
+	border-radius: 16px;
+	background: color-mix(in oklab, var(--stacked-surface-elevated) 92%, #0a0b0e 8%);
+}
+
+.stacked-panel-elevated:hover {
+	border-color: color-mix(in oklab, var(--stacked-accent) 20%, var(--stacked-border-soft));
+}
+
+.stacked-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45rem;
+	border-radius: 999px;
+	border: 1px solid var(--stacked-border-soft);
+	padding: 0.2rem 0.65rem;
+	font-size: 0.72rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--stacked-text-muted);
+}
+
+.stacked-chip::before {
+	content: '';
+	width: 0.45rem;
+	height: 0.45rem;
+	border-radius: 999px;
+	background: currentColor;
+	opacity: 0.95;
+}
+
+.stacked-chip-success {
+	color: var(--stacked-success);
+	border-color: color-mix(in oklab, var(--stacked-success) 45%, var(--stacked-border));
+	background: color-mix(in oklab, var(--stacked-success) 11%, transparent);
+}
+
+.stacked-chip-warning {
+	color: var(--stacked-warning);
+	border-color: color-mix(in oklab, var(--stacked-warning) 45%, var(--stacked-border));
+	background: color-mix(in oklab, var(--stacked-warning) 9%, transparent);
+}
+
+.stacked-chip-danger {
+	color: var(--stacked-danger);
+	border-color: color-mix(in oklab, var(--stacked-danger) 45%, var(--stacked-border));
+	background: color-mix(in oklab, var(--stacked-danger) 9%, transparent);
+}
+
+.stacked-chip-review {
+	color: var(--stacked-review);
+	border-color: color-mix(in oklab, var(--stacked-review) 45%, var(--stacked-border));
+	background: color-mix(in oklab, var(--stacked-review) 8%, transparent);
+}
+
+.stacked-title {
+	font-size: clamp(1.6rem, 2.5vw, 2.55rem);
+	font-weight: 700;
+	letter-spacing: -0.03em;
+}
+
+.stacked-subtle {
+	color: var(--stacked-text-muted);
+}
+
+.stacked-link {
+	color: var(--stacked-accent-strong);
+	text-decoration: none;
+	text-underline-offset: 0.2rem;
+	transition: color 130ms ease;
+}
+
+.stacked-link:hover {
+	color: #78bbff;
+	text-decoration: underline;
+}
+
+.stacked-scroll {
+	scrollbar-width: thin;
+	scrollbar-color: var(--stacked-border-soft) transparent;
+}
+
+.stacked-scroll::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+.stacked-scroll::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.stacked-scroll::-webkit-scrollbar-thumb {
+	border-radius: 999px;
+	border: 2px solid transparent;
+	background-clip: content-box;
+	background-color: color-mix(in oklab, var(--stacked-border-soft) 86%, #5a6172 14%);
+}
+
+.stacked-stage {
+	border-color: var(--stacked-border-soft);
+	opacity: 0.52;
+	transition: opacity 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.stacked-stage-current {
+	opacity: 1;
+	border-color: color-mix(in oklab, var(--stacked-accent) 45%, var(--stacked-border-soft));
+	transform: translateY(-1px);
+}
+
+.stacked-stage-past {
+	opacity: 0.86;
+}
+
+.stacked-divider {
+	border-color: var(--stacked-border);
+}
+
+.stacked-fade-in {
+	animation: stacked-fade-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes stacked-fade-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes stacked-pulse {
+	0%,
+	100% {
+		box-shadow: 0 0 0 0 color-mix(in oklab, var(--stacked-accent) 0%, transparent);
+	}
+	50% {
+		box-shadow: 0 0 0 7px color-mix(in oklab, var(--stacked-accent) 18%, transparent);
+	}
+}
+
+.stacked-pulse {
+	animation: stacked-pulse 2.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.stacked-fade-in,
+	.stacked-pulse {
+		animation: none;
+	}
+
+	* {
+		scroll-behavior: auto;
+	}
+}
+
+@media (max-width: 640px) {
+	body {
+		background:
+			radial-gradient(circle at 12% 5%, #1c2d47 0, transparent 40%),
+			var(--stacked-bg);
+	}
+
+	.stacked-panel {
+		border-radius: 14px;
+	}
+
+	.stacked-panel-elevated {
+		border-radius: 12px;
+	}
+
+	.stacked-chip {
+		font-size: 0.66rem;
+		padding: 0.16rem 0.56rem;
+		letter-spacing: 0.06em;
+	}
 }
