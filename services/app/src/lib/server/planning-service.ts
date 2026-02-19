@@ -1,4 +1,4 @@
-import { writeStackPlanFile } from '$lib/server/plan-file';
+import { writeStackPlanFile, writeStackStageConfigFile } from '$lib/server/plan-file';
 import {
 	createOpencodeSession,
 	getOpencodeSessionRuntimeState,
@@ -16,7 +16,15 @@ import {
 	setStackStages,
 	touchPlanningSessionUpdatedAt
 } from '$lib/server/stack-store';
-import type { FeatureStage, FeatureType, PlanningMessage, StackMetadata, StackPlanningSession } from '$lib/types/stack';
+import type {
+	FeatureStage,
+	FeatureType,
+	PlanningMessage,
+	StackMetadata,
+	StackPlanningSession,
+	StageConfigEntry,
+	StageConfigFile
+} from '$lib/types/stack';
 
 export const PLANNING_SYSTEM_PROMPT = `Follow this response contract.
 Keep responses concise and planning-focused.
@@ -29,111 +37,140 @@ Use multiple=true when more than one option can be selected.
 When the user replies with JSON like {"type":"question_answer","answers":[...]}, treat it as authoritative responses.
 When context is sufficient, propose staged implementation guidance with clear assumptions.`;
 
-const SAVE_PLAN_PROMPT = `Create a high-quality markdown implementation plan from this conversation.
-Return markdown only.
-Use this structure:
-- Title
-- Goal
-- Scope
-- Constraints
-- Proposed changes
-- Execution steps (numbered)
-- Risks and mitigations
-- Validation checklist`;
-
-function toStageId(index: number): string {
-	return `stage-${index + 1}`;
+const SAVE_PLAN_PROMPT = `Create a detailed implementation plan and stages config from this conversation.
+Return ONLY valid JSON (no prose, no markdown fences) with this exact shape:
+{
+  "planMarkdown": "# ...",
+  "stages": [
+    {
+      "id": "stage-1",
+      "stageName": "...",
+      "stageDescription": "...",
+      "markdownSection": {
+        "heading": "Execution steps",
+        "anchor": "execution-steps"
+      }
+    }
+  ]
 }
+Rules:
+- planMarkdown must be detailed markdown with sections: Goal, Scope, Constraints, Proposed changes, Execution steps, Risks and mitigations, Validation checklist.
+- stages must be non-empty and map to the plan.
+- markdownSection.anchor must be lowercase kebab-case.
+- stageName and stageDescription must be specific and non-empty.`;
 
-function cleanStageTitle(value: string): string {
-	return value
-		.replace(/\s+/g, ' ')
-		.trim()
-		.replace(/[.;:,\-\s]+$/g, '');
-}
+const STAGE_CONFIG_SCHEMA_VERSION = 1;
+const STAGE_ANCHOR_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-function extractSection(markdown: string, sectionName: string): string {
-	const lines = markdown.split(/\r?\n/);
-	const target = sectionName.toLowerCase();
-	let start = -1;
-
-	for (let index = 0; index < lines.length; index += 1) {
-		const line = lines[index].trim();
-		const headingMatch = line.match(/^#{1,6}\s+(.*)$/);
-		if (!headingMatch) {
-			continue;
-		}
-
-		const normalized = headingMatch[1].toLowerCase();
-		if (normalized.includes(target)) {
-			start = index + 1;
-			break;
-		}
+function parseSavePlanPayload(content: string): {
+	planMarkdown: string;
+	stages: StageConfigEntry[];
+} {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(content) as unknown;
+	} catch {
+		throw new Error('Plan save failed: planner returned invalid JSON.');
 	}
 
-	if (start === -1) {
-		return '';
+	if (typeof parsed !== 'object' || parsed === null) {
+		throw new Error('Plan save failed: planner output must be a JSON object.');
 	}
 
-	const collected: string[] = [];
-	for (let index = start; index < lines.length; index += 1) {
-		if (/^#{1,6}\s+/.test(lines[index].trim())) {
-			break;
+	const candidate = parsed as {
+		planMarkdown?: unknown;
+		stages?: unknown;
+	};
+
+	if (typeof candidate.planMarkdown !== 'string' || candidate.planMarkdown.trim().length === 0) {
+		throw new Error('Plan save failed: planMarkdown must be a non-empty string.');
+	}
+
+	if (!Array.isArray(candidate.stages) || candidate.stages.length === 0) {
+		throw new Error('Plan save failed: stages must be a non-empty array.');
+	}
+
+	const stages = candidate.stages.map((stage, index) => toStageConfigEntry(stage, index));
+	const seenIds = new Set<string>();
+	for (const stage of stages) {
+		if (seenIds.has(stage.id)) {
+			throw new Error(`Plan save failed: duplicate stage id "${stage.id}".`);
 		}
-
-		collected.push(lines[index]);
+		seenIds.add(stage.id);
 	}
 
-	return collected.join('\n').trim();
+	return {
+		planMarkdown: candidate.planMarkdown.trim(),
+		stages
+	};
 }
 
-function collectNumberedItems(section: string): string[] {
-	return section
-		.split(/\r?\n/)
-		.map((line) => line.match(/^\s*\d+[.)]\s+(.+)$/)?.[1] ?? '')
-		.map(cleanStageTitle)
-		.filter((line) => line.length > 0);
+function toStageConfigEntry(value: unknown, index: number): StageConfigEntry {
+	if (typeof value !== 'object' || value === null) {
+		throw new Error(`Plan save failed: stage ${index + 1} must be an object.`);
+	}
+
+	const candidate = value as {
+		id?: unknown;
+		stageName?: unknown;
+		stageDescription?: unknown;
+		markdownSection?: unknown;
+	};
+
+	if (typeof candidate.id !== 'string' || candidate.id.trim().length === 0) {
+		throw new Error(`Plan save failed: stage ${index + 1} id must be a non-empty string.`);
+	}
+
+	if (typeof candidate.stageName !== 'string' || candidate.stageName.trim().length === 0) {
+		throw new Error(`Plan save failed: stage ${index + 1} stageName must be a non-empty string.`);
+	}
+
+	if (typeof candidate.stageDescription !== 'string' || candidate.stageDescription.trim().length === 0) {
+		throw new Error(`Plan save failed: stage ${index + 1} stageDescription must be a non-empty string.`);
+	}
+
+	if (typeof candidate.markdownSection !== 'object' || candidate.markdownSection === null) {
+		throw new Error(`Plan save failed: stage ${index + 1} markdownSection must be an object.`);
+	}
+
+	const markdownSection = candidate.markdownSection as {
+		heading?: unknown;
+		anchor?: unknown;
+	};
+
+	if (typeof markdownSection.heading !== 'string' || markdownSection.heading.trim().length === 0) {
+		throw new Error(`Plan save failed: stage ${index + 1} markdownSection.heading must be a non-empty string.`);
+	}
+
+	if (typeof markdownSection.anchor !== 'string' || markdownSection.anchor.trim().length === 0) {
+		throw new Error(`Plan save failed: stage ${index + 1} markdownSection.anchor must be a non-empty string.`);
+	}
+
+	const anchor = markdownSection.anchor.trim();
+	if (!STAGE_ANCHOR_PATTERN.test(anchor)) {
+		throw new Error(
+			`Plan save failed: stage ${index + 1} markdownSection.anchor must be lowercase kebab-case.`
+		);
+	}
+
+	return {
+		id: candidate.id.trim(),
+		stageName: candidate.stageName.trim(),
+		stageDescription: candidate.stageDescription.trim(),
+		markdownSection: {
+			heading: markdownSection.heading.trim(),
+			anchor
+		}
+	};
 }
 
-function collectBullets(section: string): string[] {
-	return section
-		.split(/\r?\n/)
-		.map((line) => line.match(/^\s*[-*+]\s+(.+)$/)?.[1] ?? '')
-		.map(cleanStageTitle)
-		.filter((line) => line.length > 0);
-}
-
-function toStages(titles: string[]): FeatureStage[] {
-	const unique = Array.from(new Set(titles.map(cleanStageTitle).filter((title) => title.length > 0)));
-
-	return unique.map((title, index) => ({
-		id: toStageId(index),
-		title,
+function toFeatureStages(stages: StageConfigEntry[]): FeatureStage[] {
+	return stages.map((stage) => ({
+		id: stage.id,
+		title: stage.stageName,
+		details: stage.stageDescription,
 		status: 'not-started'
 	}));
-}
-
-function deriveFallbackStages(markdownPlan: string): FeatureStage[] {
-	const proposedChanges = extractSection(markdownPlan, 'proposed changes');
-	const bullets = collectBullets(proposedChanges);
-
-	if (bullets.length > 0) {
-		return toStages(bullets.slice(0, 5));
-	}
-
-	const generic = ['Prepare implementation approach', 'Implement core changes', 'Validate and finalize'];
-	return toStages(generic);
-}
-
-function extractStagesFromPlan(markdownPlan: string): FeatureStage[] {
-	const execution = extractSection(markdownPlan, 'execution steps');
-	const numbered = collectNumberedItems(execution);
-
-	if (numbered.length > 0) {
-		return toStages(numbered);
-	}
-
-	return deriveFallbackStages(markdownPlan);
 }
 
 function featureTypeLabel(type: FeatureType): string {
@@ -254,6 +291,7 @@ export async function sendPlanningMessage(stackId: string, content: string): Pro
 	session: StackPlanningSession;
 	assistantReply: string;
 	autoSavedPlanPath?: string;
+	autoSavedStageConfigPath?: string;
 }> {
 	const session = await requireSessionWithOpencodeId(stackId);
 	const assistantReply = await sendOpencodeSessionMessage(session.opencodeSessionId as string, content, {
@@ -269,13 +307,15 @@ export async function sendPlanningMessage(stackId: string, content: string): Pro
 	return {
 		session: saveResult.session,
 		assistantReply,
-		autoSavedPlanPath: saveResult.savedPlanPath
+		autoSavedPlanPath: saveResult.savedPlanPath,
+		autoSavedStageConfigPath: saveResult.savedStageConfigPath
 	};
 }
 
 export async function savePlanFromSession(stackId: string): Promise<{
 	session: StackPlanningSession;
 	savedPlanPath: string;
+	savedStageConfigPath: string;
 	planMarkdown: string;
 }> {
 	const session = await requireSessionWithOpencodeId(stackId);
@@ -285,13 +325,22 @@ export async function savePlanFromSession(stackId: string): Promise<{
 		throw new Error('Add at least one planning message before saving a plan.');
 	}
 
-	const markdownPlan = await sendOpencodeSessionMessage(session.opencodeSessionId as string, SAVE_PLAN_PROMPT, {
+	const savePayload = await sendOpencodeSessionMessage(session.opencodeSessionId as string, SAVE_PLAN_PROMPT, {
 		system: PLANNING_SYSTEM_PROMPT
 	});
+	const parsed = parseSavePlanPayload(savePayload);
 
-	const savedPlanPath = await writeStackPlanFile(stackId, markdownPlan);
-	const sessionWithSave = await markPlanningSessionSaved(stackId, savedPlanPath);
-	const stages = extractStagesFromPlan(markdownPlan);
+	const savedPlanPath = await writeStackPlanFile(stackId, parsed.planMarkdown);
+	const stageConfig: StageConfigFile = {
+		schemaVersion: STAGE_CONFIG_SCHEMA_VERSION,
+		stackId,
+		generatedAt: new Date().toISOString(),
+		planMarkdownPath: savedPlanPath,
+		stages: parsed.stages
+	};
+	const savedStageConfigPath = await writeStackStageConfigFile(stackId, stageConfig);
+	const sessionWithSave = await markPlanningSessionSaved(stackId, savedPlanPath, savedStageConfigPath);
+	const stages = toFeatureStages(parsed.stages);
 	await setStackStages(stackId, stages);
 	const stack = await getStackById(stackId);
 	if (stack?.status === 'created') {
@@ -301,6 +350,7 @@ export async function savePlanFromSession(stackId: string): Promise<{
 	return {
 		session: sessionWithSave,
 		savedPlanPath,
-		planMarkdown: markdownPlan
+		savedStageConfigPath,
+		planMarkdown: parsed.planMarkdown
 	};
 }

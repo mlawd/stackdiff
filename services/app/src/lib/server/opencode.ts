@@ -25,6 +25,10 @@ export interface OpencodeHistoryLoadResult {
 	messages: PlanningMessage[];
 }
 
+interface OpencodeDirectoryOptions {
+	directory?: string;
+}
+
 export type OpencodeSessionRuntimeState = 'idle' | 'busy' | 'retry' | 'missing';
 
 const MAX_ERROR_BODY_LENGTH = 300;
@@ -141,8 +145,9 @@ function getServerModel(): { providerID: string; modelID: string } | undefined {
 	};
 }
 
-function getDirectory(): string {
-	return process.cwd();
+function getDirectory(options?: OpencodeDirectoryOptions): string {
+	const directory = options?.directory?.trim();
+	return directory && directory.length > 0 ? directory : process.cwd();
 }
 
 function getServerPort(): number | undefined {
@@ -506,10 +511,10 @@ async function getRuntime(): Promise<OpencodeRuntime> {
 	return globalThis.__stackedOpencodeRuntime;
 }
 
-export async function createOpencodeSession(): Promise<string> {
+export async function createOpencodeSession(options?: OpencodeDirectoryOptions): Promise<string> {
 	const { client } = await getRuntime();
 	const created = await client.session.create({
-		query: { directory: getDirectory() }
+		query: { directory: getDirectory(options) }
 	});
 	const session = unwrapData(created);
 
@@ -523,14 +528,14 @@ export async function createOpencodeSession(): Promise<string> {
 export async function sendOpencodeSessionMessage(
 	sessionId: string,
 	message: string,
-	options?: { system?: string }
+	options?: { system?: string; directory?: string }
 ): Promise<string> {
 	const { client } = await getRuntime();
 	const model = getServerModel();
 
 	const prompted = await client.session.prompt({
 		path: { id: sessionId },
-		query: { directory: getDirectory() },
+		query: { directory: getDirectory(options) },
 		body: {
 			agent: 'plan',
 			system: options?.system,
@@ -543,17 +548,23 @@ export async function sendOpencodeSessionMessage(
 	return textFromParts(response.parts);
 }
 
-export async function getOpencodeSessionMessages(sessionId: string): Promise<PlanningMessage[]> {
-	const result = await loadOpencodeSessionMessages(sessionId);
+export async function getOpencodeSessionMessages(
+	sessionId: string,
+	options?: OpencodeDirectoryOptions
+): Promise<PlanningMessage[]> {
+	const result = await loadOpencodeSessionMessages(sessionId, options);
 	return result.messages;
 }
 
-export async function loadOpencodeSessionMessages(sessionId: string): Promise<OpencodeHistoryLoadResult> {
+export async function loadOpencodeSessionMessages(
+	sessionId: string,
+	options?: OpencodeDirectoryOptions
+): Promise<OpencodeHistoryLoadResult> {
 	try {
 		const { client } = await getRuntime();
 		const listed = await client.session.messages({
 			path: { id: sessionId },
-			query: { directory: getDirectory() }
+			query: { directory: getDirectory(options) }
 		});
 		const entries = unwrapData(listed);
 
@@ -572,11 +583,12 @@ export async function loadOpencodeSessionMessages(sessionId: string): Promise<Op
 }
 
 export async function getOpencodeSessionRuntimeState(
-	sessionId: string
+	sessionId: string,
+	options?: OpencodeDirectoryOptions
 ): Promise<OpencodeSessionRuntimeState> {
 	const { client } = await getRuntime();
 	const statusResult = await client.session.status({
-		query: { directory: getDirectory() }
+		query: { directory: getDirectory(options) }
 	});
 	const statuses = unwrapData(statusResult);
 	const status = statuses[sessionId];
@@ -768,13 +780,14 @@ async function* streamOpencodeSessionEvents(
 }
 
 export async function* watchOpencodeSession(
-	sessionId: string
+	sessionId: string,
+	options?: OpencodeDirectoryOptions
 ): AsyncGenerator<OpencodeStreamEvent> {
 	const { client } = await getRuntime();
 	const controller = new AbortController();
 
 	const events = await client.event.subscribe({
-		query: { directory: getDirectory() },
+		query: { directory: getDirectory(options) },
 		signal: controller.signal
 	});
 
@@ -790,20 +803,20 @@ export async function* watchOpencodeSession(
 export async function* streamOpencodeSessionMessage(
 	sessionId: string,
 	message: string,
-	options?: { system?: string }
+	options?: { system?: string; directory?: string }
 ): AsyncGenerator<OpencodeStreamEvent> {
 	const { client } = await getRuntime();
 	const model = getServerModel();
 	const controller = new AbortController();
 
 	const events = await client.event.subscribe({
-		query: { directory: getDirectory() },
+		query: { directory: getDirectory(options) },
 		signal: controller.signal
 	});
 
 	const accepted = await client.session.promptAsync({
 		path: { id: sessionId },
-		query: { directory: getDirectory() },
+		query: { directory: getDirectory(options) },
 		body: {
 			agent: 'plan',
 			system: options?.system,

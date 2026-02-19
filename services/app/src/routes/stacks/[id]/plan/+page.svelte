@@ -17,12 +17,14 @@
 		session?: StackPlanningSession;
 		messages?: PlanningMessage[];
 		savedPlanPath?: string;
+		savedStageConfigPath?: string;
 		error?: string;
 	}
 
 	interface StreamDonePayload {
 		assistantReply: string;
 		autoSavedPlanPath?: string;
+		autoSavedStageConfigPath?: string;
 		messages?: PlanningMessage[];
 	}
 
@@ -435,9 +437,9 @@ interface StreamErrorPayload {
 						} else {
 							appendAssistantMessage(result.done.assistantReply);
 						}
-						if (result.done.autoSavedPlanPath) {
-							successMessage = `Saved plan to ${result.done.autoSavedPlanPath} and generated implementation stages.`;
-						}
+					if (result.done.autoSavedPlanPath && result.done.autoSavedStageConfigPath) {
+						successMessage = `Saved plan to ${result.done.autoSavedPlanPath} and stage config to ${result.done.autoSavedStageConfigPath}.`;
+					}
 					}
 				}
 			}
@@ -636,13 +638,13 @@ interface StreamErrorPayload {
 			const response = await fetch(`/api/stacks/${data.stack.id}/plan/save`, { method: 'POST' });
 			const body = (await response.json()) as SaveResponse;
 
-			if (!response.ok || !body.session || !body.savedPlanPath || !body.messages) {
+			if (!response.ok || !body.session || !body.savedPlanPath || !body.savedStageConfigPath || !body.messages) {
 				throw new Error(body.error ?? 'Unable to save plan.');
 			}
 
 			session = body.session;
 			messages = body.messages;
-			successMessage = `Saved plan to ${body.savedPlanPath} and generated implementation stages.`;
+			successMessage = `Saved plan to ${body.savedPlanPath} and stage config to ${body.savedStageConfigPath}.`;
 		} catch (error) {
 			errorMessage = error instanceof Error ? error.message : 'Unable to save plan.';
 		} finally {
@@ -854,6 +856,10 @@ interface StreamErrorPayload {
 				<div class="mt-3 rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] p-3">
 					<p class="mb-1 text-[11px] uppercase tracking-wide stacked-subtle">Saved plan path</p>
 					<p class="stacked-chat-font break-all text-sm text-[var(--stacked-text)]">{session.savedPlanPath}</p>
+					{#if session.savedStageConfigPath}
+						<p class="mb-1 mt-3 text-[11px] uppercase tracking-wide stacked-subtle">Saved stage config path</p>
+						<p class="stacked-chat-font break-all text-sm text-[var(--stacked-text)]">{session.savedStageConfigPath}</p>
+					{/if}
 				</div>
 			{/if}
 		</div>

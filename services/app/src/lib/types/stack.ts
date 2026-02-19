@@ -32,6 +32,7 @@ export interface StackFile {
 	version: number;
 	stacks: StackMetadata[];
 	planningSessions?: StackPlanningSession[];
+	implementationSessions?: StackImplementationSession[];
 }
 
 export type PlanningRole = 'user' | 'assistant' | 'system';
@@ -75,7 +76,40 @@ export interface StackPlanningSession {
 	createdAt: string;
 	updatedAt: string;
 	savedPlanPath?: string;
+	savedStageConfigPath?: string;
 	savedAt?: string;
+}
+
+export interface StackImplementationSession {
+	id: string;
+	stackId: string;
+	stageId: string;
+	branchName: string;
+	worktreePathKey: string;
+	opencodeSessionId?: string;
+	seededAt?: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface StageMarkdownSectionRef {
+	heading: string;
+	anchor: string;
+}
+
+export interface StageConfigEntry {
+	id: string;
+	stageName: string;
+	stageDescription: string;
+	markdownSection: StageMarkdownSectionRef;
+}
+
+export interface StageConfigFile {
+	schemaVersion: number;
+	stackId: string;
+	generatedAt: string;
+	planMarkdownPath: string;
+	stages: StageConfigEntry[];
 }
 
 export interface StackPullRequest {

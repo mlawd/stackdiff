@@ -1,8 +1,16 @@
 <script lang="ts">
+	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 
 	import type { StackStatus } from '$lib/types/stack';
 	import type { PageData } from './$types';
+
+	interface StartResponse {
+		reusedWorktree?: boolean;
+		reusedSession?: boolean;
+		startedNow?: boolean;
+		error?: string;
+	}
 
 	let { data }: { data: PageData } = $props();
 
@@ -37,6 +45,9 @@
 	type TabKey = 'plan' | 'stack';
 	let tabInitialized = false;
 	let activeTab = $state<TabKey>('plan');
+	let startPending = $state(false);
+	let startError = $state<string | null>(null);
+	let startSuccess = $state<string | null>(null);
 
 	$effect(() => {
 		if (tabInitialized) {
@@ -121,6 +132,38 @@
 
 		return 'stacked-stage';
 	}
+
+	function canStartFeature(): boolean {
+		return (data.stack.stages?.length ?? 0) > 0 && !startPending;
+	}
+
+	async function startFeature(): Promise<void> {
+		if (!canStartFeature()) {
+			return;
+		}
+
+		startPending = true;
+		startError = null;
+		startSuccess = null;
+
+		try {
+			const response = await fetch(`/api/stacks/${data.stack.id}/start`, { method: 'POST' });
+			const body = (await response.json()) as StartResponse;
+			if (!response.ok) {
+				throw new Error(body.error ?? 'Unable to start feature.');
+			}
+
+			const mode = body.startedNow ? 'Started stage 1.' : 'Stage 1 is already running.';
+			const worktreeState = body.reusedWorktree ? 'Reused existing worktree.' : 'Created worktree.';
+			const sessionState = body.reusedSession ? 'Reused implementation session.' : 'Created implementation session.';
+			startSuccess = `${mode} ${worktreeState} ${sessionState}`;
+			await invalidateAll();
+		} catch (error) {
+			startError = error instanceof Error ? error.message : 'Unable to start feature.';
+		} finally {
+			startPending = false;
+		}
+	}
 </script>
 
 <main class="stacked-shell mx-auto w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-6">
@@ -180,6 +223,18 @@
 			</div>
 		{:else}
 			<div class="space-y-4">
+				{#if startError}
+					<div class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+						{startError}
+					</div>
+				{/if}
+
+				{#if startSuccess}
+					<div class="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+						{startSuccess}
+					</div>
+				{/if}
+
 				<div class="stacked-panel-elevated p-4">
 					<p class="mb-3 text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle">Pipeline</p>
 					<div class="grid gap-2 sm:grid-cols-5">
@@ -192,7 +247,17 @@
 				</div>
 
 				<div class="stacked-panel-elevated p-4">
-					<p class="mb-3 text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle">Implementation stages</p>
+					<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+						<p class="text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle">Implementation stages</p>
+						<button
+							type="button"
+							onclick={startFeature}
+							disabled={!canStartFeature()}
+							class="cursor-pointer rounded-lg border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-70"
+						>
+							{startPending ? 'Starting...' : 'Start feature'}
+						</button>
+					</div>
 					{#if data.stack.stages && data.stack.stages.length > 0}
 						<div class="space-y-2">
 							{#each data.stack.stages as implementationStage (implementationStage.id)}

@@ -1,4 +1,4 @@
-import { json } from '@sveltejs/kit';
+import { json, type RequestHandler } from '@sveltejs/kit';
 
 import {
 	getOpencodeSessionRuntimeState,
@@ -60,16 +60,21 @@ function debugLog(message: string, details?: unknown): void {
 	console.info(`[planning-stream] ${message}`, details);
 }
 
-export async function POST({ params, request }) {
+export const POST: RequestHandler = async ({ params, request }) => {
 	try {
-		const stack = await getStackById(params.id);
+		const stackId = params.id;
+		if (!stackId) {
+			return json({ error: 'Feature id is required.' }, { status: 400 });
+		}
+
+		const stack = await getStackById(stackId);
 		if (!stack) {
 			return json({ error: 'Feature not found.' }, { status: 404 });
 		}
 
 		const body = (await request.json()) as unknown;
 		const parsed = parseBody(body);
-		const { session } = await loadExistingPlanningSession(params.id);
+		const { session } = await loadExistingPlanningSession(stackId);
 
 		if (!session.opencodeSessionId) {
 			throw new Error('Planning session is missing an OpenCode session id.');
@@ -77,7 +82,7 @@ export async function POST({ params, request }) {
 
 		const content = parsed.content ?? '';
 		debugLog('Starting stream request', {
-			stackId: params.id,
+			stackId,
 			watch: parsed.watch,
 			autoSave: shouldAutoSavePlan(content)
 		});
@@ -86,7 +91,7 @@ export async function POST({ params, request }) {
 		if (parsed.watch) {
 			const runtimeState = await getOpencodeSessionRuntimeState(session.opencodeSessionId as string);
 			if (runtimeState !== 'busy' && runtimeState !== 'retry') {
-				const messages = await getPlanningMessages(params.id);
+				const messages = await getPlanningMessages(stackId);
 				const noOpStream = new ReadableStream<Uint8Array>({
 					start(controller) {
 						controller.enqueue(
@@ -137,19 +142,22 @@ export async function POST({ params, request }) {
 						controller.enqueue(encodeSse('delta', { chunk: event.chunk }));
 					}
 
-					await touchPlanningSessionUpdatedAt(params.id);
+					await touchPlanningSessionUpdatedAt(stackId);
 
 					let autoSavedPlanPath: string | undefined;
+					let autoSavedStageConfigPath: string | undefined;
 					if (autoSave) {
-						const saveResult = await savePlanFromSession(params.id);
+						const saveResult = await savePlanFromSession(stackId);
 						autoSavedPlanPath = saveResult.savedPlanPath;
+						autoSavedStageConfigPath = saveResult.savedStageConfigPath;
 					}
 
-					const messages = await getPlanningMessages(params.id);
+					const messages = await getPlanningMessages(stackId);
 					controller.enqueue(
 						encodeSse('done', {
 							assistantReply,
 							autoSavedPlanPath,
+							autoSavedStageConfigPath,
 							messages
 						})
 					);
@@ -171,4 +179,4 @@ export async function POST({ params, request }) {
 	} catch (error) {
 		return json({ error: toErrorMessage(error) }, { status: 400 });
 	}
-}
+};

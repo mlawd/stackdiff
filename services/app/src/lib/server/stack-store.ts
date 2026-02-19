@@ -4,6 +4,7 @@ import type {
 	FeatureStage,
 	FeatureStageStatus,
 	FeatureType,
+	StackImplementationSession,
 	StackStatus,
 	StackFile,
 	StackMetadata,
@@ -13,6 +14,7 @@ import type {
 import { runCommand } from '$lib/server/command';
 
 const STACKS_FILE = new URL('../../../data/stacks.json', import.meta.url);
+const STACK_FILE_VERSION = 2;
 
 function isFeatureType(value: unknown): value is FeatureType {
 	return value === 'feature' || value === 'bugfix' || value === 'chore';
@@ -66,11 +68,14 @@ function isStackFile(value: unknown): value is StackFile {
 	const file = value as Partial<StackFile>;
 
 	return (
-		typeof file.version === 'number' &&
+		file.version === STACK_FILE_VERSION &&
 		Array.isArray(file.stacks) &&
 		file.stacks.every(isStackMetadata) &&
 		(file.planningSessions === undefined ||
-			(Array.isArray(file.planningSessions) && file.planningSessions.every(isStackPlanningSession)))
+			(Array.isArray(file.planningSessions) && file.planningSessions.every(isStackPlanningSession))) &&
+		(file.implementationSessions === undefined ||
+			(Array.isArray(file.implementationSessions) &&
+				file.implementationSessions.every(isStackImplementationSession)))
 	);
 }
 
@@ -89,7 +94,28 @@ function isStackPlanningSession(value: unknown): value is StackPlanningSession {
 		typeof session.createdAt === 'string' &&
 		typeof session.updatedAt === 'string' &&
 		(session.savedPlanPath === undefined || typeof session.savedPlanPath === 'string') &&
+		(session.savedStageConfigPath === undefined || typeof session.savedStageConfigPath === 'string') &&
 		(session.savedAt === undefined || typeof session.savedAt === 'string')
+	);
+}
+
+function isStackImplementationSession(value: unknown): value is StackImplementationSession {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const session = value as Partial<StackImplementationSession>;
+
+	return (
+		typeof session.id === 'string' &&
+		typeof session.stackId === 'string' &&
+		typeof session.stageId === 'string' &&
+		typeof session.branchName === 'string' &&
+		typeof session.worktreePathKey === 'string' &&
+		(session.opencodeSessionId === undefined || typeof session.opencodeSessionId === 'string') &&
+		(session.seededAt === undefined || typeof session.seededAt === 'string') &&
+		typeof session.createdAt === 'string' &&
+		typeof session.updatedAt === 'string'
 	);
 }
 
@@ -102,7 +128,8 @@ function normalizeStackFile(file: StackFile): StackFile {
 			status: isStackStatus((stack as { status?: unknown }).status) ? stack.status : 'created',
 			stages: stack.stages ?? []
 		})),
-		planningSessions: file.planningSessions ?? []
+		planningSessions: file.planningSessions ?? [],
+		implementationSessions: file.implementationSessions ?? []
 	};
 }
 
@@ -116,7 +143,7 @@ async function readStackFile(): Promise<StackFile> {
 	const parsed = JSON.parse(raw) as unknown;
 
 	if (!isStackFile(parsed)) {
-		throw new Error('Invalid stacks.json shape. Expected { version: number, stacks: StackMetadata[] }.');
+		throw new Error(`Invalid stacks.json shape. Expected version ${STACK_FILE_VERSION} with valid stacks and planningSessions.`);
 	}
 
 	return normalizeStackFile(parsed);
@@ -140,6 +167,10 @@ function createId(name: string): string {
 
 function createSessionId(): string {
 	return `session-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function createImplementationSessionId(): string {
+	return `impl-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function normalizeInput(input: StackUpsertInput): StackUpsertInput {
@@ -198,6 +229,108 @@ export async function createStack(input: StackUpsertInput): Promise<StackMetadat
 export async function getPlanningSessionByStackId(id: string): Promise<StackPlanningSession | undefined> {
 	const file = await readStackFile();
 	return file.planningSessions?.find((session) => session.stackId === id);
+}
+
+export async function getImplementationSessionByStackAndStage(
+	stackId: string,
+	stageId: string
+): Promise<StackImplementationSession | undefined> {
+	const file = await readStackFile();
+	return file.implementationSessions?.find(
+		(session) => session.stackId === stackId && session.stageId === stageId
+	);
+}
+
+export async function createOrGetImplementationSession(
+	stackId: string,
+	stageId: string,
+	branchName: string,
+	worktreePathKey: string
+): Promise<{ session: StackImplementationSession; created: boolean }> {
+	const file = await readStackFile();
+	const existing = file.implementationSessions?.find(
+		(session) => session.stackId === stackId && session.stageId === stageId
+	);
+
+	if (existing) {
+		let changed = false;
+		if (existing.branchName !== branchName) {
+			existing.branchName = branchName;
+			changed = true;
+		}
+
+		if (existing.worktreePathKey !== worktreePathKey) {
+			existing.worktreePathKey = worktreePathKey;
+			changed = true;
+		}
+
+		if (changed) {
+			existing.updatedAt = new Date().toISOString();
+			await writeStackFile(file);
+		}
+
+		return { session: existing, created: false };
+	}
+
+	const now = new Date().toISOString();
+	const created: StackImplementationSession = {
+		id: createImplementationSessionId(),
+		stackId,
+		stageId,
+		branchName,
+		worktreePathKey,
+		opencodeSessionId: undefined,
+		seededAt: undefined,
+		createdAt: now,
+		updatedAt: now
+	};
+
+	file.implementationSessions = [...(file.implementationSessions ?? []), created];
+	await writeStackFile(file);
+
+	return { session: created, created: true };
+}
+
+export async function setImplementationSessionOpencodeId(
+	stackId: string,
+	stageId: string,
+	opencodeSessionId: string
+): Promise<StackImplementationSession> {
+	const file = await readStackFile();
+	const session = file.implementationSessions?.find(
+		(candidate) => candidate.stackId === stackId && candidate.stageId === stageId
+	);
+
+	if (!session) {
+		throw new Error('Implementation session not found.');
+	}
+
+	session.opencodeSessionId = opencodeSessionId;
+	session.updatedAt = new Date().toISOString();
+	await writeStackFile(file);
+
+	return session;
+}
+
+export async function markImplementationSessionSeeded(
+	stackId: string,
+	stageId: string
+): Promise<StackImplementationSession> {
+	const file = await readStackFile();
+	const session = file.implementationSessions?.find(
+		(candidate) => candidate.stackId === stackId && candidate.stageId === stageId
+	);
+
+	if (!session) {
+		throw new Error('Implementation session not found.');
+	}
+
+	const now = new Date().toISOString();
+	session.seededAt = now;
+	session.updatedAt = now;
+	await writeStackFile(file);
+
+	return session;
 }
 
 export async function createOrGetPlanningSession(id: string): Promise<StackPlanningSession> {
@@ -272,7 +405,11 @@ export async function markPlanningSessionSeeded(id: string): Promise<StackPlanni
 	return session;
 }
 
-export async function markPlanningSessionSaved(id: string, savedPlanPath: string): Promise<StackPlanningSession> {
+export async function markPlanningSessionSaved(
+	id: string,
+	savedPlanPath: string,
+	savedStageConfigPath: string
+): Promise<StackPlanningSession> {
 	const file = await readStackFile();
 	const session = file.planningSessions?.find((candidate) => candidate.stackId === id);
 
@@ -282,6 +419,7 @@ export async function markPlanningSessionSaved(id: string, savedPlanPath: string
 
 	const now = new Date().toISOString();
 	session.savedPlanPath = savedPlanPath;
+	session.savedStageConfigPath = savedStageConfigPath;
 	session.savedAt = now;
 	session.updatedAt = now;
 
@@ -326,7 +464,8 @@ export async function deleteStack(id: string): Promise<void> {
 	await writeStackFile({
 		...file,
 		stacks: nextStacks,
-		planningSessions: (file.planningSessions ?? []).filter((session) => session.stackId !== id)
+		planningSessions: (file.planningSessions ?? []).filter((session) => session.stackId !== id),
+		implementationSessions: (file.implementationSessions ?? []).filter((session) => session.stackId !== id)
 	});
 }
 
@@ -366,4 +505,61 @@ export async function setStackStatus(id: string, status: StackStatus): Promise<S
 	await writeStackFile(file);
 
 	return next;
+}
+
+export async function setStackStartedWithStageInProgress(
+	id: string,
+	stageId: string
+): Promise<{ stack: StackMetadata; startedNow: boolean }> {
+	const file = await readStackFile();
+	const index = file.stacks.findIndex((stack) => stack.id === id);
+
+	if (index === -1) {
+		throw new Error('Feature not found.');
+	}
+
+	const stack = file.stacks[index];
+	const stages = stack.stages ?? [];
+	const stageIndex = stages.findIndex((stage) => stage.id === stageId);
+
+	if (stageIndex === -1) {
+		throw new Error('Stage not found.');
+	}
+
+	let startedNow = false;
+	const nextStages = stages.map((stage, indexCandidate) => {
+		if (indexCandidate !== stageIndex) {
+			return stage;
+		}
+
+		if (stage.status === 'in-progress' || stage.status === 'done') {
+			return stage;
+		}
+
+		startedNow = true;
+		return {
+			...stage,
+			status: 'in-progress' as const
+		};
+	});
+
+	let nextStatus = stack.status;
+	if (stack.status === 'created' || stack.status === 'planned') {
+		nextStatus = 'started';
+		startedNow = true;
+	}
+
+	const next: StackMetadata = {
+		...stack,
+		status: nextStatus,
+		stages: nextStages
+	};
+
+	file.stacks[index] = next;
+	await writeStackFile(file);
+
+	return {
+		stack: next,
+		startedNow
+	};
 }
