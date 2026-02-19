@@ -123,10 +123,11 @@ export async function POST({ params, request }) {
 
 					for await (const event of streamEvents) {
 						if (event.type === 'question') {
+							const questionCount = event.question.questions.length;
+							const multiCount = event.question.questions.filter((item) => item.multiple === true).length;
 							debugLog('Forwarding question event to client', {
-								prompt: event.question.prompt,
-								options: event.question.options.length,
-								allowCustom: event.question.allowCustom
+								questionCount,
+								multiCount
 							});
 							controller.enqueue(encodeSse('question', event.question));
 							continue;

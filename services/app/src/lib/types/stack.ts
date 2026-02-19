@@ -2,6 +2,8 @@ export type StackSyncState = 'clean' | 'dirty' | 'repo-error';
 
 export type FeatureType = 'feature' | 'bugfix' | 'chore';
 
+export type StackStatus = 'created' | 'planned' | 'started' | 'complete';
+
 export type FeatureStageStatus = 'not-started' | 'in-progress' | 'done';
 
 export interface FeatureStage {
@@ -16,6 +18,7 @@ export interface StackMetadata {
 	name: string;
 	notes?: string;
 	type: FeatureType;
+	status: StackStatus;
 	stages?: FeatureStage[];
 }
 
@@ -38,6 +41,30 @@ export interface PlanningMessage {
 	role: PlanningRole;
 	content: string;
 	createdAt: string;
+}
+
+export interface PlanningQuestionOption {
+	label: string;
+	description?: string;
+}
+
+export interface PlanningQuestionItem {
+	header: string;
+	question: string;
+	options: PlanningQuestionOption[];
+	multiple?: boolean;
+	allowCustom?: boolean;
+}
+
+export interface PlanningQuestionDialog {
+	questions: PlanningQuestionItem[];
+}
+
+export interface PlanningQuestionAnswer {
+	header: string;
+	question: string;
+	selected: string[];
+	customAnswer?: string;
 }
 
 export interface StackPlanningSession {

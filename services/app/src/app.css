@@ -24,6 +24,10 @@
 	box-sizing: border-box;
 }
 
+html {
+	font-size: 15px;
+}
+
 body {
 	min-height: 100vh;
 	background:
@@ -90,7 +94,7 @@ a:focus-visible {
 	border-radius: 999px;
 	border: 1px solid var(--stacked-border-soft);
 	padding: 0.2rem 0.65rem;
-	font-size: 0.72rem;
+	font-size: 0.68rem;
 	font-weight: 600;
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
@@ -131,7 +135,7 @@ a:focus-visible {
 }
 
 .stacked-title {
-	font-size: clamp(1.6rem, 2.5vw, 2.55rem);
+	font-size: clamp(1.45rem, 2.2vw, 2.2rem);
 	font-weight: 700;
 	letter-spacing: -0.03em;
 }

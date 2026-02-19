@@ -7,20 +7,26 @@ import {
 } from '$lib/server/opencode';
 import {
 	createOrGetPlanningSession,
+	getStackById,
 	getPlanningSessionByStackId,
 	markPlanningSessionSaved,
 	markPlanningSessionSeeded,
 	setPlanningSessionOpencodeId,
+	setStackStatus,
 	setStackStages,
 	touchPlanningSessionUpdatedAt
 } from '$lib/server/stack-store';
 import type { FeatureStage, FeatureType, PlanningMessage, StackMetadata, StackPlanningSession } from '$lib/types/stack';
 
-export const PLANNING_SYSTEM_PROMPT = `You are in Planning Mode for software work.
-Focus only on planning, scope, sequencing, risks, and validation.
+export const PLANNING_SYSTEM_PROMPT = `Follow this response contract.
+Keep responses concise and planning-focused.
 Do not provide implementation code unless explicitly asked.
-Use concise, structured responses.
-When context is incomplete, ask targeted clarifying questions first.
+When context is incomplete, ask targeted clarifying questions.
+When asking clarifying questions, emit ONLY this JSON payload shape (no prose, markdown, or code fences):
+{"questions":[{"header":"...","question":"...","options":[{"label":"...","description":"..."}],"multiple":false,"allowCustom":true}]}
+For free-text-only questions, set allowCustom=true and use an empty options array.
+Use multiple=true when more than one option can be selected.
+When the user replies with JSON like {"type":"question_answer","answers":[...]}, treat it as authoritative responses.
 When context is sufficient, propose staged implementation guidance with clear assumptions.`;
 
 const SAVE_PLAN_PROMPT = `Create a high-quality markdown implementation plan from this conversation.
@@ -287,6 +293,10 @@ export async function savePlanFromSession(stackId: string): Promise<{
 	const sessionWithSave = await markPlanningSessionSaved(stackId, savedPlanPath);
 	const stages = extractStagesFromPlan(markdownPlan);
 	await setStackStages(stackId, stages);
+	const stack = await getStackById(stackId);
+	if (stack?.status === 'created') {
+		await setStackStatus(stackId, 'planned');
+	}
 
 	return {
 		session: sessionWithSave,

@@ -3,7 +3,14 @@
 	import { tick } from 'svelte';
 
 	import { renderMarkdown } from '$lib/markdown';
-	import type { PlanningMessage, StackPlanningSession } from '$lib/types/stack';
+	import type {
+		PlanningMessage,
+		PlanningQuestionAnswer,
+		PlanningQuestionDialog,
+		PlanningQuestionItem,
+		PlanningQuestionOption,
+		StackPlanningSession
+	} from '$lib/types/stack';
 	import type { PageData } from './$types';
 
 	interface SaveResponse {
@@ -23,10 +30,9 @@ interface StreamErrorPayload {
 		message?: string;
 	}
 
-	interface StreamQuestionPayload {
-		prompt: string;
-		options: string[];
-		allowCustom?: boolean;
+	interface QuestionAnswerSummaryItem {
+		question: string;
+		answer: string;
 	}
 
 	let { data }: { data: PageData } = $props();
@@ -48,9 +54,258 @@ interface StreamErrorPayload {
 	let successMessage = $state<string | null>(null);
 	let initialized = false;
 	let resumePendingStream = $state(false);
-	let activeQuestion = $state<StreamQuestionPayload | null>(null);
-	let selectedQuestionAnswer = $state('');
-	let customQuestionAnswer = $state('');
+	let activeQuestionDialog = $state<PlanningQuestionDialog | null>(null);
+	let questionSelections = $state<Record<number, string[]>>({});
+	let questionCustomAnswers = $state<Record<number, string>>({});
+
+	function normalizeQuestionOption(option: unknown): PlanningQuestionOption | null {
+		if (typeof option === 'string') {
+			const label = option.trim();
+			if (!label) {
+				return null;
+			}
+
+			return { label };
+		}
+
+		if (typeof option !== 'object' || option === null) {
+			return null;
+		}
+
+		const candidate = option as {
+			label?: unknown;
+			text?: unknown;
+			value?: unknown;
+			description?: unknown;
+		};
+
+		const label =
+			typeof candidate.label === 'string'
+				? candidate.label.trim()
+				: typeof candidate.text === 'string'
+					? candidate.text.trim()
+					: typeof candidate.value === 'string'
+						? candidate.value.trim()
+						: '';
+
+		if (!label) {
+			return null;
+		}
+
+		const description =
+			typeof candidate.description === 'string' && candidate.description.trim().length > 0
+				? candidate.description.trim()
+				: undefined;
+
+		return { label, description };
+	}
+
+	function normalizeQuestionItem(item: unknown): PlanningQuestionItem | null {
+		if (typeof item !== 'object' || item === null) {
+			return null;
+		}
+
+		const candidate = item as {
+			header?: unknown;
+			title?: unknown;
+			question?: unknown;
+			prompt?: unknown;
+			text?: unknown;
+			label?: unknown;
+			options?: unknown;
+			choices?: unknown;
+			multiple?: unknown;
+			allowCustom?: unknown;
+			custom?: unknown;
+		};
+
+		const header =
+			typeof candidate.header === 'string' && candidate.header.trim().length > 0
+				? candidate.header.trim()
+				: typeof candidate.title === 'string' && candidate.title.trim().length > 0
+					? candidate.title.trim()
+					: 'Question';
+
+		const question =
+			typeof candidate.question === 'string'
+				? candidate.question.trim()
+				: typeof candidate.prompt === 'string'
+					? candidate.prompt.trim()
+					: typeof candidate.text === 'string'
+						? candidate.text.trim()
+						: typeof candidate.label === 'string'
+							? candidate.label.trim()
+							: '';
+
+		const optionsRaw = Array.isArray(candidate.options)
+			? candidate.options
+			: Array.isArray(candidate.choices)
+				? candidate.choices
+				: [];
+
+		const options = optionsRaw
+			.map((option) => normalizeQuestionOption(option))
+			.filter((option): option is PlanningQuestionOption => option !== null);
+
+		const allowCustom = candidate.allowCustom === true || candidate.custom === true;
+
+		if (!question || (options.length === 0 && !allowCustom)) {
+			return null;
+		}
+
+		return {
+			header,
+			question,
+			options,
+			multiple: candidate.multiple === true,
+			allowCustom
+		};
+	}
+
+	function normalizeQuestionDialog(payload: unknown): PlanningQuestionDialog | null {
+		if (typeof payload !== 'object' || payload === null) {
+			return null;
+		}
+
+		const candidate = payload as {
+			questions?: unknown;
+			question?: unknown;
+			prompt?: unknown;
+			options?: unknown;
+			choices?: unknown;
+		};
+
+		if (Array.isArray(candidate.questions)) {
+			const questions = candidate.questions
+				.map((item) => normalizeQuestionItem(item))
+				.filter((item): item is PlanningQuestionItem => item !== null);
+
+			if (questions.length > 0) {
+				return { questions };
+			}
+		}
+
+		if (candidate.question || candidate.prompt || candidate.options || candidate.choices) {
+			const fallback = normalizeQuestionItem(payload);
+			if (fallback) {
+				return {
+					questions: [fallback]
+				};
+			}
+
+			const nested = normalizeQuestionItem(candidate.question);
+			if (nested) {
+				return {
+					questions: [nested]
+				};
+			}
+		}
+
+		return null;
+	}
+
+	function parseQuestionDialogMessage(content: string): PlanningQuestionDialog | null {
+		const trimmed = content.trim();
+		if (!trimmed.startsWith('{')) {
+			return null;
+		}
+
+		try {
+			const parsed = JSON.parse(trimmed) as unknown;
+			return normalizeQuestionDialog(parsed);
+		} catch {
+			return null;
+		}
+	}
+
+	function parseQuestionAnswerSummary(content: string): QuestionAnswerSummaryItem[] | null {
+		const trimmed = content.trim();
+		if (!trimmed.startsWith('{')) {
+			return null;
+		}
+
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(trimmed) as unknown;
+		} catch {
+			return null;
+		}
+
+		if (typeof parsed !== 'object' || parsed === null) {
+			return null;
+		}
+
+		const candidate = parsed as {
+			type?: unknown;
+			answers?: unknown;
+		};
+
+		if (candidate.type !== 'question_answer' || !Array.isArray(candidate.answers)) {
+			return null;
+		}
+
+		const summary = candidate.answers
+			.map((entry) => {
+				if (typeof entry !== 'object' || entry === null) {
+					return null;
+				}
+
+				const answer = entry as {
+					header?: unknown;
+					question?: unknown;
+					selected?: unknown;
+					customAnswer?: unknown;
+				};
+
+				const question =
+					typeof answer.question === 'string' && answer.question.trim().length > 0
+						? answer.question.trim()
+						: typeof answer.header === 'string' && answer.header.trim().length > 0
+							? answer.header.trim()
+							: 'Question';
+
+				const selected = Array.isArray(answer.selected)
+					? answer.selected
+							.map((value) => (typeof value === 'string' ? value.trim() : ''))
+							.filter((value) => value.length > 0)
+					: [];
+
+				const customAnswer =
+					typeof answer.customAnswer === 'string' && answer.customAnswer.trim().length > 0
+						? answer.customAnswer.trim()
+						: undefined;
+
+				const parts = [...selected, ...(customAnswer ? [customAnswer] : [])];
+				if (parts.length === 0) {
+					return null;
+				}
+
+				return {
+					question,
+					answer: parts.join(', ')
+				};
+			})
+			.filter((item): item is QuestionAnswerSummaryItem => item !== null);
+
+		return summary.length > 0 ? summary : null;
+	}
+
+	function initializeQuestionResponses(dialog: PlanningQuestionDialog): void {
+		const nextSelections: Record<number, string[]> = {};
+		const nextCustomAnswers: Record<number, string> = {};
+
+		dialog.questions.forEach((item, index) => {
+			if (item.multiple) {
+				nextSelections[index] = [];
+			} else {
+				nextSelections[index] = item.options[0] ? [item.options[0].label] : [];
+			}
+			nextCustomAnswers[index] = '';
+		});
+
+		questionSelections = nextSelections;
+		questionCustomAnswers = nextCustomAnswers;
+	}
 
 	$effect(() => {
 		if (initialized) {
@@ -123,9 +378,9 @@ interface StreamErrorPayload {
 		successMessage = null;
 		streamingReply = '';
 		assistantThinking = true;
-		activeQuestion = null;
-		selectedQuestionAnswer = '';
-		customQuestionAnswer = '';
+		activeQuestionDialog = null;
+		questionSelections = {};
+		questionCustomAnswers = {};
 
 		if (!options.watch && options.content) {
 			addOptimisticUserMessage(options.content);
@@ -170,9 +425,8 @@ interface StreamErrorPayload {
 					}
 
 					if (result.question) {
-						activeQuestion = result.question;
-						selectedQuestionAnswer = result.question.options[0] ?? '';
-						customQuestionAnswer = '';
+						activeQuestionDialog = result.question;
+						initializeQuestionResponses(result.question);
 					}
 
 					if (result.done) {
@@ -202,7 +456,7 @@ interface StreamErrorPayload {
 	function applyStreamEvent(eventBlock: string): {
 		done?: StreamDonePayload;
 		error?: StreamErrorPayload;
-		question?: StreamQuestionPayload;
+		question?: PlanningQuestionDialog;
 	} {
 		const lines = eventBlock.split('\n');
 		const event = lines.find((line) => line.startsWith('event:'))?.slice(6).trim() ?? 'message';
@@ -239,23 +493,10 @@ interface StreamErrorPayload {
 			return {};
 		}
 
-		if (event === 'question' && typeof payload === 'object' && payload !== null) {
-			const candidate = payload as Partial<StreamQuestionPayload>;
-			if (typeof candidate.prompt === 'string' && Array.isArray(candidate.options)) {
-				const normalizedOptions = candidate.options.filter(
-					(option): option is string => typeof option === 'string' && option.trim().length > 0
-				);
-				if (normalizedOptions.length === 0) {
-					return {};
-				}
-
-				return {
-					question: {
-						prompt: candidate.prompt,
-						options: normalizedOptions,
-						allowCustom: candidate.allowCustom === true
-					}
-				};
+		if (event === 'question') {
+			const question = normalizeQuestionDialog(payload);
+			if (question) {
+				return { question };
 			}
 		}
 
@@ -311,18 +552,79 @@ interface StreamErrorPayload {
 		messagesViewport.scrollTop = messagesViewport.scrollHeight;
 	}
 
+	function isQuestionOptionSelected(questionIndex: number, optionLabel: string): boolean {
+		const selected = questionSelections[questionIndex] ?? [];
+		return selected.includes(optionLabel);
+	}
+
+	function setSingleQuestionOption(questionIndex: number, optionLabel: string): void {
+		questionSelections = {
+			...questionSelections,
+			[questionIndex]: [optionLabel]
+		};
+	}
+
+	function toggleQuestionOption(questionIndex: number, optionLabel: string, checked: boolean): void {
+		const selected = questionSelections[questionIndex] ?? [];
+		if (checked) {
+			questionSelections = {
+				...questionSelections,
+				[questionIndex]: selected.includes(optionLabel) ? selected : [...selected, optionLabel]
+			};
+			return;
+		}
+
+		questionSelections = {
+			...questionSelections,
+			[questionIndex]: selected.filter((value) => value !== optionLabel)
+		};
+	}
+
+	function setQuestionCustomAnswer(questionIndex: number, value: string): void {
+		questionCustomAnswers = {
+			...questionCustomAnswers,
+			[questionIndex]: value
+		};
+	}
+
+	function canSubmitQuestionAnswers(): boolean {
+		if (!activeQuestionDialog) {
+			return false;
+		}
+
+		return activeQuestionDialog.questions.every((item, index) => {
+			const selected = questionSelections[index] ?? [];
+			const customAnswer = (questionCustomAnswers[index] ?? '').trim();
+			return selected.length > 0 || customAnswer.length > 0;
+		});
+	}
+
+	function buildQuestionAnswers(): PlanningQuestionAnswer[] {
+		if (!activeQuestionDialog) {
+			return [];
+		}
+
+		return activeQuestionDialog.questions.map((item, index) => {
+			const selected = questionSelections[index] ?? [];
+			const customAnswer = (questionCustomAnswers[index] ?? '').trim();
+
+			return {
+				header: item.header,
+				question: item.question,
+				selected,
+				customAnswer: customAnswer.length > 0 ? customAnswer : undefined
+			};
+		});
+	}
+
 	async function submitQuestionAnswer(): Promise<void> {
-		if (!activeQuestion || sending || saving) {
+		if (!activeQuestionDialog || sending || saving || !canSubmitQuestionAnswers()) {
 			return;
 		}
 
-		const custom = customQuestionAnswer.trim();
-		const answer = custom.length > 0 ? custom : selectedQuestionAnswer;
-		if (!answer.trim()) {
-			return;
-		}
-
-		await streamMessage({ content: answer.trim(), watch: false });
+		const answers = buildQuestionAnswers();
+		const content = JSON.stringify({ type: 'question_answer', answers });
+		await streamMessage({ content, watch: false });
 	}
 
 	async function savePlan(): Promise<void> {
@@ -349,8 +651,8 @@ interface StreamErrorPayload {
 	}
 </script>
 
-<main class="stacked-shell w-full px-3 py-5 sm:px-6 sm:py-7 lg:px-8">
-	<section class="stacked-panel stacked-fade-in p-4 sm:p-7">
+<main class="stacked-shell mx-auto w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-6">
+	<div class="stacked-fade-in">
 		<div class="mb-6 flex flex-wrap items-center justify-between gap-3 border-b stacked-divider pb-4">
 			<div>
 				<a href={resolve(`/stacks/${data.stack.id}`)} class="stacked-link text-sm font-semibold">Return to feature</a>
@@ -383,7 +685,10 @@ interface StreamErrorPayload {
 		{/if}
 
 		<div>
-			<div bind:this={messagesViewport} class="stacked-panel-elevated stacked-scroll mb-3 h-[26rem] overflow-y-auto p-3.5 sm:h-[35rem] sm:p-5">
+			<div
+				bind:this={messagesViewport}
+				class="stacked-scroll mb-3 h-[26rem] overflow-y-auto p-1 sm:h-[35rem]"
+			>
 				{#if messages.length === 0 && !sending}
 					<div class="stacked-chat-font h-full content-center text-sm stacked-subtle">
 						<p class="mb-2 font-semibold text-[var(--stacked-text)]">No stages yet.</p>
@@ -392,18 +697,56 @@ interface StreamErrorPayload {
 				{:else}
 					<div class="space-y-3">
 						{#each messages as message (message.id)}
-							<div class={`stacked-chat-font max-w-[90%] rounded-2xl border px-4 py-3 text-sm ${message.role === 'user'
-								? 'ml-auto border-[var(--stacked-accent)] bg-blue-500/20 text-blue-50'
-								: 'mr-auto border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] text-[var(--stacked-text)]'}`}>
+							{@const messageQuestionDialog = message.role === 'assistant' ? parseQuestionDialogMessage(message.content) : null}
+							{@const messageQuestionAnswers = message.role === 'user' ? parseQuestionAnswerSummary(message.content) : null}
+							<div class={`stacked-chat-font w-fit max-w-[90%] rounded-2xl border px-4 py-3 text-sm ${message.role === 'user'
+								? 'ml-auto rounded-br-none border-[var(--stacked-accent)] bg-blue-500/20 text-blue-50'
+								: 'mr-auto rounded-bl-none border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] text-[var(--stacked-text)]'}`}>
 								<p class="mb-1 text-[11px] uppercase tracking-wide opacity-70">{message.role === 'assistant' ? 'agent' : message.role}</p>
-								<div class="stacked-markdown">
-									{@html renderMarkdown(message.content)}
-								</div>
+								{#if messageQuestionDialog}
+									<div class="space-y-4">
+										{#each messageQuestionDialog.questions as question, questionIndex (`${question.header}-${question.question}-${questionIndex}`)}
+											<div class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)]/60 p-3">
+												<p class="text-xs font-semibold uppercase tracking-wide opacity-70">{question.header}</p>
+												<p class="mt-1 text-sm">{question.question}</p>
+												<div class="mt-2 space-y-2">
+													{#each question.options as option, optionIndex (`${option.label}-${optionIndex}`)}
+														<div class="rounded-md border border-transparent px-2 py-1.5">
+															<span class="leading-snug">
+																<span class="block text-sm">{option.label}</span>
+																{#if option.description}
+																	<span class="stacked-subtle block text-xs">{option.description}</span>
+																{/if}
+															</span>
+														</div>
+													{/each}
+												</div>
+												{#if question.allowCustom}
+													<p class="mt-3 stacked-subtle text-xs">Custom answer allowed</p>
+												{/if}
+											</div>
+										{/each}
+									</div>
+								{:else if messageQuestionAnswers}
+									<div class="space-y-1.5">
+										{#each messageQuestionAnswers as answer, answerIndex (`${answer.question}-${answer.answer}-${answerIndex}`)}
+											<p class="leading-snug">
+												<span class="stacked-subtle text-xs uppercase tracking-wide">{answer.question}</span>
+												<span class="mx-1 opacity-70">:</span>
+												<span class="text-sm">{answer.answer}</span>
+											</p>
+										{/each}
+									</div>
+								{:else}
+									<div class="stacked-markdown">
+										{@html renderMarkdown(message.content)}
+									</div>
+								{/if}
 							</div>
 						{/each}
 
 						{#if sending}
-							<div class="stacked-chat-font mr-auto max-w-[90%] rounded-2xl border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-4 py-3 text-sm text-[var(--stacked-text)]">
+							<div class="stacked-chat-font mr-auto w-fit max-w-[90%] rounded-2xl rounded-bl-none border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-4 py-3 text-sm text-[var(--stacked-text)]">
 								<p class="mb-1 text-[11px] uppercase tracking-wide opacity-70">agent</p>
 								{#if assistantThinking && !streamingReply}
 									<p class="stacked-subtle">Assistant is thinking...</p>
@@ -413,48 +756,73 @@ interface StreamErrorPayload {
 							</div>
 						{/if}
 
-						{#if activeQuestion}
-							<div class="stacked-chat-font mr-auto max-w-[90%] rounded-2xl border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-4 py-3 text-sm text-[var(--stacked-text)]">
+						{#if activeQuestionDialog}
+							<div class="stacked-chat-font mr-auto w-fit max-w-[90%] rounded-2xl rounded-bl-none border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-4 py-3 text-sm text-[var(--stacked-text)]">
 								<p class="mb-1 text-[11px] uppercase tracking-wide opacity-70">agent</p>
-								<p class="mb-3 text-sm text-[var(--stacked-text)]">{activeQuestion.prompt}</p>
-								<div class="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
-									<label class="flex flex-col gap-1 text-sm">
-										<span class="stacked-subtle text-xs">Choose an answer</span>
-										<select
-											bind:value={selectedQuestionAnswer}
-											class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 text-sm text-[var(--stacked-text)] outline-none transition focus:border-[var(--stacked-accent)]"
-										>
-											{#each activeQuestion.options as option (option)}
-												<option value={option}>{option}</option>
-											{/each}
-										</select>
-									</label>
+								<div class="space-y-4">
+									{#each activeQuestionDialog.questions as question, questionIndex (`${question.header}-${question.question}-${questionIndex}`)}
+										<div class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)]/60 p-3">
+											<p class="text-xs font-semibold uppercase tracking-wide opacity-70">{question.header}</p>
+											<p class="mt-1 text-sm">{question.question}</p>
+											<div class="mt-2 space-y-2">
+												{#each question.options as option, optionIndex (`${option.label}-${optionIndex}`)}
+													<label class="flex items-start gap-2 rounded-md border border-transparent px-2 py-1.5 transition hover:border-[var(--stacked-border-soft)] hover:bg-[var(--stacked-bg)]/50">
+														<input
+															type={question.multiple ? 'checkbox' : 'radio'}
+															name={`question-${questionIndex}`}
+															checked={isQuestionOptionSelected(questionIndex, option.label)}
+															onchange={(event) => {
+																const target = event.currentTarget as HTMLInputElement;
+																if (question.multiple) {
+																	toggleQuestionOption(questionIndex, option.label, target.checked);
+																	return;
+																}
+																setSingleQuestionOption(questionIndex, option.label);
+															}}
+														/>
+														<span class="leading-snug">
+															<span class="block text-sm">{option.label}</span>
+															{#if option.description}
+																<span class="stacked-subtle block text-xs">{option.description}</span>
+															{/if}
+														</span>
+													</label>
+												{/each}
+											</div>
+											{#if question.allowCustom}
+												<label class="mt-3 flex flex-col gap-1 text-sm">
+													<span class="stacked-subtle text-xs">Type your own answer</span>
+													<input
+														value={questionCustomAnswers[questionIndex] ?? ''}
+														oninput={(event) => setQuestionCustomAnswer(questionIndex, (event.currentTarget as HTMLInputElement).value)}
+														placeholder="Type your own answer"
+														class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 text-sm text-[var(--stacked-text)] outline-none transition focus:border-[var(--stacked-accent)]"
+													/>
+												</label>
+											{/if}
+										</div>
+									{/each}
+								</div>
+								<div class="mt-4 flex justify-end">
 									<button
 										type="button"
 										onclick={submitQuestionAnswer}
-										disabled={sending || saving || (!selectedQuestionAnswer && !customQuestionAnswer.trim())}
+										disabled={sending || saving || !canSubmitQuestionAnswers()}
 										class="cursor-pointer rounded-lg border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-70"
 									>
-										Send Answer
+										Send Answers
 									</button>
 								</div>
-								{#if activeQuestion.allowCustom}
-									<label class="mt-3 flex flex-col gap-1 text-sm">
-										<span class="stacked-subtle text-xs">Or type a custom answer</span>
-										<input
-											bind:value={customQuestionAnswer}
-											placeholder="Type your own answer"
-											class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 text-sm text-[var(--stacked-text)] outline-none transition focus:border-[var(--stacked-accent)]"
-										/>
-									</label>
-								{/if}
 							</div>
 						{/if}
 					</div>
 				{/if}
 			</div>
 
-			<form onsubmit={sendMessage} class="stacked-panel-elevated stacked-chat-font grid gap-2.5 p-3 sm:grid-cols-[1fr_auto] sm:gap-3 sm:p-4">
+			<form
+				onsubmit={sendMessage}
+				class="stacked-chat-font mt-2 grid gap-2.5 border-t stacked-divider pt-3 sm:grid-cols-[1fr_auto] sm:gap-3 sm:pt-4"
+			>
 				<textarea
 					bind:value={messageInput}
 					onkeydown={handleInputKeydown}
@@ -482,21 +850,12 @@ interface StreamErrorPayload {
 				<p class="text-xs stacked-subtle sm:col-span-2">Enter for new line, Cmd/Ctrl+Enter to send</p>
 			</form>
 
-			<div class="stacked-panel-elevated mt-3 p-4 text-sm">
-				<p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle">Workflow</p>
-				<ol class="stacked-chat-font space-y-1.5 text-sm stacked-subtle">
-					<li>1. Clarify requirements with the agent.</li>
-					<li>2. Save the plan when scope is locked.</li>
-					<li>3. Implement stage-by-stage on branch.</li>
-					<li>4. Open PR and progress to review.</li>
-				</ol>
-				{#if session.savedPlanPath}
-					<div class="mt-4 rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] p-3">
-						<p class="mb-1 text-[11px] uppercase tracking-wide stacked-subtle">Saved plan path</p>
-						<p class="stacked-chat-font break-all text-sm text-[var(--stacked-text)]">{session.savedPlanPath}</p>
-					</div>
-				{/if}
-			</div>
+			{#if session.savedPlanPath}
+				<div class="mt-3 rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] p-3">
+					<p class="mb-1 text-[11px] uppercase tracking-wide stacked-subtle">Saved plan path</p>
+					<p class="stacked-chat-font break-all text-sm text-[var(--stacked-text)]">{session.savedPlanPath}</p>
+				</div>
+			{/if}
 		</div>
-	</section>
+	</div>
 </main>

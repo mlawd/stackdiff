@@ -1,13 +1,12 @@
 import { env } from '$env/dynamic/private';
 import { createOpencode, type OpencodeClient, type Part } from '@opencode-ai/sdk';
 
-import type { PlanningMessage } from '$lib/types/stack';
-
-export interface OpencodeQuestionPrompt {
-	prompt: string;
-	options: string[];
-	allowCustom: boolean;
-}
+import type {
+	PlanningMessage,
+	PlanningQuestionDialog,
+	PlanningQuestionItem,
+	PlanningQuestionOption
+} from '$lib/types/stack';
 
 export type OpencodeStreamEvent =
 	| {
@@ -16,7 +15,7 @@ export type OpencodeStreamEvent =
 	  }
 	| {
 			type: 'question';
-			question: OpencodeQuestionPrompt;
+			question: PlanningQuestionDialog;
 	  };
 
 export type OpencodeHistoryLoadState = 'loaded' | 'empty' | 'unavailable';
@@ -209,12 +208,56 @@ function toPlanningMessages(entries: Array<{ info: { id: string; role: string; t
 		.filter((message): message is PlanningMessage => message !== null);
 }
 
-function toQuestionPrompt(value: unknown): OpencodeQuestionPrompt | null {
+function normalizeQuestionOption(value: unknown): PlanningQuestionOption | null {
+	if (typeof value === 'string') {
+		const label = value.trim();
+		if (!label) {
+			return null;
+		}
+
+		return { label };
+	}
+
 	if (typeof value !== 'object' || value === null) {
 		return null;
 	}
 
 	const candidate = value as {
+		label?: unknown;
+		value?: unknown;
+		text?: unknown;
+		description?: unknown;
+	};
+
+	const label =
+		typeof candidate.label === 'string'
+			? candidate.label.trim()
+			: typeof candidate.text === 'string'
+				? candidate.text.trim()
+				: typeof candidate.value === 'string'
+					? candidate.value.trim()
+					: '';
+
+	if (!label) {
+		return null;
+	}
+
+	const description =
+		typeof candidate.description === 'string' && candidate.description.trim().length > 0
+			? candidate.description.trim()
+			: undefined;
+
+	return { label, description };
+}
+
+function toQuestionItem(value: unknown): PlanningQuestionItem | null {
+	if (typeof value !== 'object' || value === null) {
+		return null;
+	}
+
+	const candidate = value as {
+		header?: unknown;
+		title?: unknown;
 		prompt?: unknown;
 		question?: unknown;
 		text?: unknown;
@@ -226,9 +269,12 @@ function toQuestionPrompt(value: unknown): OpencodeQuestionPrompt | null {
 		multiple?: unknown;
 	};
 
-	if (candidate.multiple === true) {
-		return null;
-	}
+	const header =
+		typeof candidate.header === 'string'
+			? candidate.header.trim()
+			: typeof candidate.title === 'string'
+				? candidate.title.trim()
+				: 'Question';
 
 	const promptRaw =
 		typeof candidate.prompt === 'string'
@@ -248,46 +294,32 @@ function toQuestionPrompt(value: unknown): OpencodeQuestionPrompt | null {
 			: [];
 
 	const options = optionsRaw
-		.map((option) => {
-			if (typeof option === 'string') {
-				return option.trim();
-			}
+		.map((option) => normalizeQuestionOption(option))
+		.filter((option): option is PlanningQuestionOption => option !== null);
 
-			if (typeof option === 'object' && option !== null) {
-				const objectOption = option as { label?: unknown; value?: unknown; text?: unknown };
-				if (typeof objectOption.label === 'string') {
-					return objectOption.label.trim();
-				}
-				if (typeof objectOption.text === 'string') {
-					return objectOption.text.trim();
-				}
-				if (typeof objectOption.value === 'string') {
-					return objectOption.value.trim();
-				}
-			}
+	const allowCustom = candidate.allowCustom === true || candidate.custom === true;
 
-			return '';
-		})
-		.filter((option) => option.length > 0);
-
-	if (!promptRaw.trim() || options.length === 0) {
+	if (!promptRaw.trim() || (options.length === 0 && !allowCustom)) {
 		return null;
 	}
 
 	return {
-		prompt: promptRaw.trim(),
+		header,
+		question: promptRaw.trim(),
 		options,
-		allowCustom: candidate.allowCustom === true || candidate.custom === true
+		multiple: candidate.multiple === true,
+		allowCustom
 	};
 }
 
-function extractQuestionPrompt(payload: unknown): OpencodeQuestionPrompt | null {
+function toQuestionDialog(payload: unknown): PlanningQuestionDialog | null {
 	if (typeof payload !== 'object' || payload === null) {
 		return null;
 	}
 
 	const candidate = payload as {
 		type?: unknown;
+		questions?: unknown;
 		question?: unknown;
 		prompt?: unknown;
 		options?: unknown;
@@ -295,27 +327,136 @@ function extractQuestionPrompt(payload: unknown): OpencodeQuestionPrompt | null 
 		parts?: unknown;
 	};
 
-	if (candidate.type === 'question') {
-		return toQuestionPrompt(payload);
+	if (Array.isArray(candidate.questions)) {
+		const questions = candidate.questions
+			.map((item) => toQuestionItem(item))
+			.filter((item): item is PlanningQuestionItem => item !== null);
+
+		if (questions.length > 0) {
+			return { questions };
+		}
 	}
 
-	if (candidate.question || candidate.prompt || candidate.options || candidate.choices) {
-		const direct = toQuestionPrompt(payload);
+	if (candidate.type === 'question' || candidate.question || candidate.prompt || candidate.options || candidate.choices) {
+		const direct = toQuestionItem(payload);
 		if (direct) {
-			return direct;
+			return {
+				questions: [direct]
+			};
+		}
+
+		const nested = toQuestionItem(candidate.question);
+		if (nested) {
+			return {
+				questions: [nested]
+			};
 		}
 	}
 
 	if (Array.isArray(candidate.parts)) {
+		const questions: PlanningQuestionItem[] = [];
 		for (const part of candidate.parts) {
-			const fromPart = toQuestionPrompt(part);
+			const fromPart = toQuestionItem(part);
 			if (fromPart) {
-				return fromPart;
+				questions.push(fromPart);
+			}
+		}
+
+		if (questions.length > 0) {
+			return { questions };
+		}
+	}
+
+	return null;
+}
+
+function extractLeadingJsonObject(value: string): { json: string; endIndex: number } | null {
+	let depth = 0;
+	let inString = false;
+	let escaping = false;
+
+	for (let index = 0; index < value.length; index += 1) {
+		const char = value[index];
+
+		if (inString) {
+			if (escaping) {
+				escaping = false;
+				continue;
+			}
+
+			if (char === '\\') {
+				escaping = true;
+				continue;
+			}
+
+			if (char === '"') {
+				inString = false;
+			}
+
+			continue;
+		}
+
+		if (char === '"') {
+			inString = true;
+			continue;
+		}
+
+		if (char === '{') {
+			depth += 1;
+			continue;
+		}
+
+		if (char === '}') {
+			depth -= 1;
+			if (depth === 0) {
+				return {
+					json: value.slice(0, index + 1),
+					endIndex: index + 1
+				};
 			}
 		}
 	}
 
 	return null;
+}
+
+function extractQuestionDialogFromText(value: string): { dialog: PlanningQuestionDialog; consumedLength: number } | null {
+	const firstNonWhitespace = value.search(/\S/);
+	if (firstNonWhitespace === -1) {
+		return null;
+	}
+
+	const candidate = value.slice(firstNonWhitespace);
+	if (!candidate.startsWith('{')) {
+		return null;
+	}
+
+	const jsonCandidate = extractLeadingJsonObject(candidate);
+	if (!jsonCandidate) {
+		return null;
+	}
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(jsonCandidate.json) as unknown;
+	} catch {
+		return null;
+	}
+
+	const dialog = toQuestionDialog(parsed);
+	if (!dialog) {
+		return null;
+	}
+
+	let consumedLength = firstNonWhitespace + jsonCandidate.endIndex;
+	while (consumedLength < value.length && /\s/.test(value[consumedLength])) {
+		consumedLength += 1;
+	}
+
+	return {
+		dialog,
+		consumedLength
+	};
 }
 
 function appendDeltaFromSnapshot(nextSnapshot: string, previousSnapshot: string): string {
@@ -456,8 +597,13 @@ async function* streamOpencodeSessionEvents(
 	events: AsyncGenerator<unknown, unknown, unknown>
 ): AsyncGenerator<OpencodeStreamEvent> {
 	let activeAssistantMessageId: string | undefined;
-	let previousSnapshot = '';
+	let activeTextMessageId: string | undefined;
+	let textSnapshot = '';
+	let previousVisibleSnapshot = '';
+	let consumedQuestionPrefixLength = 0;
+	let emittedQuestionForActiveTextMessage = false;
 	let yieldedDelta = false;
+	let yieldedQuestion = false;
 	const rolesByMessageId = new Map<string, 'assistant' | 'user' | 'system'>();
 
 	for await (const rawEvent of events) {
@@ -522,44 +668,63 @@ async function* streamOpencodeSessionEvents(
 				continue;
 			}
 
+			if (activeTextMessageId !== part.messageID) {
+				activeTextMessageId = part.messageID;
+				textSnapshot = '';
+				previousVisibleSnapshot = '';
+				consumedQuestionPrefixLength = 0;
+				emittedQuestionForActiveTextMessage = false;
+			}
+
 			const role = rolesByMessageId.get(part.messageID);
 			if (role !== 'assistant' && part.messageID !== activeAssistantMessageId) {
 				continue;
 			}
 
-			const question =
-				extractQuestionPrompt(properties) ??
-				extractQuestionPrompt(part.metadata) ??
-				extractQuestionPrompt(part.state);
-			if (question) {
+			const questionFromPayload =
+				toQuestionDialog(properties) ?? toQuestionDialog(part.metadata) ?? toQuestionDialog(part.state);
+			if (questionFromPayload && !emittedQuestionForActiveTextMessage) {
 				yield {
 					type: 'question',
-					question
+					question: questionFromPayload
 				};
+				emittedQuestionForActiveTextMessage = true;
+				yieldedQuestion = true;
 			}
 
 			const eventDelta = properties?.delta;
-			if (typeof eventDelta === 'string' && eventDelta.length > 0) {
-				yield {
-					type: 'delta',
-					chunk: eventDelta
-				};
-				yieldedDelta = true;
+			if (part.type === 'text' && typeof part.text === 'string') {
+				textSnapshot = part.text;
+			} else if (typeof eventDelta === 'string' && eventDelta.length > 0) {
+				textSnapshot += eventDelta;
+			} else {
 				continue;
 			}
 
-			if (part.type === 'text' && typeof part.text === 'string') {
-				const delta = appendDeltaFromSnapshot(part.text, previousSnapshot);
-				if (delta) {
+			const questionFromText = extractQuestionDialogFromText(textSnapshot);
+			if (questionFromText) {
+				consumedQuestionPrefixLength = Math.max(consumedQuestionPrefixLength, questionFromText.consumedLength);
+				if (!emittedQuestionForActiveTextMessage) {
 					yield {
-						type: 'delta',
-						chunk: delta
+						type: 'question',
+						question: questionFromText.dialog
 					};
-					yieldedDelta = true;
+					emittedQuestionForActiveTextMessage = true;
+					yieldedQuestion = true;
 				}
-
-				previousSnapshot = part.text;
 			}
+
+			const visibleSnapshot = textSnapshot.slice(consumedQuestionPrefixLength);
+			const delta = appendDeltaFromSnapshot(visibleSnapshot, previousVisibleSnapshot);
+			if (delta) {
+				yield {
+					type: 'delta',
+					chunk: delta
+				};
+				yieldedDelta = true;
+			}
+
+			previousVisibleSnapshot = visibleSnapshot;
 
 			continue;
 		}
@@ -574,9 +739,25 @@ async function* streamOpencodeSessionEvents(
 				const messages = await getOpencodeSessionMessages(sessionId);
 				const lastAssistant = [...messages].reverse().find((entry) => entry.role === 'assistant');
 				if (lastAssistant?.content) {
+					const questionFromText = extractQuestionDialogFromText(lastAssistant.content);
+					if (questionFromText && !yieldedQuestion) {
+						yield {
+							type: 'question',
+							question: questionFromText.dialog
+						};
+					}
+
+					const visibleContent = questionFromText
+						? lastAssistant.content.slice(questionFromText.consumedLength)
+						: lastAssistant.content;
+
+					if (!visibleContent) {
+						break;
+					}
+
 					yield {
 						type: 'delta',
-						chunk: lastAssistant.content
+						chunk: visibleContent
 					};
 				}
 			}

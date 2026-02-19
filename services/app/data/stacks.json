@@ -2,35 +2,22 @@
 	"version": 1,
 	"stacks": [
 		{
-			"id": "branch-creation-oomsm0",
+			"id": "branch-creation-1kda6g",
+			"status": "created",
 			"stages": [],
 			"name": "branch creation",
-			"notes": "when a feature has been created and the stages set up, I want to instruct the agent to \"start\" a feature at which point a new git worktree will be created and a new agent session started to immediately implement stage 1",
+			"notes": "when a feature has been created and the stages set up, I want to instruct the agent to “start” a feature at which point a new git worktree will be created and a new agent session started to immediately implement stage 1",
 			"type": "feature"
 		}
 	],
 	"planningSessions": [
 		{
-			"id": "session-vybzwukj",
-			"stackId": "branch-creation-o23jtg",
-			"messages": [
-				{
-					"id": "message-sbpgarxc",
-					"role": "assistant",
-					"content": "Great work item. This is a meaningful feature because it bridges planning -> execution and introduces lifecycle state, git orchestration, and AI kickoff in one flow.\n\nBefore implementation, here are the most important clarifying questions:\n\n- Branch strategy: Should each feature get one branch (used across all stages), or should stage 1 get its own branch now and future stages branch later?\n- Base branch source: Should new branches always start from a fixed base (for example `main`), or from a user-selected base per feature?\n- Naming convention: Do you want deterministic branch names (example: `feature/<stack-slug>`), and what should happen if the name already exists?\n- Worktree location: Where should worktrees live (for example a dedicated `.worktrees/<branch>` under repo root), and should location be configurable?\n- Idempotency behavior: If the user clicks “Start feature” twice, should we treat it as success if branch/worktree already exists and simply resume stage 1 kickoff?\n- Stage 1 kickoff scope: Does “starts stage 1 implementation” mean only creating an AI task/run record, or should the agent immediately modify files and attempt a commit?\n- Human approval step: Should there be a confirmation/review step before the AI writes code, or should kickoff be immediate?\n- Failure policy: If branch/worktree creation succeeds but AI kickoff fails, should we keep the branch/worktree and mark stage status as “needs attention” rather than rolling back?\n- Single active run rule: Can multiple features be started in parallel in the same repo, or do we enforce one active “implementation run” at a time?\n- UI surface: Should “Start feature” live at feature-level only, or also on stage 1 card if feature is planned but not started?\n\nIf you want, I can refine this into an exact spec after your answers.  \nIn parallel, here is a staged implementation approach with sensible defaults.\n\n**Proposed Staged Plan**\n- Stage 1: Define workflow contract and statuses\n  - Add explicit feature/stage lifecycle states (`planned` -> `starting` -> `in_progress` / `failed_to_start`).\n  - Define a single orchestration command: `startFeature(featureId)` with deterministic behavior and idempotency.\n  - Lock in defaults: base branch `main`, branch pattern `feature/<feature-slug>`, keep partial success (no rollback on AI failure).\n\n- Stage 2: Server-side git/worktree orchestration layer\n  - Add typed utility methods around `git` for: verify clean preconditions (if needed), resolve base commit, create branch, create worktree, detect existing branch/worktree.\n  - Return UI-safe structured error objects (actionable messages and machine-readable codes).\n  - Ensure commands are deterministic and safe under AGENTS constraints (repo-local, no per-stack repo path).\n\n- Stage 3: Persist runtime metadata and start markers\n  - Extend `services/app/data/stacks.json` schema behind storage interface with:\n    - `feature.branchName`\n    - `feature.baseBranch`\n    - `feature.worktreePath`\n    - `feature.startedAt`\n    - `feature.startStatus`\n    - `stage1.run` metadata (queued/running/failed/completed + timestamps)\n  - Keep schema evolution simple (no backward compatibility required right now, per AGENTS).\n\n- Stage 4: AI kickoff integration for stage 1\n  - Implement `kickoffStage1(featureId)` after successful branch/worktree readiness.\n  - Build deterministic prompt context from planned feature + stage 1 scope.\n  - Run via existing server-side agent execution path; capture run id/log reference in stage metadata.\n  - Make kickoff resilient: retryable, idempotent, and clearly surfaced if startup fails.\n\n- Stage 5: UI action and progress feedback\n  - Add “Start feature” action in feature detail view.\n  - Show progressive states: creating branch/worktree -> starting AI -> running stage 1.\n  - Display success artifacts (branch name, worktree path, run id) and failure guidance (“retry kickoff”, “open logs”, etc.).\n  - Disable duplicate starts while in-flight; allow safe retry after failure.\n\n- Stage 6: Validation, tests, and operational hardening\n  - Unit tests for branch/worktree decision logic and error mapping.\n  - Integration tests for start flow with mocked git/agent adapters.\n  - Manual happy-path + failure-path checks (`branch exists`, `worktree exists`, `base branch missing`, `agent timeout`).\n  - Add lightweight telemetry/logging for start latency and failure reasons.\n\n**Suggested Acceptance Criteria**\n- Starting a planned feature creates/uses the expected branch and worktree deterministically.\n- Stage 1 transitions to an active AI run automatically with visible status.\n- Re-running “Start feature” is safe and does not duplicate resources.\n- Failures return actionable UI-safe errors and preserve recoverable state.\n- Metadata persists in JSON via the storage interface and is visible on reload.\n\n**Key Risks to Manage Early**\n- Git state drift (local repo state changes between checks and execution).\n- Ambiguous retries causing duplicate AI runs.\n- Tight coupling between orchestration and UI state without clear status machine.\n- Worktree path collisions across similarly named features.\n\nIf you answer the questions above, I can give you a concrete v1 spec with exact state machine, API shapes, and task breakdown by file/module.",
-					"createdAt": "2026-02-18T20:51:17.143Z"
-				}
-			],
-			"createdAt": "2026-02-18T20:51:17.143Z",
-			"updatedAt": "2026-02-18T20:51:17.143Z"
-		},
-		{
-			"id": "session-b8kdhh0z",
-			"stackId": "branch-creation-oomsm0",
-			"createdAt": "2026-02-19T01:53:10.746Z",
-			"updatedAt": "2026-02-19T09:02:57.100Z",
-			"opencodeSessionId": "ses_38c661d76ffey5NMRlJ1ZRmHPc",
-			"seededAt": "2026-02-19T01:54:40.708Z"
+			"id": "session-pnd3eo32",
+			"stackId": "branch-creation-1kda6g",
+			"createdAt": "2026-02-19T19:25:54.639Z",
+			"updatedAt": "2026-02-19T19:30:34.630Z",
+			"opencodeSessionId": "ses_388a24fa9ffeCixBNFRS9ftByE",
+			"seededAt": "2026-02-19T19:26:16.378Z"
 		}
 	]
 }

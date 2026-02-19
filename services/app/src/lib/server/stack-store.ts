@@ -4,6 +4,7 @@ import type {
 	FeatureStage,
 	FeatureStageStatus,
 	FeatureType,
+	StackStatus,
 	StackFile,
 	StackMetadata,
 	StackPlanningSession,
@@ -15,6 +16,10 @@ const STACKS_FILE = new URL('../../../data/stacks.json', import.meta.url);
 
 function isFeatureType(value: unknown): value is FeatureType {
 	return value === 'feature' || value === 'bugfix' || value === 'chore';
+}
+
+function isStackStatus(value: unknown): value is StackStatus {
+	return value === 'created' || value === 'planned' || value === 'started' || value === 'complete';
 }
 
 function isFeatureStageStatus(value: unknown): value is FeatureStageStatus {
@@ -47,6 +52,7 @@ function isStackMetadata(value: unknown): value is StackMetadata {
 		typeof stack.id === 'string' &&
 		typeof stack.name === 'string' &&
 		isFeatureType(stack.type) &&
+		(stack.status === undefined || isStackStatus(stack.status)) &&
 		(stack.notes === undefined || typeof stack.notes === 'string') &&
 		(stack.stages === undefined || (Array.isArray(stack.stages) && stack.stages.every(isFeatureStage)))
 	);
@@ -93,6 +99,7 @@ function normalizeStackFile(file: StackFile): StackFile {
 		stacks: file.stacks.map((stack) => ({
 			...stack,
 			type: isFeatureType((stack as { type?: unknown }).type) ? stack.type : 'feature',
+			status: isStackStatus((stack as { status?: unknown }).status) ? stack.status : 'created',
 			stages: stack.stages ?? []
 		})),
 		planningSessions: file.planningSessions ?? []
@@ -177,6 +184,7 @@ export async function createStack(input: StackUpsertInput): Promise<StackMetadat
 	const file = await readStackFile();
 	const created: StackMetadata = {
 		id: createId(normalized.name),
+		status: 'created',
 		stages: [],
 		...normalized
 	};
@@ -296,6 +304,7 @@ export async function updateStack(id: string, input: StackUpsertInput): Promise<
 	const existing = file.stacks[index];
 	const updated: StackMetadata = {
 		id,
+		status: existing.status,
 		stages: existing.stages ?? [],
 		...normalized
 	};
@@ -332,6 +341,25 @@ export async function setStackStages(id: string, stages: FeatureStage[]): Promis
 	const next: StackMetadata = {
 		...file.stacks[index],
 		stages
+	};
+
+	file.stacks[index] = next;
+	await writeStackFile(file);
+
+	return next;
+}
+
+export async function setStackStatus(id: string, status: StackStatus): Promise<StackMetadata> {
+	const file = await readStackFile();
+	const index = file.stacks.findIndex((stack) => stack.id === id);
+
+	if (index === -1) {
+		throw new Error('Feature not found.');
+	}
+
+	const next: StackMetadata = {
+		...file.stacks[index],
+		status
 	};
 
 	file.stacks[index] = next;
