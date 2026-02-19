@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
-import { ensurePlanningSession } from '$lib/server/planning-service';
+import { loadExistingPlanningSession } from '$lib/server/planning-service';
 import { getStackById } from '$lib/server/stack-store';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -11,11 +11,13 @@ export const load: PageServerLoad = async ({ params }) => {
 		throw error(404, 'Feature not found');
 	}
 
-	const session = await ensurePlanningSession(params.id, stack);
+	const { session, messages, awaitingResponse } = await loadExistingPlanningSession(params.id);
 
 	return {
 		stack,
 		session,
+		messages,
+		awaitingResponse,
 		loadedAt: new Date().toISOString()
 	};
 };

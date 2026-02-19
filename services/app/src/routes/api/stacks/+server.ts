@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 
-import { createStack, readStacksFromFile } from '$lib/server/stack-store';
+import { createAndSeedPlanningSessionForStack } from '$lib/server/planning-service';
+import { createStack, deleteStack, readStacksFromFile } from '$lib/server/stack-store';
 import { enrichStackStatus } from '$lib/server/stack-status';
 import type { StackUpsertInput } from '$lib/types/stack';
 
@@ -36,6 +37,19 @@ export async function POST({ request }) {
 		const body = (await request.json()) as unknown;
 		const input = parseUpsertInput(body);
 		const created = await createStack(input);
+
+		try {
+			await createAndSeedPlanningSessionForStack(created);
+		} catch (error) {
+			try {
+				await deleteStack(created.id);
+			} catch {
+				// Keep original bootstrap error.
+			}
+
+			throw error;
+		}
+
 		const enriched = await enrichStackStatus(created);
 
 		return json({ stack: enriched }, { status: 201 });

@@ -1,32 +1,62 @@
 import { env } from '$env/dynamic/private';
+import { createOpencode, type OpencodeClient, type Part } from '@opencode-ai/sdk';
 
-export interface OpencodeMessage {
-	role: 'system' | 'user' | 'assistant';
-	content: string;
+import type { PlanningMessage } from '$lib/types/stack';
+
+export interface OpencodeQuestionPrompt {
+	prompt: string;
+	options: string[];
+	allowCustom: boolean;
 }
 
-type OpencodeApiMode = 'server' | 'openai';
+export type OpencodeStreamEvent =
+	| {
+			type: 'delta';
+			chunk: string;
+	  }
+	| {
+			type: 'question';
+			question: OpencodeQuestionPrompt;
+	  };
 
-interface OpenAiChatResponse {
-	choices?: Array<{
-		message?: {
-			content?: string | Array<{ type?: string; text?: string }>;
-		};
-	}>;
-	error?: {
-		message?: string;
-	};
+export type OpencodeHistoryLoadState = 'loaded' | 'empty' | 'unavailable';
+
+export interface OpencodeHistoryLoadResult {
+	state: OpencodeHistoryLoadState;
+	messages: PlanningMessage[];
 }
 
-interface OpencodeServerSessionResponse {
-	id?: string;
-}
-
-interface OpencodeServerMessageResponse {
-	parts?: unknown[];
-}
+export type OpencodeSessionRuntimeState = 'idle' | 'busy' | 'retry' | 'missing';
 
 const MAX_ERROR_BODY_LENGTH = 300;
+
+type OpencodeRuntime = {
+	client: OpencodeClient;
+	close: () => void;
+};
+
+declare global {
+	// eslint-disable-next-line no-var
+	var __stackedOpencodeRuntime: Promise<OpencodeRuntime> | undefined;
+}
+
+function isDebugEnabled(): boolean {
+	const value = env.OPENCODE_DEBUG?.trim().toLowerCase();
+	return value === '1' || value === 'true' || value === 'yes';
+}
+
+function debugLog(message: string, details?: unknown): void {
+	if (!isDebugEnabled()) {
+		return;
+	}
+
+	if (details === undefined) {
+		console.info(`[opencode] ${message}`);
+		return;
+	}
+
+	console.info(`[opencode] ${message}`, details);
+}
 
 function truncate(value: string): string {
 	if (value.length <= MAX_ERROR_BODY_LENGTH) {
@@ -36,31 +66,53 @@ function truncate(value: string): string {
 	return `${value.slice(0, MAX_ERROR_BODY_LENGTH)}...`;
 }
 
-function isLikelyHtml(value: string): boolean {
-	const trimmed = value.trim().toLowerCase();
-	return trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html');
-}
-
-function getBaseUrl(): string {
-	const baseUrl = env.OPENCODE_BASE_URL?.trim();
-	if (!baseUrl) {
-		throw new Error('Missing OPENCODE_BASE_URL server environment variable.');
+function toErrorMessage(error: unknown): string {
+	if (error instanceof Error) {
+		return error.message;
 	}
 
-	return baseUrl;
+	return String(error);
 }
 
-export function getOpencodeApiMode(): OpencodeApiMode {
-	const mode = env.OPENCODE_API_MODE?.trim().toLowerCase();
-	if (mode === 'openai') {
-		return 'openai';
+function unwrapData<T>(result: {
+	data?: T;
+	error?: unknown;
+	response: Response;
+}): T {
+	if (result.data !== undefined) {
+		return result.data;
 	}
 
-	return 'server';
+	throwFromResultError(result);
+	throw new Error('Unexpected opencode response shape.');
 }
 
-function getModel(): string {
-	return env.OPENCODE_MODEL?.trim() || 'openai/gpt-5.3-codex';
+function throwFromResultError(result: { error?: unknown; response: Response }): never {
+	if (typeof result.error === 'object' && result.error !== null) {
+		const candidate = result.error as { data?: unknown; message?: unknown };
+		if (typeof candidate.message === 'string' && candidate.message.trim().length > 0) {
+			throw new Error(candidate.message);
+		}
+
+		if (typeof candidate.data === 'object' && candidate.data !== null) {
+			const details = candidate.data as { message?: unknown };
+			if (typeof details.message === 'string' && details.message.trim().length > 0) {
+				throw new Error(details.message);
+			}
+		}
+	}
+
+	throw new Error(`opencode request failed with status ${result.response.status}.`);
+}
+
+function assertNoResultError(result: { error?: unknown; response: Response }): void {
+	if (result.error !== undefined) {
+		throwFromResultError(result);
+	}
+
+	if (!result.response.ok) {
+		throw new Error(`opencode request failed with status ${result.response.status}.`);
+	}
 }
 
 function getServerModel(): { providerID: string; modelID: string } | undefined {
@@ -90,152 +142,241 @@ function getServerModel(): { providerID: string; modelID: string } | undefined {
 	};
 }
 
-function getServerPathPrefix(): string {
-	return (env.OPENCODE_SERVER_PATH_PREFIX?.trim() || '').replace(/^\/+|\/+$/g, '');
+function getDirectory(): string {
+	return process.cwd();
 }
 
-function getOpenAiChatPath(): string {
-	return (env.OPENCODE_CHAT_PATH?.trim() || 'v1/chat/completions').replace(/^\/+/, '');
-}
-
-function joinUrl(baseUrl: string, relativePath: string): URL {
-	const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-	return new URL(relativePath, normalizedBase);
-}
-
-function toOpenAiChatUrl(baseUrl: string): URL {
-	return joinUrl(baseUrl, getOpenAiChatPath());
-}
-
-function toServerUrl(baseUrl: string, path: string): URL {
-	const prefix = getServerPathPrefix();
-	const normalizedPath = path.replace(/^\/+/, '');
-	if (!prefix) {
-		return joinUrl(baseUrl, normalizedPath);
+function getServerPort(): number | undefined {
+	const value = env.OPENCODE_SERVER_PORT?.trim();
+	if (!value) {
+		return undefined;
 	}
 
-	return joinUrl(baseUrl, `${prefix}/${normalizedPath}`);
+	const parsed = Number(value);
+	if (!Number.isFinite(parsed) || parsed <= 0) {
+		return undefined;
+	}
+
+	return parsed;
 }
 
-function buildHeaders(): Record<string, string> {
-	const headers: Record<string, string> = {
-		'content-type': 'application/json',
-		accept: 'application/json'
-	};
-
-	const apiKey = env.OPENCODE_API_KEY?.trim();
-	if (apiKey) {
-		headers.authorization = `Bearer ${apiKey}`;
-		return headers;
+function asIsoDate(value: number | undefined): string {
+	if (typeof value !== 'number' || Number.isNaN(value)) {
+		return new Date().toISOString();
 	}
 
-	const password = env.OPENCODE_SERVER_PASSWORD?.trim();
-	if (password) {
-		const username = env.OPENCODE_SERVER_USERNAME?.trim() || 'opencode';
-		headers.authorization = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
-	}
-
-	return headers;
+	return new Date(value).toISOString();
 }
 
-async function parseResponseText(response: Response, url: URL): Promise<string> {
-	const raw = await response.text();
-	const text = raw.trim();
+function textFromParts(parts: Part[]): string {
+	const text = parts
+		.filter((part): part is Extract<Part, { type: 'text' }> => part.type === 'text')
+		.map((part) => part.text.trim())
+		.filter((part) => part.length > 0)
+		.join('\n\n');
 
-	if (isLikelyHtml(text)) {
-		throw new Error(
-			`opencode returned HTML from ${url.toString()}. OPENCODE_BASE_URL likely points at the web app, not the API server.`
-		);
-	}
-
-	if (!response.ok) {
-		throw new Error(text || `opencode request failed with status ${response.status}.`);
+	if (!text) {
+		throw new Error('opencode returned no assistant text in message parts.');
 	}
 
 	return text;
 }
 
-function parseJsonObject<T>(value: string): T {
-	try {
-		return JSON.parse(value) as T;
-	} catch {
-		throw new Error(`opencode returned invalid JSON: ${truncate(value)}`);
-	}
-}
-
-function toOpenAiAssistantText(payload: OpenAiChatResponse): string {
-	const content = payload.choices?.[0]?.message?.content;
-
-	if (typeof content === 'string' && content.trim()) {
-		return content.trim();
-	}
-
-	if (Array.isArray(content)) {
-		const text = content
-			.filter((part) => part.type === 'text' && typeof part.text === 'string')
-			.map((part) => part.text?.trim() ?? '')
-			.filter((part) => part.length > 0)
-			.join('\n\n');
-
-		if (text) {
-			return text;
-		}
-	}
-
-	throw new Error('opencode returned an empty assistant response.');
-}
-
-function toServerAssistantText(payload: OpencodeServerMessageResponse): string {
-	const parts = Array.isArray(payload.parts) ? payload.parts : [];
-	const textParts = parts
-		.map((part) => {
-			if (typeof part !== 'object' || part === null) {
-				return '';
+function toPlanningMessages(entries: Array<{ info: { id: string; role: string; time: { created: number } }; parts: Part[] }>): PlanningMessage[] {
+	return entries
+		.map((entry) => {
+			if (entry.info.role !== 'assistant' && entry.info.role !== 'user' && entry.info.role !== 'system') {
+				return null;
 			}
 
-			const candidate = part as {
-				type?: unknown;
-				text?: unknown;
-				content?: unknown;
-			};
+			const content = entry.parts
+				.filter((part): part is Extract<Part, { type: 'text' }> => part.type === 'text')
+				.map((part) => part.text.trim())
+				.filter((part) => part.length > 0)
+				.join('\n\n');
 
-			if (candidate.type === 'text' && typeof candidate.text === 'string') {
-				return candidate.text;
+			if (!content) {
+				return null;
 			}
 
-			if (typeof candidate.content === 'string') {
-				return candidate.content;
+			return {
+				id: entry.info.id,
+				role: entry.info.role,
+				content,
+				createdAt: asIsoDate(entry.info.time.created)
+			} as PlanningMessage;
+		})
+		.filter((message): message is PlanningMessage => message !== null);
+}
+
+function toQuestionPrompt(value: unknown): OpencodeQuestionPrompt | null {
+	if (typeof value !== 'object' || value === null) {
+		return null;
+	}
+
+	const candidate = value as {
+		prompt?: unknown;
+		question?: unknown;
+		text?: unknown;
+		label?: unknown;
+		options?: unknown;
+		choices?: unknown;
+		allowCustom?: unknown;
+		custom?: unknown;
+		multiple?: unknown;
+	};
+
+	if (candidate.multiple === true) {
+		return null;
+	}
+
+	const promptRaw =
+		typeof candidate.prompt === 'string'
+			? candidate.prompt
+			: typeof candidate.question === 'string'
+				? candidate.question
+				: typeof candidate.text === 'string'
+					? candidate.text
+					: typeof candidate.label === 'string'
+						? candidate.label
+						: '';
+
+	const optionsRaw = Array.isArray(candidate.options)
+		? candidate.options
+		: Array.isArray(candidate.choices)
+			? candidate.choices
+			: [];
+
+	const options = optionsRaw
+		.map((option) => {
+			if (typeof option === 'string') {
+				return option.trim();
+			}
+
+			if (typeof option === 'object' && option !== null) {
+				const objectOption = option as { label?: unknown; value?: unknown; text?: unknown };
+				if (typeof objectOption.label === 'string') {
+					return objectOption.label.trim();
+				}
+				if (typeof objectOption.text === 'string') {
+					return objectOption.text.trim();
+				}
+				if (typeof objectOption.value === 'string') {
+					return objectOption.value.trim();
+				}
 			}
 
 			return '';
 		})
-		.map((part) => part.trim())
-		.filter((part) => part.length > 0);
+		.filter((option) => option.length > 0);
 
-	if (textParts.length === 0) {
-		throw new Error('opencode returned no assistant text in message parts.');
+	if (!promptRaw.trim() || options.length === 0) {
+		return null;
 	}
 
-	return textParts.join('\n\n');
+	return {
+		prompt: promptRaw.trim(),
+		options,
+		allowCustom: candidate.allowCustom === true || candidate.custom === true
+	};
+}
+
+function extractQuestionPrompt(payload: unknown): OpencodeQuestionPrompt | null {
+	if (typeof payload !== 'object' || payload === null) {
+		return null;
+	}
+
+	const candidate = payload as {
+		type?: unknown;
+		question?: unknown;
+		prompt?: unknown;
+		options?: unknown;
+		choices?: unknown;
+		parts?: unknown;
+	};
+
+	if (candidate.type === 'question') {
+		return toQuestionPrompt(payload);
+	}
+
+	if (candidate.question || candidate.prompt || candidate.options || candidate.choices) {
+		const direct = toQuestionPrompt(payload);
+		if (direct) {
+			return direct;
+		}
+	}
+
+	if (Array.isArray(candidate.parts)) {
+		for (const part of candidate.parts) {
+			const fromPart = toQuestionPrompt(part);
+			if (fromPart) {
+				return fromPart;
+			}
+		}
+	}
+
+	return null;
+}
+
+function appendDeltaFromSnapshot(nextSnapshot: string, previousSnapshot: string): string {
+	if (!nextSnapshot) {
+		return '';
+	}
+
+	if (!previousSnapshot) {
+		return nextSnapshot;
+	}
+
+	if (nextSnapshot.startsWith(previousSnapshot)) {
+		return nextSnapshot.slice(previousSnapshot.length);
+	}
+
+	return nextSnapshot;
+}
+
+async function getRuntime(): Promise<OpencodeRuntime> {
+	if (!globalThis.__stackedOpencodeRuntime) {
+		globalThis.__stackedOpencodeRuntime = (async () => {
+			const started = await createOpencode({
+				hostname: env.OPENCODE_SERVER_HOSTNAME?.trim() || '127.0.0.1',
+				port: getServerPort()
+			});
+
+			const runtime: OpencodeRuntime = {
+				client: started.client,
+				close: () => started.server.close()
+			};
+
+			const shutdown = () => {
+				try {
+					runtime.close();
+				} catch {
+					// ignore shutdown errors
+				}
+			};
+
+			process.once('SIGINT', shutdown);
+			process.once('SIGTERM', shutdown);
+
+			return runtime;
+		})();
+	}
+
+	return globalThis.__stackedOpencodeRuntime;
 }
 
 export async function createOpencodeSession(): Promise<string> {
-	const baseUrl = getBaseUrl();
-	const url = toServerUrl(baseUrl, 'session');
-	const response = await fetch(url, {
-		method: 'POST',
-		headers: buildHeaders(),
-		body: JSON.stringify({})
+	const { client } = await getRuntime();
+	const created = await client.session.create({
+		query: { directory: getDirectory() }
 	});
+	const session = unwrapData(created);
 
-	const text = await parseResponseText(response, url);
-	const payload = parseJsonObject<OpencodeServerSessionResponse>(text);
-
-	if (!payload.id || typeof payload.id !== 'string') {
+	if (!session.id || typeof session.id !== 'string') {
 		throw new Error('opencode session create response did not include an id.');
 	}
 
-	return payload.id;
+	return session.id;
 }
 
 export async function sendOpencodeSessionMessage(
@@ -243,55 +384,259 @@ export async function sendOpencodeSessionMessage(
 	message: string,
 	options?: { system?: string }
 ): Promise<string> {
-	const baseUrl = getBaseUrl();
-	const url = toServerUrl(baseUrl, `session/${encodeURIComponent(sessionId)}/message`);
+	const { client } = await getRuntime();
 	const model = getServerModel();
-	const requestPayload: {
-		model?: { providerID: string; modelID: string };
-		system?: string;
-		parts: Array<{ type: 'text'; text: string }>;
-	} = {
-		system: options?.system,
-		parts: [{ type: 'text', text: message }]
-	};
 
-	if (model) {
-		requestPayload.model = model;
-	}
-
-	const response = await fetch(url, {
-		method: 'POST',
-		headers: buildHeaders(),
-		body: JSON.stringify(requestPayload)
+	const prompted = await client.session.prompt({
+		path: { id: sessionId },
+		query: { directory: getDirectory() },
+		body: {
+			agent: 'plan',
+			system: options?.system,
+			model,
+			parts: [{ type: 'text', text: message }]
+		}
 	});
+	const response = unwrapData(prompted);
 
-	const text = await parseResponseText(response, url);
-	const payload = parseJsonObject<OpencodeServerMessageResponse>(text);
-
-	return toServerAssistantText(payload);
+	return textFromParts(response.parts);
 }
 
-export async function requestOpencodeChat(messages: OpencodeMessage[]): Promise<string> {
-	const baseUrl = getBaseUrl();
-	const chatUrl = toOpenAiChatUrl(baseUrl);
+export async function getOpencodeSessionMessages(sessionId: string): Promise<PlanningMessage[]> {
+	const result = await loadOpencodeSessionMessages(sessionId);
+	return result.messages;
+}
 
-	const response = await fetch(chatUrl, {
-		method: 'POST',
-		headers: buildHeaders(),
-		body: JSON.stringify({
-			model: getModel(),
-			messages,
-			temperature: 0.2,
-			stream: false
-		})
+export async function loadOpencodeSessionMessages(sessionId: string): Promise<OpencodeHistoryLoadResult> {
+	try {
+		const { client } = await getRuntime();
+		const listed = await client.session.messages({
+			path: { id: sessionId },
+			query: { directory: getDirectory() }
+		});
+		const entries = unwrapData(listed);
+
+		const messages = toPlanningMessages(entries);
+		return {
+			state: messages.length > 0 ? 'loaded' : 'empty',
+			messages
+		};
+	} catch (error) {
+		debugLog('Failed loading session history', { sessionId, error: toErrorMessage(error) });
+		return {
+			state: 'unavailable',
+			messages: []
+		};
+	}
+}
+
+export async function getOpencodeSessionRuntimeState(
+	sessionId: string
+): Promise<OpencodeSessionRuntimeState> {
+	const { client } = await getRuntime();
+	const statusResult = await client.session.status({
+		query: { directory: getDirectory() }
 	});
+	const statuses = unwrapData(statusResult);
+	const status = statuses[sessionId];
 
-	const text = await parseResponseText(response, chatUrl);
-	const payload = parseJsonObject<OpenAiChatResponse>(text);
-
-	if (payload.error?.message) {
-		throw new Error(payload.error.message);
+	if (!status || typeof status !== 'object' || !('type' in status)) {
+		return 'missing';
 	}
 
-	return toOpenAiAssistantText(payload);
+	if (status.type === 'busy' || status.type === 'retry') {
+		return status.type;
+	}
+
+	return 'idle';
+}
+
+async function* streamOpencodeSessionEvents(
+	sessionId: string,
+	events: AsyncGenerator<unknown, unknown, unknown>
+): AsyncGenerator<OpencodeStreamEvent> {
+	let activeAssistantMessageId: string | undefined;
+	let previousSnapshot = '';
+	let yieldedDelta = false;
+	const rolesByMessageId = new Map<string, 'assistant' | 'user' | 'system'>();
+
+	for await (const rawEvent of events) {
+		if (typeof rawEvent !== 'object' || rawEvent === null || !('type' in rawEvent)) {
+			continue;
+		}
+
+		const event = rawEvent as {
+			type: string;
+			properties?: Record<string, unknown>;
+		};
+
+		if (event.type === 'message.updated') {
+			const infoCandidate = (event.properties as { info?: unknown } | undefined)?.info;
+			if (typeof infoCandidate !== 'object' || infoCandidate === null) {
+				continue;
+			}
+
+			const info = infoCandidate as {
+				sessionID?: unknown;
+				id?: unknown;
+				role?: unknown;
+			};
+
+			if (info.sessionID !== sessionId || typeof info.id !== 'string') {
+				continue;
+			}
+
+			if (info.role === 'assistant' || info.role === 'user' || info.role === 'system') {
+				rolesByMessageId.set(info.id, info.role);
+			}
+
+			if (info.role === 'assistant') {
+				activeAssistantMessageId = info.id;
+			}
+
+			continue;
+		}
+
+		if (event.type === 'message.part.updated') {
+			const properties = event.properties as
+				| {
+						part?: unknown;
+						delta?: unknown;
+				  }
+				| undefined;
+			const partCandidate = properties?.part;
+			if (typeof partCandidate !== 'object' || partCandidate === null) {
+				continue;
+			}
+
+			const part = partCandidate as {
+				sessionID?: unknown;
+				messageID?: unknown;
+				type?: unknown;
+				text?: unknown;
+				metadata?: unknown;
+				state?: unknown;
+			};
+
+			if (part.sessionID !== sessionId || typeof part.messageID !== 'string') {
+				continue;
+			}
+
+			const role = rolesByMessageId.get(part.messageID);
+			if (role !== 'assistant' && part.messageID !== activeAssistantMessageId) {
+				continue;
+			}
+
+			const question =
+				extractQuestionPrompt(properties) ??
+				extractQuestionPrompt(part.metadata) ??
+				extractQuestionPrompt(part.state);
+			if (question) {
+				yield {
+					type: 'question',
+					question
+				};
+			}
+
+			const eventDelta = properties?.delta;
+			if (typeof eventDelta === 'string' && eventDelta.length > 0) {
+				yield {
+					type: 'delta',
+					chunk: eventDelta
+				};
+				yieldedDelta = true;
+				continue;
+			}
+
+			if (part.type === 'text' && typeof part.text === 'string') {
+				const delta = appendDeltaFromSnapshot(part.text, previousSnapshot);
+				if (delta) {
+					yield {
+						type: 'delta',
+						chunk: delta
+					};
+					yieldedDelta = true;
+				}
+
+				previousSnapshot = part.text;
+			}
+
+			continue;
+		}
+
+		if (event.type === 'session.idle') {
+			const sessionIdCandidate = (event.properties as { sessionID?: unknown } | undefined)?.sessionID;
+			if (sessionIdCandidate !== sessionId) {
+				continue;
+			}
+
+			if (!yieldedDelta) {
+				const messages = await getOpencodeSessionMessages(sessionId);
+				const lastAssistant = [...messages].reverse().find((entry) => entry.role === 'assistant');
+				if (lastAssistant?.content) {
+					yield {
+						type: 'delta',
+						chunk: lastAssistant.content
+					};
+				}
+			}
+
+			break;
+		}
+	}
+}
+
+export async function* watchOpencodeSession(
+	sessionId: string
+): AsyncGenerator<OpencodeStreamEvent> {
+	const { client } = await getRuntime();
+	const controller = new AbortController();
+
+	const events = await client.event.subscribe({
+		query: { directory: getDirectory() },
+		signal: controller.signal
+	});
+
+	try {
+		yield* streamOpencodeSessionEvents(sessionId, events.stream);
+	} catch (error) {
+		throw new Error(`opencode streaming failed: ${truncate(toErrorMessage(error))}`);
+	} finally {
+		controller.abort();
+	}
+}
+
+export async function* streamOpencodeSessionMessage(
+	sessionId: string,
+	message: string,
+	options?: { system?: string }
+): AsyncGenerator<OpencodeStreamEvent> {
+	const { client } = await getRuntime();
+	const model = getServerModel();
+	const controller = new AbortController();
+
+	const events = await client.event.subscribe({
+		query: { directory: getDirectory() },
+		signal: controller.signal
+	});
+
+	const accepted = await client.session.promptAsync({
+		path: { id: sessionId },
+		query: { directory: getDirectory() },
+		body: {
+			agent: 'plan',
+			system: options?.system,
+			model,
+			parts: [{ type: 'text', text: message }]
+		}
+	});
+	assertNoResultError(accepted);
+
+	try {
+		yield* streamOpencodeSessionEvents(sessionId, events.stream);
+	} catch (error) {
+		throw new Error(`opencode streaming failed: ${truncate(toErrorMessage(error))}`);
+	} finally {
+		controller.abort();
+	}
 }

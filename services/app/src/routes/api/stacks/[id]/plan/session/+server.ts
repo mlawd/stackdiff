@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 
-import { ensurePlanningSession } from '$lib/server/planning-service';
+import { loadExistingPlanningSession } from '$lib/server/planning-service';
 import { getStackById } from '$lib/server/stack-store';
 
 function toErrorMessage(error: unknown): string {
@@ -14,8 +14,8 @@ export async function POST({ params }) {
 			return json({ error: 'Feature not found.' }, { status: 404 });
 		}
 
-		const session = await ensurePlanningSession(params.id, stack);
-		return json({ session });
+		const { session, messages, awaitingResponse } = await loadExistingPlanningSession(params.id);
+		return json({ session, messages, awaitingResponse });
 	} catch (error) {
 		return json({ error: toErrorMessage(error) }, { status: 400 });
 	}

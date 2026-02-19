@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 
-import { savePlanFromSession } from '$lib/server/planning-service';
+import { getPlanningMessages, savePlanFromSession } from '$lib/server/planning-service';
 import { getStackById } from '$lib/server/stack-store';
 
 function toErrorMessage(error: unknown): string {
@@ -15,9 +15,11 @@ export async function POST({ params }) {
 		}
 
 		const result = await savePlanFromSession(params.id);
+		const messages = await getPlanningMessages(params.id);
 
 		return json({
 			session: result.session,
+			messages,
 			savedPlanPath: result.savedPlanPath,
 			planMarkdown: result.planMarkdown
 		});

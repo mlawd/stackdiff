@@ -2,10 +2,10 @@
 	"version": 1,
 	"stacks": [
 		{
-			"id": "branch-creation-sbel01",
+			"id": "branch-creation-oomsm0",
 			"stages": [],
-			"name": "Branch creation",
-			"notes": "When starting a new feature that has been fully planned and the stages configured, I want the AI Agent to create a new git worktree and start a new session within that worktree that implements the stage as per the implementation plan.",
+			"name": "branch creation",
+			"notes": "when a feature has been created and the stages set up, I want to instruct the agent to \"start\" a feature at which point a new git worktree will be created and a new agent session started to immediately implement stage 1",
 			"type": "feature"
 		}
 	],
@@ -25,37 +25,12 @@
 			"updatedAt": "2026-02-18T20:51:17.143Z"
 		},
 		{
-			"id": "session-3rzdfh2n",
-			"stackId": "branch-creation-sbel01",
-			"messages": [
-				{
-					"id": "message-pm220osy",
-					"role": "user",
-					"content": "Help me create an implementation plan for this work item:\n- Type: feature\n- Name: Branch creation\n- Description: When starting a new feature that has been fully planned and the stages configured, I want the AI Agent to create a new git worktree and start a new session within that worktree that implements the stage as per the implementation plan.\n\nPlease ask any important clarifying questions, then propose a staged implementation approach.",
-					"createdAt": "2026-02-18T20:53:55.434Z"
-				},
-				{
-					"id": "message-h77lhx3y",
-					"role": "assistant",
-					"content": "Great feature idea — it closes the loop from planning to execution.\n\nImportant clarifying questions before implementation (with my recommended defaults):\n\n- Should we create **one worktree per stage** or **one worktree per feature stack**?\n  - Recommended: one per stage, so each stage is isolated and reviewable.\n- Can multiple stages be `in-progress` at once for the same stack?\n  - Recommended: no, enforce a single active stage per stack initially.\n- What should the **branch naming convention** be?\n  - Recommended: `stack/<stack-id>/<stage-id>-<slug>` (deterministic, collision-safe).\n- What should be the default **base branch** for new stage branches?\n  - Recommended: current repo default branch (`origin/HEAD` fallback to `main`).\n- Where should worktrees live on disk?\n  - Recommended: `<repo>/.stacked/worktrees/<stack-id>/<stage-id>`.\n- Should “start stage” automatically send an implementation kickoff prompt to the new AI session?\n  - Recommended: yes, seed it with stage details + saved plan markdown.\n- If the branch/worktree already exists, should start be idempotent and reattach?\n  - Recommended: yes, return existing metadata/session instead of failing.\n- What is expected cleanup behavior after stage completion/cancel?\n  - Recommended: keep worktree by default; add explicit “cleanup worktree” action later.\n\nAssuming those defaults, here’s a staged implementation approach.\n\n**Stage 1: Domain + persistence groundwork**\n- Extend stack domain types in `services/app/src/lib/types/stack.ts` to track stage execution metadata (branch, worktree path, implementation session id, timestamps, error state).\n- Persist this in `services/app/data/stacks.json` via `services/app/src/lib/server/stack-store.ts`.\n- Add small helper methods: `startStageExecution`, `setStageStatus`, `getActiveStageExecution`, `setImplementationSessionId`.\n\n**Stage 2: Git/worktree orchestration service**\n- Add `services/app/src/lib/server/worktree-service.ts` with typed, deterministic wrappers around `git` via `runCommand` from `services/app/src/lib/server/command.ts`.\n- Implement:\n  - base branch resolution\n  - branch name generation\n  - worktree path generation\n  - `git worktree add -b ...`\n  - preflight checks (repo validity, path collision, branch collision, lock on active stage)\n- Return UI-safe structured errors (actionable text, no raw stack traces).\n\n**Stage 3: Implementation session bootstrapping**\n- Add an implementation-session service (parallel to planning) that creates/uses an AI session tied to the stage execution.\n- Seed prompt with:\n  - feature type/name/notes\n  - selected stage title/details\n  - full saved plan (from `savedPlanPath`)\n  - constraints from AGENTS/local-first model\n- Persist implementation session messages separately from planning messages so flows remain distinct.\n\n**Stage 4: API endpoints for stage start + chat**\n- Add endpoint: `POST /api/stacks/[id]/stages/[stageId]/start`\n  - validates prerequisites (plan exists, stages configured, stage not done, no active stage conflict)\n  - creates worktree + branch\n  - creates implementation session\n  - marks stage `in-progress`\n  - returns execution/session payload\n- Add message endpoint for implementation session (similar to planning message/save endpoints).\n- Add robust error mapping (409 for conflicts, 400 for invalid state, 404 for missing stack/stage).\n\n**Stage 5: UI integration**\n- In `services/app/src/routes/stacks/[id]/+page.svelte`, add “Start Stage” action on `not-started` stages.\n- Show execution metadata on the stage card (branch, worktree relative path, started time, session link).\n- Add implementation chat page route (e.g. `/stacks/[id]/implement/[stageId]`) mirroring planning chat UX but scoped to execution.\n\n**Stage 6: Validation + operational safeguards**\n- Add tests for:\n  - branch/worktree naming and idempotency\n  - state transitions (`not-started` -> `in-progress`)\n  - conflict handling (active stage already exists)\n  - API contract/error shapes\n- Add manual verification script:\n  - create feature + saved plan -> start stage -> confirm worktree exists -> confirm seeded session -> send first message.\n- Ensure all shell execution remains server-side and typed.\n\n**Stage 7: Follow-up hardening (optional but valuable)**\n- Add “Resume stage” and “Open worktree in terminal/editor” convenience actions.\n- Add stage completion flow (set `done`, optional PR creation hook).\n- Add cleanup endpoint for worktree removal once merged/completed.\n\nIf you answer the 8 questions, I can convert this into a concrete ticket breakdown with exact API contracts and type shapes next.",
-					"createdAt": "2026-02-18T20:54:58.898Z"
-				},
-				{
-					"id": "message-s9q3sk5z",
-					"role": "user",
-					"content": "Anything else",
-					"createdAt": "2026-02-18T20:55:11.115Z"
-				},
-				{
-					"id": "message-xgqizsce",
-					"role": "assistant",
-					"content": "A few important extras worth planning now:\n\n- Add a lightweight lock to prevent double-start races (`start` clicked twice, two browser tabs).\n- Make `start stage` transactional: if session creation fails after worktree create, either roll back worktree or mark a recoverable partial state.\n- Validate/sanitize all path/slug inputs to avoid path traversal; only derive branch/worktree names from trusted IDs.\n- Decide whether worktree bootstrap runs `npm install` automatically or leaves that to the implementation agent (recommended: leave to agent, but surface clear first-step instructions).\n- Store only repo-relative paths in metadata; compute absolute paths at runtime (keeps future repo moves safer).\n- Add a dedicated status for “blocked/error” stage execution so users can recover without manual JSON edits.\n- Ensure `.stacked/worktrees` behavior is documented in README and considered in `.gitignore` policy.\n- Capture command telemetry in logs (command, duration, sanitized stderr) so failures are diagnosable without exposing secrets.\n\nIf useful, I can now turn this into a ready-to-implement spec with:\n1) exact TypeScript interfaces,\n2) endpoint request/response schemas,\n3) state transition table.",
-					"createdAt": "2026-02-18T20:55:24.546Z"
-				}
-			],
-			"createdAt": "2026-02-18T20:53:55.434Z",
-			"updatedAt": "2026-02-18T20:55:24.546Z",
-			"opencodeSessionId": "ses_38d781790ffe9yvrr467i5H6fX"
+			"id": "session-b8kdhh0z",
+			"stackId": "branch-creation-oomsm0",
+			"createdAt": "2026-02-19T01:53:10.746Z",
+			"updatedAt": "2026-02-19T09:02:57.100Z",
+			"opencodeSessionId": "ses_38c661d76ffey5NMRlJ1ZRmHPc",
+			"seededAt": "2026-02-19T01:54:40.708Z"
 		}
 	]
 }

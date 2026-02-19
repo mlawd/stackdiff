@@ -44,7 +44,7 @@ export interface StackPlanningSession {
 	id: string;
 	stackId: string;
 	opencodeSessionId?: string;
-	messages: PlanningMessage[];
+	seededAt?: string;
 	createdAt: string;
 	updatedAt: string;
 	savedPlanPath?: string;

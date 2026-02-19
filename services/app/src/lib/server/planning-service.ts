@@ -1,22 +1,22 @@
-import type { OpencodeMessage } from '$lib/server/opencode';
 import { writeStackPlanFile } from '$lib/server/plan-file';
 import {
 	createOpencodeSession,
-	getOpencodeApiMode,
-	requestOpencodeChat,
+	getOpencodeSessionRuntimeState,
+	getOpencodeSessionMessages,
 	sendOpencodeSessionMessage
 } from '$lib/server/opencode';
 import {
-	appendPlanningMessage,
 	createOrGetPlanningSession,
 	getPlanningSessionByStackId,
 	markPlanningSessionSaved,
+	markPlanningSessionSeeded,
+	setPlanningSessionOpencodeId,
 	setStackStages,
-	setPlanningSessionOpencodeId
+	touchPlanningSessionUpdatedAt
 } from '$lib/server/stack-store';
-import type { FeatureStage, FeatureType, StackMetadata, StackPlanningSession } from '$lib/types/stack';
+import type { FeatureStage, FeatureType, PlanningMessage, StackMetadata, StackPlanningSession } from '$lib/types/stack';
 
-const PLANNING_SYSTEM_PROMPT = `You are in Planning Mode for software work.
+export const PLANNING_SYSTEM_PROMPT = `You are in Planning Mode for software work.
 Focus only on planning, scope, sequencing, risks, and validation.
 Do not provide implementation code unless explicitly asked.
 Use concise, structured responses.
@@ -155,38 +155,93 @@ function buildInitialPlanningPrompt(stack: StackMetadata): string {
 	].join('\n');
 }
 
-function toConversationMessages(session: StackPlanningSession): OpencodeMessage[] {
-	const conversation = session.messages
-		.filter(
-			(message): message is StackPlanningSession['messages'][number] & { role: 'user' | 'assistant' } =>
-				message.role === 'user' || message.role === 'assistant'
-		)
-		.map((message) => ({
-			role: message.role,
-			content: message.content
-		}));
-
-	return [{ role: 'system', content: PLANNING_SYSTEM_PROMPT }, ...conversation];
+export function getInitialPlanningPrompt(stack: StackMetadata): string {
+	return buildInitialPlanningPrompt(stack);
 }
 
 export function shouldAutoSavePlan(content: string): boolean {
 	return /\bsave (the )?plan\b/i.test(content.trim());
 }
 
-export async function ensurePlanningSession(
-	stackId: string,
-	stackContext?: StackMetadata
-): Promise<StackPlanningSession> {
+async function ensureSessionWithOpencodeId(
+	stackId: string
+): Promise<{ session: StackPlanningSession; createdOpencodeSession: boolean }> {
 	const session = await createOrGetPlanningSession(stackId);
 
-	if (!stackContext || session.messages.length > 0) {
-		return session;
+	if (session.opencodeSessionId) {
+		return {
+			session,
+			createdOpencodeSession: false
+		};
 	}
 
-	const seededPrompt = buildInitialPlanningPrompt(stackContext);
-	const seeded = await sendPlanningMessage(stackId, seededPrompt);
+	const opencodeSessionId = await createOpencodeSession();
+	const updated = await setPlanningSessionOpencodeId(stackId, opencodeSessionId);
 
-	return seeded.session;
+	return {
+		session: updated,
+		createdOpencodeSession: true
+	};
+}
+
+async function requireSessionWithOpencodeId(stackId: string): Promise<StackPlanningSession> {
+	const session = await getPlanningSessionByStackId(stackId);
+	if (!session) {
+		throw new Error('Planning session not found. Recreate the feature to initialize planning.');
+	}
+
+	if (!session.opencodeSessionId) {
+		throw new Error('Planning session is missing an OpenCode session id. Recreate the feature to reinitialize planning.');
+	}
+
+	return session;
+}
+
+export async function createAndSeedPlanningSessionForStack(
+	stack: StackMetadata
+): Promise<{ session: StackPlanningSession; messages: PlanningMessage[] }> {
+	const { session } = await ensureSessionWithOpencodeId(stack.id);
+	if (session.seededAt) {
+		const messages = await getOpencodeSessionMessages(session.opencodeSessionId as string);
+		return { session, messages };
+	}
+
+	await sendOpencodeSessionMessage(session.opencodeSessionId as string, buildInitialPlanningPrompt(stack), {
+		system: PLANNING_SYSTEM_PROMPT
+	});
+
+	const seededSession = await markPlanningSessionSeeded(stack.id);
+	const messages = await getOpencodeSessionMessages(seededSession.opencodeSessionId as string);
+
+	return {
+		session: seededSession,
+		messages
+	};
+}
+
+export async function getPlanningMessages(stackId: string): Promise<PlanningMessage[]> {
+	const session = await requireSessionWithOpencodeId(stackId);
+	return getOpencodeSessionMessages(session.opencodeSessionId as string);
+}
+
+export async function loadExistingPlanningSession(stackId: string): Promise<{
+	session: StackPlanningSession;
+	messages: PlanningMessage[];
+	awaitingResponse: boolean;
+}> {
+	const session = await requireSessionWithOpencodeId(stackId);
+	const messages = await getOpencodeSessionMessages(session.opencodeSessionId as string);
+	const runtimeState = await getOpencodeSessionRuntimeState(session.opencodeSessionId as string);
+
+	return {
+		session,
+		messages,
+		awaitingResponse: runtimeState === 'busy' || runtimeState === 'retry'
+	};
+}
+
+export async function markPlanningSessionSeededState(stackId: string): Promise<void> {
+	await markPlanningSessionSeeded(stackId);
 }
 
 export async function sendPlanningMessage(stackId: string, content: string): Promise<{
@@ -194,29 +249,17 @@ export async function sendPlanningMessage(stackId: string, content: string): Pro
 	assistantReply: string;
 	autoSavedPlanPath?: string;
 }> {
-	await createOrGetPlanningSession(stackId);
-	await appendPlanningMessage(stackId, 'user', content);
-
-	const latestSession = await getPlanningSessionByStackId(stackId);
-	if (!latestSession) {
-		throw new Error('Planning session not found.');
-	}
-
-	const assistantReply =
-		getOpencodeApiMode() === 'openai'
-			? await requestOpencodeChat(toConversationMessages(latestSession))
-			: await sendWithServerSession(latestSession, content);
-	const updatedSession = await appendPlanningMessage(stackId, 'assistant', assistantReply);
+	const session = await requireSessionWithOpencodeId(stackId);
+	const assistantReply = await sendOpencodeSessionMessage(session.opencodeSessionId as string, content, {
+		system: PLANNING_SYSTEM_PROMPT
+	});
+	await touchPlanningSessionUpdatedAt(stackId);
 
 	if (!shouldAutoSavePlan(content)) {
-		return {
-			session: updatedSession,
-			assistantReply
-		};
+		return { session, assistantReply };
 	}
 
 	const saveResult = await savePlanFromSession(stackId);
-
 	return {
 		session: saveResult.session,
 		assistantReply,
@@ -229,22 +272,16 @@ export async function savePlanFromSession(stackId: string): Promise<{
 	savedPlanPath: string;
 	planMarkdown: string;
 }> {
-	const session = await getPlanningSessionByStackId(stackId);
-	if (!session) {
-		throw new Error('Planning session not found.');
-	}
+	const session = await requireSessionWithOpencodeId(stackId);
+	const messages = await getOpencodeSessionMessages(session.opencodeSessionId as string);
 
-	if (session.messages.filter((message) => message.role === 'user').length === 0) {
+	if (messages.filter((message) => message.role === 'user').length === 0) {
 		throw new Error('Add at least one planning message before saving a plan.');
 	}
 
-	const markdownPlan =
-		getOpencodeApiMode() === 'openai'
-			? await requestOpencodeChat([
-					...toConversationMessages(session),
-					{ role: 'user', content: SAVE_PLAN_PROMPT }
-				])
-			: await sendWithServerSession(session, SAVE_PLAN_PROMPT);
+	const markdownPlan = await sendOpencodeSessionMessage(session.opencodeSessionId as string, SAVE_PLAN_PROMPT, {
+		system: PLANNING_SYSTEM_PROMPT
+	});
 
 	const savedPlanPath = await writeStackPlanFile(stackId, markdownPlan);
 	const sessionWithSave = await markPlanningSessionSaved(stackId, savedPlanPath);
@@ -256,16 +293,4 @@ export async function savePlanFromSession(stackId: string): Promise<{
 		savedPlanPath,
 		planMarkdown: markdownPlan
 	};
-}
-
-async function sendWithServerSession(session: StackPlanningSession, content: string): Promise<string> {
-	let opencodeSessionId = session.opencodeSessionId;
-	if (!opencodeSessionId) {
-		opencodeSessionId = await createOpencodeSession();
-		await setPlanningSessionOpencodeId(session.stackId, opencodeSessionId);
-	}
-
-	return sendOpencodeSessionMessage(opencodeSessionId, content, {
-		system: PLANNING_SYSTEM_PROMPT
-	});
 }
