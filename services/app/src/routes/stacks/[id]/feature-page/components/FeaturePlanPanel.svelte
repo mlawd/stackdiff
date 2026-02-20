@@ -1,6 +1,6 @@
 <script lang="ts">
 	import PlanningChat from '$lib/components/PlanningChat.svelte';
-	import type { PageData } from '../../$types';
+	import type { PlanningMessage, StackPlanningSession } from '$lib/types/stack';
 
 	let {
 		stackId,
@@ -9,9 +9,9 @@
 		awaitingResponse
 	}: {
 		stackId: string;
-		session: PageData['session'];
-		messages: PageData['messages'];
-		awaitingResponse: PageData['awaitingResponse'];
+		session: StackPlanningSession;
+		messages: PlanningMessage[];
+		awaitingResponse: boolean;
 	} = $props();
 </script>
 

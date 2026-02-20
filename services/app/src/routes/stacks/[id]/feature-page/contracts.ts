@@ -1,14 +1,9 @@
 import type {
 	FeatureStage,
 	FeatureStageStatus,
-	DiffSelection,
-	StageDiffPayload,
-	StageDiffChatResult,
 	StackPullRequest,
 	StackViewModel
 } from '../../../../lib/types/stack';
-
-export type FeaturePageTabKey = 'plan' | 'stack';
 
 export interface StartResponse {
 	stageNumber?: number;
@@ -17,17 +12,6 @@ export interface StartResponse {
 	reusedSession?: boolean;
 	startedNow?: boolean;
 	error?: string;
-}
-
-export interface StageDiffSuccessResponse {
-	diff: StageDiffPayload;
-}
-
-export interface StageDiffErrorResponse {
-	error?: {
-		code?: string;
-		message?: string;
-	};
 }
 
 export interface ImplementationStatusResponse {
@@ -47,24 +31,6 @@ export interface ImplementationStageRuntime {
 	pullRequest?: StackPullRequest;
 }
 
-export interface StageDiffChatSuccessResponse {
-	result: StageDiffChatResult;
-}
-
-export interface StageDiffChatErrorResponse {
-	error?: {
-		code?: string;
-		message?: string;
-	};
-}
-
-export type OrderedDiffLine = {
-	lineId: string;
-	filePath: string;
-	content: string;
-	type: 'context' | 'add' | 'del';
-};
-
 export interface FeatureStackTabContract {
 	stack: StackViewModel;
 	startPending: boolean;
@@ -78,12 +44,5 @@ export interface ImplementationStageRowContract {
 	currentStageStatus: FeatureStageStatus;
 	currentStagePullRequest?: StackPullRequest;
 	stageWorking: boolean;
-	stageCanOpenDiff: boolean;
 	stageRuntime?: ImplementationStageRuntime;
-}
-
-export interface FocusedDiffChatRequest {
-	stageId: string;
-	selection: DiffSelection;
-	message?: string;
 }
