@@ -1,18 +1,18 @@
 <script lang="ts">
-  import { resolve } from "$app/paths";
-  import { TabItem, Tabs } from "flowbite-svelte";
-  import FeaturePageHeader from "./feature-page/components/FeaturePageHeader.svelte";
-  import FeaturePlanPanel from "./feature-page/components/FeaturePlanPanel.svelte";
-  import FeatureStackPanel from "./feature-page/components/FeatureStackPanel.svelte";
-  import type { PageData } from "./$types";
+  import { resolve } from '$app/paths';
+  import { TabItem, Tabs } from 'flowbite-svelte';
+  import FeaturePageHeader from './feature-page/components/FeaturePageHeader.svelte';
+  import FeaturePlanPanel from './feature-page/components/FeaturePlanPanel.svelte';
+  import FeatureStackPanel from './feature-page/components/FeatureStackPanel.svelte';
+  import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
-  type FeaturePageTabKey = "plan" | "stack";
+  type FeaturePageTabKey = 'plan' | 'stack';
 
-  let initializedForStackId = "";
+  let initializedForStackId = '';
   let activeTab = $state<FeaturePageTabKey>(
     // svelte-ignore state_referenced_locally
-    data.stack.status === "created" ? "plan" : "stack",
+    data.stack.status === 'created' ? 'plan' : 'stack',
   );
 
   $effect(() => {
@@ -29,12 +29,12 @@
     <FeaturePageHeader
       stack={data.stack}
       loadedAt={data.loadedAt}
-      backHref={resolve("/")}
+      backHref={resolve('/')}
     />
 
     <div class="mb-4 feature-page-tabs">
       <Tabs tabStyle="underline" bind:selected={activeTab}>
-        <TabItem key="plan" title="Plan" open={activeTab === "plan"}>
+        <TabItem key="plan" title="Plan" open={activeTab === 'plan'}>
           <FeaturePlanPanel
             stackId={data.stack.id}
             session={data.session}
@@ -42,7 +42,7 @@
             awaitingResponse={data.awaitingResponse}
           />
         </TabItem>
-        <TabItem key="stack" title="Stack" open={activeTab === "stack"}>
+        <TabItem key="stack" title="Stack" open={activeTab === 'stack'}>
           <FeatureStackPanel stack={data.stack} />
         </TabItem>
       </Tabs>
@@ -51,24 +51,24 @@
 </main>
 
 <style>
-  :global(.feature-page-tabs ul[role="tablist"]) {
+  :global(.feature-page-tabs ul[role='tablist']) {
     border-color: var(--stacked-border-soft);
   }
 
-  :global(.feature-page-tabs button[role="tab"]) {
+  :global(.feature-page-tabs button[role='tab']) {
     color: var(--stacked-text-muted);
   }
 
-  :global(.feature-page-tabs button[role="tab"][aria-selected="true"]) {
+  :global(.feature-page-tabs button[role='tab'][aria-selected='true']) {
     color: var(--stacked-text);
     border-color: var(--stacked-border-soft);
   }
 
-  :global(.feature-page-tabs button[role="tab"]:hover) {
+  :global(.feature-page-tabs button[role='tab']:hover) {
     color: var(--stacked-text);
   }
 
-  :global(.feature-page-tabs [role="tabpanel"]) {
+  :global(.feature-page-tabs [role='tabpanel']) {
     padding: 1rem;
   }
 </style>

@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { tick } from "svelte";
-  import { Button, Spinner } from "flowbite-svelte";
+  import { tick } from 'svelte';
+  import { Button, Spinner } from 'flowbite-svelte';
 
-  import { renderMarkdown } from "$lib/markdown";
+  import { renderMarkdown } from '$lib/markdown';
   import type {
     PlanningMessage,
     PlanningQuestionAnswer,
     PlanningQuestionDialog,
     PlanningQuestionItem,
     PlanningQuestionOption,
-  } from "$lib/types/stack";
+  } from '$lib/types/stack';
 
   interface StreamDonePayload extends Record<string, unknown> {
     assistantReply: string;
@@ -36,7 +36,7 @@
   }
 
   const SAVE_PLAN_PROMPT_PREFIX =
-    "Create a detailed implementation plan and stages config from this conversation.";
+    'Create a detailed implementation plan and stages config from this conversation.';
 
   interface Props {
     streamUrl: string;
@@ -57,10 +57,10 @@
     initialMessages,
     initialAwaitingResponse = false,
     saveUrl,
-    inputPlaceholder = "Reply to the agent...",
-    emptyTitle = "No messages yet.",
-    emptyDescription = "Start by describing what you want to ship.",
-    saveButtonLabel = "Save",
+    inputPlaceholder = 'Reply to the agent...',
+    emptyTitle = 'No messages yet.',
+    emptyDescription = 'Start by describing what you want to ship.',
+    saveButtonLabel = 'Save',
     formatDoneSuccess,
     formatSaveSuccess,
     onSaveResponse,
@@ -69,10 +69,10 @@
   let initialized = false;
   let messages = $state<PlanningMessage[]>([]);
   let messagesViewport = $state<HTMLDivElement | null>(null);
-  let messageInput = $state("");
+  let messageInput = $state('');
   let sending = $state(false);
   let saving = $state(false);
-  let streamingReply = $state("");
+  let streamingReply = $state('');
   let assistantThinking = $state(false);
   let errorMessage = $state<string | null>(null);
   let successMessage = $state<string | null>(null);
@@ -140,7 +140,7 @@
   function normalizeQuestionOption(
     option: unknown,
   ): PlanningQuestionOption | null {
-    if (typeof option === "string") {
+    if (typeof option === 'string') {
       const label = option.trim();
       if (!label) {
         return null;
@@ -149,7 +149,7 @@
       return { label };
     }
 
-    if (typeof option !== "object" || option === null) {
+    if (typeof option !== 'object' || option === null) {
       return null;
     }
 
@@ -161,20 +161,20 @@
     };
 
     const label =
-      typeof candidate.label === "string"
+      typeof candidate.label === 'string'
         ? candidate.label.trim()
-        : typeof candidate.text === "string"
+        : typeof candidate.text === 'string'
           ? candidate.text.trim()
-          : typeof candidate.value === "string"
+          : typeof candidate.value === 'string'
             ? candidate.value.trim()
-            : "";
+            : '';
 
     if (!label) {
       return null;
     }
 
     const description =
-      typeof candidate.description === "string" &&
+      typeof candidate.description === 'string' &&
       candidate.description.trim().length > 0
         ? candidate.description.trim()
         : undefined;
@@ -183,7 +183,7 @@
   }
 
   function normalizeQuestionItem(item: unknown): PlanningQuestionItem | null {
-    if (typeof item !== "object" || item === null) {
+    if (typeof item !== 'object' || item === null) {
       return null;
     }
 
@@ -202,23 +202,23 @@
     };
 
     const header =
-      typeof candidate.header === "string" && candidate.header.trim().length > 0
+      typeof candidate.header === 'string' && candidate.header.trim().length > 0
         ? candidate.header.trim()
-        : typeof candidate.title === "string" &&
+        : typeof candidate.title === 'string' &&
             candidate.title.trim().length > 0
           ? candidate.title.trim()
-          : "Question";
+          : 'Question';
 
     const question =
-      typeof candidate.question === "string"
+      typeof candidate.question === 'string'
         ? candidate.question.trim()
-        : typeof candidate.prompt === "string"
+        : typeof candidate.prompt === 'string'
           ? candidate.prompt.trim()
-          : typeof candidate.text === "string"
+          : typeof candidate.text === 'string'
             ? candidate.text.trim()
-            : typeof candidate.label === "string"
+            : typeof candidate.label === 'string'
               ? candidate.label.trim()
-              : "";
+              : '';
 
     const optionsRaw = Array.isArray(candidate.options)
       ? candidate.options
@@ -249,7 +249,7 @@
   function normalizeQuestionDialog(
     payload: unknown,
   ): PlanningQuestionDialog | null {
-    if (typeof payload !== "object" || payload === null) {
+    if (typeof payload !== 'object' || payload === null) {
       return null;
     }
 
@@ -299,7 +299,7 @@
     content: string,
   ): PlanningQuestionDialog | null {
     const trimmed = content.trim();
-    if (!trimmed.startsWith("{")) {
+    if (!trimmed.startsWith('{')) {
       return null;
     }
 
@@ -315,7 +315,7 @@
     content: string,
   ): QuestionAnswerSummaryItem[] | null {
     const trimmed = content.trim();
-    if (!trimmed.startsWith("{")) {
+    if (!trimmed.startsWith('{')) {
       return null;
     }
 
@@ -326,7 +326,7 @@
       return null;
     }
 
-    if (typeof parsed !== "object" || parsed === null) {
+    if (typeof parsed !== 'object' || parsed === null) {
       return null;
     }
 
@@ -336,7 +336,7 @@
     };
 
     if (
-      candidate.type !== "question_answer" ||
+      candidate.type !== 'question_answer' ||
       !Array.isArray(candidate.answers)
     ) {
       return null;
@@ -344,7 +344,7 @@
 
     const summary = candidate.answers
       .map((entry) => {
-        if (typeof entry !== "object" || entry === null) {
+        if (typeof entry !== 'object' || entry === null) {
           return null;
         }
 
@@ -356,22 +356,22 @@
         };
 
         const question =
-          typeof answer.question === "string" &&
+          typeof answer.question === 'string' &&
           answer.question.trim().length > 0
             ? answer.question.trim()
-            : typeof answer.header === "string" &&
+            : typeof answer.header === 'string' &&
                 answer.header.trim().length > 0
               ? answer.header.trim()
-              : "Question";
+              : 'Question';
 
         const selected = Array.isArray(answer.selected)
           ? answer.selected
-              .map((value) => (typeof value === "string" ? value.trim() : ""))
+              .map((value) => (typeof value === 'string' ? value.trim() : ''))
               .filter((value) => value.length > 0)
           : [];
 
         const customAnswer =
-          typeof answer.customAnswer === "string" &&
+          typeof answer.customAnswer === 'string' &&
           answer.customAnswer.trim().length > 0
             ? answer.customAnswer.trim()
             : undefined;
@@ -383,7 +383,7 @@
 
         return {
           question,
-          answer: parts.join(", "),
+          answer: parts.join(', '),
         };
       })
       .filter((item): item is QuestionAnswerSummaryItem => item !== null);
@@ -393,7 +393,7 @@
 
   function parseStageSummary(content: string): StageSummaryItem[] | null {
     const trimmed = content.trim();
-    if (!trimmed.startsWith("{")) {
+    if (!trimmed.startsWith('{')) {
       return null;
     }
 
@@ -404,7 +404,7 @@
       return null;
     }
 
-    if (typeof parsed !== "object" || parsed === null) {
+    if (typeof parsed !== 'object' || parsed === null) {
       return null;
     }
 
@@ -418,7 +418,7 @@
 
     const stages = candidate.stages
       .map((entry) => {
-        if (typeof entry !== "object" || entry === null) {
+        if (typeof entry !== 'object' || entry === null) {
           return null;
         }
 
@@ -432,22 +432,22 @@
         };
 
         const stageName =
-          typeof stage.stageName === "string"
+          typeof stage.stageName === 'string'
             ? stage.stageName.trim()
-            : typeof stage.name === "string"
+            : typeof stage.name === 'string'
               ? stage.name.trim()
-              : typeof stage.title === "string"
+              : typeof stage.title === 'string'
                 ? stage.title.trim()
-                : "";
+                : '';
 
         const stageDescription =
-          typeof stage.stageDescription === "string"
+          typeof stage.stageDescription === 'string'
             ? stage.stageDescription.trim()
-            : typeof stage.description === "string"
+            : typeof stage.description === 'string'
               ? stage.description.trim()
-              : typeof stage.details === "string"
+              : typeof stage.details === 'string'
                 ? stage.details.trim()
-                : "";
+                : '';
 
         if (!stageName || !stageDescription) {
           return null;
@@ -462,18 +462,18 @@
 
   function getDisplayMessageContent(message: PlanningMessage): string {
     if (
-      message.role === "user" &&
+      message.role === 'user' &&
       message.content.startsWith(SAVE_PLAN_PROMPT_PREFIX) &&
-      message.content.includes("Return ONLY valid JSON")
+      message.content.includes('Return ONLY valid JSON')
     ) {
-      return "Save plan";
+      return 'Save plan';
     }
 
     return message.content;
   }
 
   function isSavePlanPromptMessage(message: PlanningMessage): boolean {
-    return getDisplayMessageContent(message) === "Save plan";
+    return getDisplayMessageContent(message) === 'Save plan';
   }
 
   function findPendingQuestionDialog(
@@ -482,11 +482,11 @@
     for (let index = history.length - 1; index >= 0; index -= 1) {
       const message = history[index];
 
-      if (message.role === "user") {
+      if (message.role === 'user') {
         return null;
       }
 
-      if (message.role !== "assistant") {
+      if (message.role !== 'assistant') {
         continue;
       }
 
@@ -520,7 +520,7 @@
       } else {
         nextSelections[index] = item.options[0] ? [item.options[0].label] : [];
       }
-      nextCustomAnswers[index] = "";
+      nextCustomAnswers[index] = '';
     });
 
     activeQuestionIndex = 0;
@@ -541,7 +541,7 @@
       ...messages,
       {
         id: `optimistic-${crypto.randomUUID()}`,
-        role: "user",
+        role: 'user',
         content,
         createdAt: new Date().toISOString(),
       },
@@ -558,7 +558,7 @@
       ...messages,
       {
         id: `optimistic-assistant-${crypto.randomUUID()}`,
-        role: "assistant",
+        role: 'assistant',
         content: trimmed,
         createdAt: new Date().toISOString(),
       },
@@ -570,16 +570,16 @@
     error?: StreamErrorPayload;
     question?: PlanningQuestionDialog;
   } {
-    const lines = eventBlock.split("\n");
+    const lines = eventBlock.split('\n');
     const event =
       lines
-        .find((line) => line.startsWith("event:"))
+        .find((line) => line.startsWith('event:'))
         ?.slice(6)
-        .trim() ?? "message";
+        .trim() ?? 'message';
     const dataLine = lines
-      .filter((line) => line.startsWith("data:"))
+      .filter((line) => line.startsWith('data:'))
       .map((line) => line.slice(5).trim())
-      .join("");
+      .join('');
 
     if (!dataLine) {
       return {};
@@ -592,19 +592,19 @@
       return {};
     }
 
-    if (event === "start") {
+    if (event === 'start') {
       assistantThinking = true;
       return {};
     }
 
-    if (event === "delta") {
+    if (event === 'delta') {
       const chunk =
-        typeof payload === "object" &&
+        typeof payload === 'object' &&
         payload !== null &&
-        "chunk" in payload &&
-        typeof payload.chunk === "string"
+        'chunk' in payload &&
+        typeof payload.chunk === 'string'
           ? payload.chunk
-          : "";
+          : '';
       if (chunk) {
         assistantThinking = false;
         streamingReply += chunk;
@@ -612,18 +612,18 @@
       return {};
     }
 
-    if (event === "question") {
+    if (event === 'question') {
       const question = normalizeQuestionDialog(payload);
       if (question) {
         return { question };
       }
     }
 
-    if (event === "done" && typeof payload === "object" && payload !== null) {
+    if (event === 'done' && typeof payload === 'object' && payload !== null) {
       return { done: payload as StreamDonePayload };
     }
 
-    if (event === "error" && typeof payload === "object" && payload !== null) {
+    if (event === 'error' && typeof payload === 'object' && payload !== null) {
       return { error: payload as StreamErrorPayload };
     }
 
@@ -638,7 +638,7 @@
     sending = true;
     errorMessage = null;
     successMessage = null;
-    streamingReply = "";
+    streamingReply = '';
     assistantThinking = true;
     activeQuestionDialog = null;
     activeQuestionIndex = 0;
@@ -651,8 +651,8 @@
 
     try {
       const response = await fetch(streamUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify(
           options.watch ? { watch: true } : { content: options.content },
         ),
@@ -660,16 +660,16 @@
 
       if (!response.ok) {
         const body = (await response.json()) as { error?: string };
-        throw new Error(body.error ?? "Unable to send message.");
+        throw new Error(body.error ?? 'Unable to send message.');
       }
 
       if (!response.body) {
-        throw new Error("Streaming response body missing.");
+        throw new Error('Streaming response body missing.');
       }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let buffered = "";
+      let buffered = '';
 
       while (true) {
         const { value, done } = await reader.read();
@@ -679,14 +679,14 @@
 
         buffered += decoder.decode(value, { stream: true });
 
-        while (buffered.includes("\n\n")) {
-          const splitAt = buffered.indexOf("\n\n");
+        while (buffered.includes('\n\n')) {
+          const splitAt = buffered.indexOf('\n\n');
           const eventBlock = buffered.slice(0, splitAt);
           buffered = buffered.slice(splitAt + 2);
 
           const result = applyStreamEvent(eventBlock);
           if (result.error) {
-            throw new Error(result.error.message ?? "Streaming failed.");
+            throw new Error(result.error.message ?? 'Streaming failed.');
           }
 
           if (result.question) {
@@ -713,11 +713,11 @@
     } catch (error) {
       ok = false;
       errorMessage =
-        error instanceof Error ? error.message : "Unable to send message.";
+        error instanceof Error ? error.message : 'Unable to send message.';
     } finally {
       sending = false;
       assistantThinking = false;
-      streamingReply = "";
+      streamingReply = '';
     }
 
     return ok;
@@ -733,7 +733,7 @@
       return;
     }
 
-    messageInput = "";
+    messageInput = '';
 
     const ok = await streamMessage({ content, watch: false });
     if (!ok) {
@@ -747,7 +747,7 @@
   }
 
   async function handleInputKeydown(event: KeyboardEvent): Promise<void> {
-    if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) {
+    if (event.key !== 'Enter' || (!event.metaKey && !event.ctrlKey)) {
       return;
     }
 
@@ -783,7 +783,7 @@
 
     questionCustomAnswers = {
       ...questionCustomAnswers,
-      [questionIndex]: "",
+      [questionIndex]: '',
     };
   }
 
@@ -825,7 +825,7 @@
 
   function canAnswerQuestion(questionIndex: number): boolean {
     const selected = questionSelections[questionIndex] ?? [];
-    const customAnswer = (questionCustomAnswers[questionIndex] ?? "").trim();
+    const customAnswer = (questionCustomAnswers[questionIndex] ?? '').trim();
     return selected.length > 0 || customAnswer.length > 0;
   }
 
@@ -861,7 +861,7 @@
 
     return activeQuestionDialog.questions.map((item, index) => {
       const selected = questionSelections[index] ?? [];
-      const customAnswer = (questionCustomAnswers[index] ?? "").trim();
+      const customAnswer = (questionCustomAnswers[index] ?? '').trim();
 
       return {
         header: item.header,
@@ -883,7 +883,7 @@
     }
 
     const answers = buildQuestionAnswers();
-    const content = JSON.stringify({ type: "question_answer", answers });
+    const content = JSON.stringify({ type: 'question_answer', answers });
     await streamMessage({ content, watch: false });
   }
 
@@ -898,12 +898,12 @@
 
     try {
       const response = await fetch(saveUrl, {
-        method: "POST",
+        method: 'POST',
       });
       const body = (await response.json()) as SaveResponseBody;
 
       if (!response.ok) {
-        throw new Error(body.error ?? "Unable to save.");
+        throw new Error(body.error ?? 'Unable to save.');
       }
 
       if (body.messages && body.messages.length > 0) {
@@ -920,10 +920,10 @@
           successMessage = saveSuccessMessage;
         }
       } else {
-        successMessage = "Saved.";
+        successMessage = 'Saved.';
       }
     } catch (error) {
-      errorMessage = error instanceof Error ? error.message : "Unable to save.";
+      errorMessage = error instanceof Error ? error.message : 'Unable to save.';
     } finally {
       saving = false;
     }
@@ -949,7 +949,7 @@
 <div class="relative mb-3 h-[26rem] sm:h-[35rem]">
   <div
     bind:this={messagesViewport}
-    class={`stacked-scroll h-full overflow-y-auto p-1 ${activeQuestionDialog ? "pb-64" : ""}`}
+    class={`stacked-scroll h-full overflow-y-auto p-1 ${activeQuestionDialog ? 'pb-64' : ''}`}
   >
     {#if messages.length === 0 && !sending}
       <div
@@ -964,29 +964,29 @@
       <div class="space-y-3">
         {#each messages as message (message.id)}
           {@const messageQuestionDialog =
-            message.role === "assistant"
+            message.role === 'assistant'
               ? parseQuestionDialogMessage(message.content)
               : null}
           {@const hideMessage =
-            message.role === "assistant" && messageQuestionDialog !== null}
+            message.role === 'assistant' && messageQuestionDialog !== null}
           {@const messageQuestionAnswers =
-            message.role === "user"
+            message.role === 'user'
               ? parseQuestionAnswerSummary(message.content)
               : null}
           {@const messageStageSummary =
-            message.role === "assistant"
+            message.role === 'assistant'
               ? parseStageSummary(message.content)
               : null}
           {#if !hideMessage}
             <div
               class={`stacked-chat-font w-fit max-w-[90%] rounded-2xl border px-4 py-3 text-sm ${
-                message.role === "user"
-                  ? "ml-auto rounded-br-none border-[var(--stacked-accent)] bg-blue-500/20 text-blue-50"
-                  : "mr-auto rounded-bl-none border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] text-[var(--stacked-text)]"
+                message.role === 'user'
+                  ? 'ml-auto rounded-br-none border-[var(--stacked-accent)] bg-blue-500/20 text-blue-50'
+                  : 'mr-auto rounded-bl-none border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] text-[var(--stacked-text)]'
               }`}
             >
               <p class="mb-1 text-[11px] uppercase tracking-wide opacity-70">
-                {message.role === "assistant" ? "agent" : message.role}
+                {message.role === 'assistant' ? 'agent' : message.role}
               </p>
               {#if messageQuestionAnswers}
                 <div class="space-y-1.5">
@@ -1092,7 +1092,7 @@
                   class="flex items-start gap-2 rounded-md border border-transparent px-2 py-1.5 transition hover:border-[var(--stacked-border-soft)] hover:bg-[var(--stacked-bg)]/50"
                 >
                   <input
-                    type={activeQuestion.multiple ? "checkbox" : "radio"}
+                    type={activeQuestion.multiple ? 'checkbox' : 'radio'}
                     name={`question-${activeQuestionIndex}`}
                     checked={isQuestionOptionSelected(
                       activeQuestionIndex,
@@ -1129,7 +1129,7 @@
               <label class="mt-3 flex flex-col gap-1 text-sm">
                 <span class="stacked-subtle text-xs">Type your own answer</span>
                 <input
-                  value={questionCustomAnswers[activeQuestionIndex] ?? ""}
+                  value={questionCustomAnswers[activeQuestionIndex] ?? ''}
                   oninput={(event) =>
                     setQuestionCustomAnswer(
                       activeQuestionIndex,

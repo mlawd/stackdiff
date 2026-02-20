@@ -1,13 +1,18 @@
 {
-	"name": "stacked",
-	"private": true,
-	"version": "0.1.0",
-	"workspaces": [
-		"services/*"
-	],
-	"scripts": {
-		"dev": "npm run dev -w @stacked/app",
-		"build": "npm run build -w @stacked/app",
-		"check": "npm run check -w @stacked/app"
-	}
+  "name": "stacked",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "services/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @stacked/app",
+    "build": "npm run build -w @stacked/app",
+    "check": "npm run check -w @stacked/app",
+    "prettier": "prettier --write \"**/*.{js,ts,svelte,json,md}\""
+  },
+  "devDependencies": {
+    "prettier": "3.8.1",
+    "prettier-plugin-svelte": "3.5.0"
+  }
 }

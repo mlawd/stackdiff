@@ -7,24 +7,25 @@ import { enrichStackStatus } from '$lib/server/stack-status';
 import { getStackById } from '$lib/server/stack-store';
 
 export const load: PageServerLoad = async ({ params }) => {
-	const stack = await getStackById(params.id);
+  const stack = await getStackById(params.id);
 
-	if (!stack) {
-		throw error(404, 'Feature not found');
-	}
+  if (!stack) {
+    throw error(404, 'Feature not found');
+  }
 
-	const enriched = await enrichStackStatus(stack);
-	const stageSyncById = await getStageSyncById(stack);
-	const { session, messages, awaitingResponse } = await loadExistingPlanningSession(params.id);
+  const enriched = await enrichStackStatus(stack);
+  const stageSyncById = await getStageSyncById(stack);
+  const { session, messages, awaitingResponse } =
+    await loadExistingPlanningSession(params.id);
 
-	return {
-		stack: {
-			...enriched,
-			stageSyncById
-		},
-		session,
-		messages,
-		awaitingResponse,
-		loadedAt: new Date().toISOString()
-	};
+  return {
+    stack: {
+      ...enriched,
+      stageSyncById,
+    },
+    session,
+    messages,
+    awaitingResponse,
+    loadedAt: new Date().toISOString(),
+  };
 };
