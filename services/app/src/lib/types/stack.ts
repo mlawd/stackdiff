@@ -127,4 +127,103 @@ export interface StackViewModel extends StackMetadata {
 	gitError?: string;
 	ghError?: string;
 	pullRequest?: StackPullRequest;
+	stageDiffabilityById?: Record<string, StageDiffabilityMetadata>;
+}
+
+export interface StageDiffabilityMetadata {
+	isDiffable: boolean;
+	branchName?: string;
+	reasonIfNotDiffable?: string;
+}
+
+export type StageDiffLineType = 'context' | 'add' | 'del';
+
+export interface StageDiffLine {
+	lineId: string;
+	type: StageDiffLineType;
+	content: string;
+	oldLineNumber: number | null;
+	newLineNumber: number | null;
+}
+
+export interface StageDiffHunk {
+	header: string;
+	oldStart: number;
+	oldLines: number;
+	newStart: number;
+	newLines: number;
+	lines: StageDiffLine[];
+}
+
+export type StageDiffFileChangeType = 'added' | 'deleted' | 'modified' | 'renamed';
+
+export interface StageDiffFile {
+	path: string;
+	previousPath?: string;
+	changeType: StageDiffFileChangeType;
+	isBinary: boolean;
+	additions: number;
+	deletions: number;
+	hunks: StageDiffHunk[];
+}
+
+export interface StageDiffSummary {
+	filesChanged: number;
+	additions: number;
+	deletions: number;
+}
+
+export interface StageDiffTruncation {
+	maxFiles: number;
+	maxLines: number;
+	omittedFiles: number;
+	omittedLines: number;
+}
+
+export interface StageDiffPayload {
+	stackId: string;
+	stageId: string;
+	baseRef: string;
+	targetRef: string;
+	isTruncated: boolean;
+	truncation?: StageDiffTruncation;
+	summary: StageDiffSummary;
+	files: StageDiffFile[];
+}
+
+export interface DiffSelectionRefs {
+	baseRef: string;
+	targetRef: string;
+}
+
+export interface DiffSelection {
+	refs: DiffSelectionRefs;
+	filePath: string;
+	selectedLineIds: string[];
+	snippet: string;
+}
+
+export interface StageDiffChatResult {
+	stackId: string;
+	stageId: string;
+	selection: DiffSelection;
+	assistantReply: string;
+}
+
+export type StageDiffErrorCode = 'not-found' | 'not-diffable' | 'command-failed' | 'parse-failed';
+
+export interface StageDiffServiceErrorShape {
+	code: StageDiffErrorCode;
+	message: string;
+}
+
+export type StageDiffChatErrorCode =
+	| 'not-found'
+	| 'not-diffable'
+	| 'invalid-selection'
+	| 'command-failed';
+
+export interface StageDiffChatErrorShape {
+	code: StageDiffChatErrorCode;
+	message: string;
 }

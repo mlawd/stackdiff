@@ -2,6 +2,7 @@ import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
 import { loadExistingPlanningSession } from '$lib/server/planning-service';
+import { getStageDiffabilityById } from '$lib/server/stage-diffability-service';
 import { enrichStackStatus } from '$lib/server/stack-status';
 import { getStackById } from '$lib/server/stack-store';
 
@@ -13,10 +14,14 @@ export const load: PageServerLoad = async ({ params }) => {
 	}
 
 	const enriched = await enrichStackStatus(stack);
+	const stageDiffabilityById = await getStageDiffabilityById(stack);
 	const { session, messages, awaitingResponse } = await loadExistingPlanningSession(params.id);
 
 	return {
-		stack: enriched,
+		stack: {
+			...enriched,
+			stageDiffabilityById
+		},
 		session,
 		messages,
 		awaitingResponse,

@@ -239,6 +239,11 @@ export async function getImplementationSessionByStackAndStage(
 	);
 }
 
+export async function getImplementationSessionsByStackId(stackId: string): Promise<StackImplementationSession[]> {
+	const file = await readStackFile();
+	return (file.implementationSessions ?? []).filter((session) => session.stackId === stackId);
+}
+
 export async function createOrGetImplementationSession(
 	stackId: string,
 	stageId: string,
@@ -303,6 +308,25 @@ export async function setImplementationSessionOpencodeId(
 	}
 
 	session.opencodeSessionId = opencodeSessionId;
+	session.updatedAt = new Date().toISOString();
+	await writeStackFile(file);
+
+	return session;
+}
+
+export async function touchImplementationSessionUpdatedAt(
+	stackId: string,
+	stageId: string
+): Promise<StackImplementationSession> {
+	const file = await readStackFile();
+	const session = file.implementationSessions?.find(
+		(candidate) => candidate.stackId === stackId && candidate.stageId === stageId
+	);
+
+	if (!session) {
+		throw new Error('Implementation session not found.');
+	}
+
 	session.updatedAt = new Date().toISOString();
 	await writeStackFile(file);
 
