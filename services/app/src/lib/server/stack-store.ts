@@ -4,7 +4,19 @@ import type {
 	FeatureStage,
 	FeatureStageStatus,
 	FeatureType,
+	MergeCommitType,
 	StackImplementationSession,
+	StackMergeBranchDetail,
+	StackMergeCheckResult,
+	StackMergeCheckSource,
+	StackMergeCheckStatus,
+	StackMergeChecksSummary,
+	StackMergeMetadata,
+	StackMergeReadiness,
+	StackMergeReadinessBlocker,
+	StackMergeReadinessBlockerCode,
+	StackMergeResult,
+	StackMergeResultStatus,
 	StackStatus,
 	StackFile,
 	StackMetadata,
@@ -43,6 +55,157 @@ function isFeatureStage(value: unknown): value is FeatureStage {
 	);
 }
 
+function isMergeCommitType(value: unknown): value is MergeCommitType {
+	return value === 'feat' || value === 'fix' || value === 'chore';
+}
+
+function isStackMergeCheckStatus(value: unknown): value is StackMergeCheckStatus {
+	return value === 'pending' || value === 'passed' || value === 'failed' || value === 'skipped' || value === 'unknown';
+}
+
+function isStackMergeCheckSource(value: unknown): value is StackMergeCheckSource {
+	return value === 'git' || value === 'gh' || value === 'stacked';
+}
+
+function isStackMergeCheckResult(value: unknown): value is StackMergeCheckResult {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const check = value as Partial<StackMergeCheckResult>;
+
+	return (
+		typeof check.id === 'string' &&
+		typeof check.name === 'string' &&
+		isStackMergeCheckStatus(check.status) &&
+		isStackMergeCheckSource(check.source) &&
+		(check.details === undefined || typeof check.details === 'string') &&
+		(check.url === undefined || typeof check.url === 'string')
+	);
+}
+
+function isStackMergeChecksSummary(value: unknown): value is StackMergeChecksSummary {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const summary = value as Partial<StackMergeChecksSummary>;
+
+	return (
+		typeof summary.total === 'number' &&
+		typeof summary.passed === 'number' &&
+		typeof summary.failed === 'number' &&
+		typeof summary.pending === 'number' &&
+		typeof summary.skipped === 'number' &&
+		typeof summary.unknown === 'number' &&
+		Array.isArray(summary.checks) &&
+		summary.checks.every(isStackMergeCheckResult) &&
+		typeof summary.evaluatedAt === 'string'
+	);
+}
+
+function isStackMergeReadinessBlockerCode(value: unknown): value is StackMergeReadinessBlockerCode {
+	return (
+		value === 'NO_STAGES' ||
+		value === 'STAGE_NOT_DONE' ||
+		value === 'WORKING_TREE_DIRTY' ||
+		value === 'CHECKS_FAILED' ||
+		value === 'CHECKS_PENDING' ||
+		value === 'PULL_REQUEST_NOT_READY' ||
+		value === 'REPOSITORY_ERROR' ||
+		value === 'UNKNOWN'
+	);
+}
+
+function isStackMergeReadinessBlocker(value: unknown): value is StackMergeReadinessBlocker {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const blocker = value as Partial<StackMergeReadinessBlocker>;
+
+	return (
+		isStackMergeReadinessBlockerCode(blocker.code) &&
+		typeof blocker.message === 'string' &&
+		(blocker.stageId === undefined || typeof blocker.stageId === 'string') &&
+		(blocker.branchName === undefined || typeof blocker.branchName === 'string')
+	);
+}
+
+function isStackMergeReadiness(value: unknown): value is StackMergeReadiness {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const readiness = value as Partial<StackMergeReadiness>;
+
+	return (
+		typeof readiness.isReady === 'boolean' &&
+		Array.isArray(readiness.blockers) &&
+		readiness.blockers.every(isStackMergeReadinessBlocker) &&
+		isStackMergeChecksSummary(readiness.checksSummary) &&
+		typeof readiness.evaluatedAt === 'string'
+	);
+}
+
+function isStackMergeResultStatus(value: unknown): value is StackMergeResultStatus {
+	return value === 'merged' || value === 'blocked' || value === 'failed';
+}
+
+function isStackMergeBranchDetail(value: unknown): value is StackMergeBranchDetail {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const detail = value as Partial<StackMergeBranchDetail>;
+
+	return (
+		typeof detail.stageId === 'string' &&
+		typeof detail.stageTitle === 'string' &&
+		typeof detail.branchName === 'string' &&
+		Array.isArray(detail.commitMessages) &&
+		detail.commitMessages.every((message: unknown) => typeof message === 'string') &&
+		typeof detail.commitCount === 'number'
+	);
+}
+
+function isStackMergeResult(value: unknown): value is StackMergeResult {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const result = value as Partial<StackMergeResult>;
+
+	return (
+		isStackMergeResultStatus(result.status) &&
+		typeof result.stackId === 'string' &&
+		isMergeCommitType(result.commitType) &&
+		typeof result.commitMessage === 'string' &&
+		(result.mergedAt === undefined || typeof result.mergedAt === 'string') &&
+		(result.mergeCommitSha === undefined || typeof result.mergeCommitSha === 'string') &&
+		isStackMergeReadiness(result.readiness) &&
+		Array.isArray(result.branches) &&
+		result.branches.every(isStackMergeBranchDetail) &&
+		(result.errorMessage === undefined || typeof result.errorMessage === 'string')
+	);
+}
+
+function isStackMergeMetadata(value: unknown): value is StackMergeMetadata {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const metadata = value as Partial<StackMergeMetadata>;
+
+	return (
+		(metadata.lastReadiness === undefined || isStackMergeReadiness(metadata.lastReadiness)) &&
+		(metadata.lastMergeResult === undefined || isStackMergeResult(metadata.lastMergeResult)) &&
+		(metadata.lastMergedAt === undefined || typeof metadata.lastMergedAt === 'string') &&
+		(metadata.lastMergeCommitSha === undefined || typeof metadata.lastMergeCommitSha === 'string') &&
+		(metadata.defaultCommitType === undefined || isMergeCommitType(metadata.defaultCommitType))
+	);
+}
+
 function isStackMetadata(value: unknown): value is StackMetadata {
 	if (typeof value !== 'object' || value === null) {
 		return false;
@@ -56,7 +219,8 @@ function isStackMetadata(value: unknown): value is StackMetadata {
 		isFeatureType(stack.type) &&
 		(stack.status === undefined || isStackStatus(stack.status)) &&
 		(stack.notes === undefined || typeof stack.notes === 'string') &&
-		(stack.stages === undefined || (Array.isArray(stack.stages) && stack.stages.every(isFeatureStage)))
+		(stack.stages === undefined || (Array.isArray(stack.stages) && stack.stages.every(isFeatureStage))) &&
+		(stack.merge === undefined || isStackMergeMetadata(stack.merge))
 	);
 }
 
