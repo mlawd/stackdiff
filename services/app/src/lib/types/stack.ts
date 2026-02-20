@@ -191,9 +191,39 @@ export interface StageDiffPayload {
 	files: StageDiffFile[];
 }
 
+export interface DiffSelectionRefs {
+	baseRef: string;
+	targetRef: string;
+}
+
+export interface DiffSelection {
+	refs: DiffSelectionRefs;
+	filePath: string;
+	selectedLineIds: string[];
+	snippet: string;
+}
+
+export interface StageDiffChatResult {
+	stackId: string;
+	stageId: string;
+	selection: DiffSelection;
+	assistantReply: string;
+}
+
 export type StageDiffErrorCode = 'not-found' | 'not-diffable' | 'command-failed' | 'parse-failed';
 
 export interface StageDiffServiceErrorShape {
 	code: StageDiffErrorCode;
+	message: string;
+}
+
+export type StageDiffChatErrorCode =
+	| 'not-found'
+	| 'not-diffable'
+	| 'invalid-selection'
+	| 'command-failed';
+
+export interface StageDiffChatErrorShape {
+	code: StageDiffChatErrorCode;
 	message: string;
 }
