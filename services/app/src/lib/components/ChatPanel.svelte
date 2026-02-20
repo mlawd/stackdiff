@@ -35,6 +35,9 @@
 		stageDescription: string;
 	}
 
+	const SAVE_PLAN_PROMPT_PREFIX =
+		'Create a detailed implementation plan and stages config from this conversation.';
+
 	interface Props {
 		streamUrl: string;
 		initialMessages: PlanningMessage[];
@@ -75,6 +78,7 @@
 	let successMessage = $state<string | null>(null);
 	let resumePendingStream = $state(false);
 	let activeQuestionDialog = $state<PlanningQuestionDialog | null>(null);
+	let activeQuestionIndex = $state(0);
 	let questionSelections = $state<Record<number, string[]>>({});
 	let questionCustomAnswers = $state<Record<number, string>>({});
 
@@ -106,6 +110,7 @@
 		if (!pendingQuestion) {
 			if (activeQuestionDialog) {
 				activeQuestionDialog = null;
+				activeQuestionIndex = 0;
 				questionSelections = {};
 				questionCustomAnswers = {};
 			}
@@ -433,6 +438,22 @@
 		return stages.length > 0 ? stages : null;
 	}
 
+	function getDisplayMessageContent(message: PlanningMessage): string {
+		if (
+			message.role === 'user' &&
+			message.content.startsWith(SAVE_PLAN_PROMPT_PREFIX) &&
+			message.content.includes('Return ONLY valid JSON')
+		) {
+			return 'Save plan';
+		}
+
+		return message.content;
+	}
+
+	function isSavePlanPromptMessage(message: PlanningMessage): boolean {
+		return getDisplayMessageContent(message) === 'Save plan';
+	}
+
 	function findPendingQuestionDialog(history: PlanningMessage[]): PlanningQuestionDialog | null {
 		for (let index = history.length - 1; index >= 0; index -= 1) {
 			const message = history[index];
@@ -478,8 +499,17 @@
 			nextCustomAnswers[index] = '';
 		});
 
+		activeQuestionIndex = 0;
 		questionSelections = nextSelections;
 		questionCustomAnswers = nextCustomAnswers;
+	}
+
+	function getActiveQuestion(): PlanningQuestionItem | null {
+		if (!activeQuestionDialog) {
+			return null;
+		}
+
+		return activeQuestionDialog.questions[activeQuestionIndex] ?? null;
 	}
 
 	function addOptimisticUserMessage(content: string): void {
@@ -584,6 +614,7 @@
 		streamingReply = '';
 		assistantThinking = true;
 		activeQuestionDialog = null;
+		activeQuestionIndex = 0;
 		questionSelections = {};
 		questionCustomAnswers = {};
 
@@ -750,16 +781,32 @@
 		}
 	}
 
+	function canAnswerQuestion(questionIndex: number): boolean {
+		const selected = questionSelections[questionIndex] ?? [];
+		const customAnswer = (questionCustomAnswers[questionIndex] ?? '').trim();
+		return selected.length > 0 || customAnswer.length > 0;
+	}
+
 	function canSubmitQuestionAnswers(): boolean {
 		if (!activeQuestionDialog) {
 			return false;
 		}
 
 		return activeQuestionDialog.questions.every((item, index) => {
-			const selected = questionSelections[index] ?? [];
-			const customAnswer = (questionCustomAnswers[index] ?? '').trim();
-			return selected.length > 0 || customAnswer.length > 0;
+			return canAnswerQuestion(index);
 		});
+	}
+
+	function goToPreviousQuestion(): void {
+		activeQuestionIndex = Math.max(0, activeQuestionIndex - 1);
+	}
+
+	function goToNextQuestion(): void {
+		if (!activeQuestionDialog || !canAnswerQuestion(activeQuestionIndex)) {
+			return;
+		}
+
+		activeQuestionIndex = Math.min(activeQuestionDialog.questions.length - 1, activeQuestionIndex + 1);
 	}
 
 	function buildQuestionAnswers(): PlanningQuestionAnswer[] {
@@ -845,185 +892,189 @@
 	</div>
 {/if}
 
-<div
-	bind:this={messagesViewport}
-	class="stacked-scroll mb-3 h-[26rem] overflow-y-auto p-1 sm:h-[35rem]"
->
-	{#if messages.length === 0 && !sending}
-		<div class="stacked-chat-font h-full content-center text-sm stacked-subtle">
-			<p class="mb-2 font-semibold text-[var(--stacked-text)]">{emptyTitle}</p>
-			<p>{emptyDescription}</p>
-		</div>
-	{:else}
-		<div class="space-y-3">
-			{#each messages as message (message.id)}
-				{@const messageQuestionDialog =
-					message.role === 'assistant' ? parseQuestionDialogMessage(message.content) : null}
-				{@const messageQuestionAnswers =
-					message.role === 'user' ? parseQuestionAnswerSummary(message.content) : null}
-				{@const messageStageSummary =
-					message.role === 'assistant' ? parseStageSummary(message.content) : null}
-				<div
-					class={`stacked-chat-font w-fit max-w-[90%] rounded-2xl border px-4 py-3 text-sm ${
-						message.role === 'user'
-							? 'ml-auto rounded-br-none border-[var(--stacked-accent)] bg-blue-500/20 text-blue-50'
-							: 'mr-auto rounded-bl-none border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] text-[var(--stacked-text)]'
-					}`}
-				>
-					<p class="mb-1 text-[11px] uppercase tracking-wide opacity-70">
-						{message.role === 'assistant' ? 'agent' : message.role}
-					</p>
-					{#if messageQuestionDialog}
-						<div class="space-y-4">
-							{#each messageQuestionDialog.questions as question, questionIndex (`${question.header}-${question.question}-${questionIndex}`)}
-								<div
-									class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)]/60 p-3"
-								>
-									<p class="text-xs font-semibold uppercase tracking-wide opacity-70">
-										{question.header}
-									</p>
-									<p class="mt-1 text-sm">{question.question}</p>
-									<div class="mt-2 space-y-2">
-										{#each question.options as option, optionIndex (`${option.label}-${optionIndex}`)}
-											<div
-												class="rounded-md border border-transparent px-2 py-1.5"
-											>
-												<span class="leading-snug">
-													<span class="block text-sm">{option.label}</span>
-													{#if option.description}
-														<span class="stacked-subtle block text-xs">{option.description}</span>
-													{/if}
-												</span>
-											</div>
-										{/each}
-									</div>
-									{#if question.allowCustom}
-										<p class="mt-3 stacked-subtle text-xs">Custom answer allowed</p>
-									{/if}
-								</div>
-							{/each}
-						</div>
-					{:else if messageQuestionAnswers}
-						<div class="space-y-1.5">
-							{#each messageQuestionAnswers as answer, answerIndex (`${answer.question}-${answer.answer}-${answerIndex}`)}
-								<p class="leading-snug">
-									<span class="stacked-subtle text-xs uppercase tracking-wide">{answer.question}</span>
-									<span class="mx-1 opacity-70">:</span>
-									<span class="text-sm">{answer.answer}</span>
-								</p>
-							{/each}
-						</div>
-					{:else if messageStageSummary}
-						<div class="space-y-2">
-							<p class="stacked-subtle text-xs uppercase tracking-wide">Stages</p>
-							{#each messageStageSummary as stage, stageIndex (`${stage.stageName}-${stageIndex}`)}
-								<p class="leading-snug">
-									<span class="text-sm font-semibold">{stage.stageName}</span>
-									<span class="mx-1 opacity-70">-</span>
-									<span class="text-sm">{stage.stageDescription}</span>
-								</p>
-							{/each}
-						</div>
-					{:else}
-						<div class="stacked-markdown">
-							{@html renderMarkdown(message.content)}
-						</div>
-					{/if}
-				</div>
-			{/each}
-
-			{#if sending}
-				<div
-					class="stacked-chat-font mr-auto w-fit max-w-[90%] rounded-2xl rounded-bl-none border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-4 py-3 text-sm text-[var(--stacked-text)]"
-				>
-					<p class="mb-1 text-[11px] uppercase tracking-wide opacity-70">agent</p>
-					{#if assistantThinking && !streamingReply}
-						<div class="stacked-subtle flex items-center gap-2">
-							<Spinner
-								size="4"
-								currentFill="var(--stacked-accent)"
-								currentColor="color-mix(in oklab, var(--stacked-border-soft) 82%, #9aa3b7 18%)"
-								class="opacity-90"
-							/>
-							<span>Assistant is thinking...</span>
-						</div>
-					{:else}
-						<div class="stacked-markdown">
-							{@html renderMarkdown(streamingReply)}
-						</div>
-					{/if}
-				</div>
-			{/if}
-
-			{#if activeQuestionDialog}
-				<div
-					class="stacked-chat-font mr-auto w-fit max-w-[90%] rounded-2xl rounded-bl-none border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-4 py-3 text-sm text-[var(--stacked-text)]"
-				>
-					<p class="mb-1 text-[11px] uppercase tracking-wide opacity-70">agent</p>
-					<div class="space-y-4">
-						{#each activeQuestionDialog.questions as question, questionIndex (`${question.header}-${question.question}-${questionIndex}`)}
-							<div
-								class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)]/60 p-3"
-							>
-								<p class="text-xs font-semibold uppercase tracking-wide opacity-70">
-									{question.header}
-								</p>
-								<p class="mt-1 text-sm">{question.question}</p>
-								<div class="mt-2 space-y-2">
-									{#each question.options as option, optionIndex (`${option.label}-${optionIndex}`)}
-										<label
-											class="flex items-start gap-2 rounded-md border border-transparent px-2 py-1.5 transition hover:border-[var(--stacked-border-soft)] hover:bg-[var(--stacked-bg)]/50"
-										>
-											<input
-												type={question.multiple ? 'checkbox' : 'radio'}
-												name={`question-${questionIndex}`}
-												checked={isQuestionOptionSelected(questionIndex, option.label)}
-												onchange={(event) => {
-													const target = event.currentTarget as HTMLInputElement;
-													if (question.multiple) {
-														toggleQuestionOption(questionIndex, option.label, target.checked);
-														return;
-													}
-													setSingleQuestionOption(questionIndex, option.label);
-												}}
-											/>
-											<span class="leading-snug">
-												<span class="block text-sm">{option.label}</span>
-												{#if option.description}
-													<span class="stacked-subtle block text-xs">{option.description}</span>
-												{/if}
-											</span>
-										</label>
+<div class="relative mb-3 h-[26rem] sm:h-[35rem]">
+	<div
+		bind:this={messagesViewport}
+		class={`stacked-scroll h-full overflow-y-auto p-1 ${activeQuestionDialog ? 'pb-64' : ''}`}
+	>
+		{#if messages.length === 0 && !sending}
+			<div class="stacked-chat-font h-full content-center text-sm stacked-subtle">
+				<p class="mb-2 font-semibold text-[var(--stacked-text)]">{emptyTitle}</p>
+				<p>{emptyDescription}</p>
+			</div>
+		{:else}
+			<div class="space-y-3">
+				{#each messages as message (message.id)}
+					{@const messageQuestionDialog =
+						message.role === 'assistant' ? parseQuestionDialogMessage(message.content) : null}
+					{@const hideMessage = message.role === 'assistant' && messageQuestionDialog !== null}
+					{@const messageQuestionAnswers =
+						message.role === 'user' ? parseQuestionAnswerSummary(message.content) : null}
+					{@const messageStageSummary =
+						message.role === 'assistant' ? parseStageSummary(message.content) : null}
+					{#if !hideMessage}
+						<div
+							class={`stacked-chat-font w-fit max-w-[90%] rounded-2xl border px-4 py-3 text-sm ${
+								message.role === 'user'
+									? 'ml-auto rounded-br-none border-[var(--stacked-accent)] bg-blue-500/20 text-blue-50'
+									: 'mr-auto rounded-bl-none border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] text-[var(--stacked-text)]'
+							}`}
+						>
+							<p class="mb-1 text-[11px] uppercase tracking-wide opacity-70">
+								{message.role === 'assistant' ? 'agent' : message.role}
+							</p>
+							{#if messageQuestionAnswers}
+								<div class="space-y-1.5">
+									{#each messageQuestionAnswers as answer, answerIndex (`${answer.question}-${answer.answer}-${answerIndex}`)}
+										<p class="leading-snug">
+											<span class="stacked-subtle text-xs uppercase tracking-wide">{answer.question}</span>
+											<span class="mx-1 opacity-70">:</span>
+											<span class="text-sm">{answer.answer}</span>
+										</p>
 									{/each}
 								</div>
-								{#if question.allowCustom}
-									<label class="mt-3 flex flex-col gap-1 text-sm">
-										<span class="stacked-subtle text-xs">Type your own answer</span>
-										<input
-											value={questionCustomAnswers[questionIndex] ?? ''}
-											oninput={(event) =>
-												setQuestionCustomAnswer(questionIndex, (event.currentTarget as HTMLInputElement).value)}
-											placeholder="Type your own answer"
-											class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 text-sm text-[var(--stacked-text)] outline-none transition focus:border-[var(--stacked-accent)]"
-										/>
-									</label>
-								{/if}
+							{:else if messageStageSummary}
+								<div class="space-y-2">
+									<p class="stacked-subtle text-xs uppercase tracking-wide">Stages</p>
+									{#each messageStageSummary as stage, stageIndex (`${stage.stageName}-${stageIndex}`)}
+										<p class="leading-snug">
+											<span class="text-sm font-semibold">{stage.stageName}</span>
+											<span class="mx-1 opacity-70">-</span>
+											<span class="text-sm">{stage.stageDescription}</span>
+										</p>
+									{/each}
+								</div>
+					{:else}
+							{#if isSavePlanPromptMessage(message)}
+								<div class="inline-flex items-center gap-2 rounded-full border border-blue-300/50 bg-blue-400/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-blue-100">
+									<span class="opacity-80">Action</span>
+									<span class="h-1 w-1 rounded-full bg-blue-100/80"></span>
+									<span>Save plan</span>
+								</div>
+							{:else}
+								<div class="stacked-markdown">
+									{@html renderMarkdown(getDisplayMessageContent(message))}
+								</div>
+							{/if}
+						{/if}
+					</div>
+				{/if}
+				{/each}
+
+				{#if sending}
+					<div
+						class="stacked-chat-font mr-auto w-fit max-w-[90%] rounded-2xl rounded-bl-none border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-4 py-3 text-sm text-[var(--stacked-text)]"
+					>
+						<p class="mb-1 text-[11px] uppercase tracking-wide opacity-70">agent</p>
+						{#if assistantThinking && !streamingReply}
+							<div class="stacked-subtle flex items-center gap-2">
+								<Spinner
+									size="4"
+									currentFill="var(--stacked-accent)"
+									currentColor="color-mix(in oklab, var(--stacked-border-soft) 82%, #9aa3b7 18%)"
+									class="opacity-90"
+								/>
+								<span>Assistant is thinking...</span>
 							</div>
-						{/each}
+						{:else}
+							<div class="stacked-markdown">
+								{@html renderMarkdown(streamingReply)}
+							</div>
+						{/if}
 					</div>
-					<div class="mt-4 flex justify-end">
-						<button
-							type="button"
-							onclick={submitQuestionAnswer}
-							disabled={sending || saving || !canSubmitQuestionAnswers()}
-							class="cursor-pointer rounded-lg border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-70"
+				{/if}
+			</div>
+		{/if}
+	</div>
+
+	{#if activeQuestionDialog}
+		{@const activeQuestion = getActiveQuestion()}
+		{#if activeQuestion}
+			<div class="pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2 sm:p-3">
+			<div class="pointer-events-auto rounded-2xl border border-[var(--stacked-border-soft)] bg-[color-mix(in_oklab,var(--stacked-bg-soft)_86%,black_14%)] px-4 py-3 shadow-xl backdrop-blur-sm stacked-chat-font text-sm text-[var(--stacked-text)]">
+			<div class="mb-2 flex items-center justify-between gap-3">
+				<p class="text-[11px] uppercase tracking-wide opacity-70">agent question</p>
+				<p class="stacked-subtle text-xs">
+					Question {activeQuestionIndex + 1} of {activeQuestionDialog.questions.length}
+				</p>
+			</div>
+			<div class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)]/60 p-3">
+				<p class="text-xs font-semibold uppercase tracking-wide opacity-70">
+					{activeQuestion.header}
+				</p>
+				<p class="mt-1 text-sm">{activeQuestion.question}</p>
+				<div class="mt-2 space-y-2">
+					{#each activeQuestion.options as option, optionIndex (`${option.label}-${optionIndex}`)}
+						<label
+							class="flex items-start gap-2 rounded-md border border-transparent px-2 py-1.5 transition hover:border-[var(--stacked-border-soft)] hover:bg-[var(--stacked-bg)]/50"
 						>
-							Send Answers
-						</button>
-					</div>
+							<input
+								type={activeQuestion.multiple ? 'checkbox' : 'radio'}
+								name={`question-${activeQuestionIndex}`}
+								checked={isQuestionOptionSelected(activeQuestionIndex, option.label)}
+								onchange={(event) => {
+									const target = event.currentTarget as HTMLInputElement;
+									if (activeQuestion.multiple) {
+										toggleQuestionOption(activeQuestionIndex, option.label, target.checked);
+										return;
+									}
+									setSingleQuestionOption(activeQuestionIndex, option.label);
+								}}
+							/>
+							<span class="leading-snug">
+								<span class="block text-sm">{option.label}</span>
+								{#if option.description}
+									<span class="stacked-subtle block text-xs">{option.description}</span>
+								{/if}
+							</span>
+						</label>
+					{/each}
 				</div>
-			{/if}
-		</div>
+				{#if activeQuestion.allowCustom}
+					<label class="mt-3 flex flex-col gap-1 text-sm">
+						<span class="stacked-subtle text-xs">Type your own answer</span>
+						<input
+							value={questionCustomAnswers[activeQuestionIndex] ?? ''}
+							oninput={(event) =>
+								setQuestionCustomAnswer(activeQuestionIndex, (event.currentTarget as HTMLInputElement).value)}
+							placeholder="Type your own answer"
+							class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 text-sm text-[var(--stacked-text)] outline-none transition focus:border-[var(--stacked-accent)]"
+						/>
+					</label>
+				{/if}
+			</div>
+			<div class="mt-4 flex items-center justify-end gap-2">
+				<button
+					type="button"
+					onclick={goToPreviousQuestion}
+					disabled={sending || saving || activeQuestionIndex === 0}
+					class="cursor-pointer rounded-lg border border-[var(--stacked-border-soft)] px-4 py-2 text-sm font-semibold text-[var(--stacked-text)] transition hover:bg-[var(--stacked-bg)]/50 disabled:cursor-not-allowed disabled:opacity-70"
+				>
+					Back
+				</button>
+				{#if activeQuestionIndex < activeQuestionDialog.questions.length - 1}
+					<button
+						type="button"
+						onclick={goToNextQuestion}
+						disabled={sending || saving || !canAnswerQuestion(activeQuestionIndex)}
+						class="cursor-pointer rounded-lg border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-70"
+					>
+						Next
+					</button>
+				{:else}
+					<button
+						type="button"
+						onclick={submitQuestionAnswer}
+						disabled={sending || saving || !canSubmitQuestionAnswers()}
+						class="cursor-pointer rounded-lg border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-70"
+					>
+						Send Answer
+					</button>
+				{/if}
+			</div>
+				</div>
+			</div>
+		{/if}
 	{/if}
 </div>
 

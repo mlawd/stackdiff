@@ -161,49 +161,25 @@
 		},
 		{
 			"id": "merging-the-entire-stack-feature-rqh4z2",
-			"status": "started",
+			"status": "planned",
 			"stages": [
 				{
 					"id": "stage-1",
 					"title": "Define merge and checks contracts",
 					"details": "Add/extend TypeScript domain contracts for checks summary, merge readiness blockers, merge result payloads, and persisted merge metadata so downstream services and routes share deterministic typed interfaces.",
-					"status": "done",
-					"pullRequest": {
-						"number": 7,
-						"title": "feature: Merging the entire stack/feature - 1: Define merge and checks contracts",
-						"state": "OPEN",
-						"isDraft": false,
-						"url": "https://github.com/mlawd/stackdiff/pull/7",
-						"updatedAt": "2026-02-20T13:52:32Z"
-					}
+					"status": "not-started"
 				},
 				{
 					"id": "stage-2",
 					"title": "Implement strict PR checks resolver",
 					"details": "Build a server-side GitHub checks resolver that fetches stage PR check contexts/runs via gh, normalizes states, counts passed/total/pending, and marks any non-pass or lookup failure as blocking.",
-					"status": "done",
-					"pullRequest": {
-						"number": 8,
-						"title": "feature: Merging the entire stack/feature - 2: Implement strict PR checks resolver",
-						"state": "OPEN",
-						"isDraft": false,
-						"url": "https://github.com/mlawd/stackdiff/pull/8",
-						"updatedAt": "2026-02-20T13:56:37Z"
-					}
+					"status": "not-started"
 				},
 				{
 					"id": "stage-3",
 					"title": "Build stack merge readiness evaluator",
 					"details": "Create readiness logic that requires all stages done, all stage PRs present, and all checks passing; emit structured blocker reasons and aggregate check summary for API and UI consumption.",
-					"status": "review-ready",
-					"pullRequest": {
-						"number": 10,
-						"title": "feature: Merging the entire stack/feature - 3: Build stack merge readiness evaluator",
-						"state": "OPEN",
-						"isDraft": false,
-						"url": "https://github.com/mlawd/stackdiff/pull/10",
-						"updatedAt": "2026-02-20T14:25:28Z"
-					}
+					"status": "not-started"
 				},
 				{
 					"id": "stage-4",
@@ -245,6 +221,51 @@
 			"name": "Merging the entire stack/feature",
 			"notes": "As a user, I want to be able to merge the entire feature in one go. Ideally creating a single squash merge with feat|fix|chore: feature name as the commit message, with detail for each branch that has made up the commit.",
 			"type": "feature"
+		},
+		{
+			"id": "refactor-feature-page-3ckfas",
+			"status": "planned",
+			"stages": [
+				{
+					"id": "stage-1",
+					"title": "Baseline behavior and interface contracts",
+					"details": "Capture current feature-page behavior and define typed prop/composable contracts so extraction can proceed with strict parity and low regression risk.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-2",
+					"title": "Extract top-level page sections",
+					"details": "Split header, tabs, plan panel, and stack panel into standalone components while retaining existing state and actions in the page orchestrator.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-3",
+					"title": "Isolate implementation stages UI",
+					"details": "Create ImplementationStagesPanel and ImplementationStageRow to move the highest-churn stage list/row markup and interactions out of the page file.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-4",
+					"title": "Isolate stage diff drawer UI",
+					"details": "Extract the full stage diff drawer, sidebar, and main area into dedicated components and relocate drawer-local styles while preserving interaction parity.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-5",
+					"title": "Extract composables and thin page orchestrator",
+					"details": "Move start flow, runtime polling, diff lifecycle, and selection/chat logic into typed Svelte 5 composables, leaving +page.svelte as composition wiring only.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-6",
+					"title": "Parity validation and build verification",
+					"details": "Run manual parity checks for all key flows, then execute check and build gates, fixing issues while keeping refactor scope strictly parity-only.",
+					"status": "not-started"
+				}
+			],
+			"name": "Refactor feature page",
+			"notes": "I want to refactor the feature page.\n\nIt appears to be one big component at the moment, which is causing massive merge conflicts every time. I want to split it up into different components and abstract functionality out into hooks file where they make sense",
+			"type": "chore"
 		}
 	],
 	"planningSessions": [
@@ -278,108 +299,17 @@
 			"savedPlanPath": ".stacked/plans/merging-the-entire-stack-feature-rqh4z2.md",
 			"savedStageConfigPath": ".stacked/plans/merging-the-entire-stack-feature-rqh4z2.stages.json",
 			"savedAt": "2026-02-20T13:48:29.422Z"
+		},
+		{
+			"id": "session-w3l4v274",
+			"stackId": "refactor-feature-page-3ckfas",
+			"createdAt": "2026-02-20T15:16:23.056Z",
+			"updatedAt": "2026-02-20T16:03:59.423Z",
+			"opencodeSessionId": "ses_384606657ffey09J8P5mdenOnV",
+			"savedPlanPath": ".stacked/plans/refactor-feature-page-3ckfas.md",
+			"savedStageConfigPath": ".stacked/plans/refactor-feature-page-3ckfas.stages.json",
+			"savedAt": "2026-02-20T16:03:59.423Z"
 		}
 	],
-	"implementationSessions": [
-		{
-			"id": "impl-pcn0mjul",
-			"stackId": "branch-diff-cpbrce",
-			"stageId": "stage-1",
-			"branchName": "feature/branch-diff/1-diff-domain-and-api-contract",
-			"worktreePathKey": ".stacked/worktrees/feature-branch-diff-1-diff-domain-and-api-contract",
-			"createdAt": "2026-02-20T10:52:59.320Z",
-			"updatedAt": "2026-02-20T10:52:59.415Z",
-			"opencodeSessionId": "ses_385518bb1ffe72qlVLGlpFruV7"
-		},
-		{
-			"id": "impl-4ljajl2w",
-			"stackId": "branch-diff-cpbrce",
-			"stageId": "stage-2",
-			"branchName": "feature/branch-diff/2-stage-diffability-metadata",
-			"worktreePathKey": ".stacked/worktrees/feature-branch-diff-2-stage-diffability-metadata",
-			"createdAt": "2026-02-20T11:56:03.047Z",
-			"updatedAt": "2026-02-20T11:56:03.353Z",
-			"opencodeSessionId": "ses_38517cf2dffeGF1mJpcUX5EReZ"
-		},
-		{
-			"id": "impl-5ccm7a9t",
-			"stackId": "branch-diff-cpbrce",
-			"stageId": "stage-3",
-			"branchName": "feature/branch-diff/3-slide-out-panel-shell-and-fe",
-			"worktreePathKey": ".stacked/worktrees/feature-branch-diff-3-slide-out-panel-shell-and-fe",
-			"createdAt": "2026-02-20T12:21:47.544Z",
-			"updatedAt": "2026-02-20T12:21:47.635Z",
-			"opencodeSessionId": "ses_385003e1bffeqVcmfsdLVqfjTr"
-		},
-		{
-			"id": "impl-7lqh9ed6",
-			"stackId": "branch-diff-cpbrce",
-			"stageId": "stage-4",
-			"branchName": "feature/branch-diff/4-structured-side-by-side-diff",
-			"worktreePathKey": ".stacked/worktrees/feature-branch-diff-4-structured-side-by-side-diff",
-			"createdAt": "2026-02-20T12:25:56.483Z",
-			"updatedAt": "2026-02-20T12:25:56.547Z",
-			"opencodeSessionId": "ses_384fc71c4ffetzuF7Zata0g4GF"
-		},
-		{
-			"id": "impl-9bggi63b",
-			"stackId": "branch-diff-cpbrce",
-			"stageId": "stage-5",
-			"branchName": "feature/branch-diff/5-ux-polish-and-performance-gu",
-			"worktreePathKey": ".stacked/worktrees/feature-branch-diff-5-ux-polish-and-performance-gu",
-			"createdAt": "2026-02-20T12:33:12.279Z",
-			"updatedAt": "2026-02-20T12:33:12.355Z",
-			"opencodeSessionId": "ses_384f5cb6affe2X29lxEa5oDxef"
-		},
-		{
-			"id": "impl-m7xi8a7t",
-			"stackId": "branch-diff-cpbrce",
-			"stageId": "stage-6",
-			"branchName": "feature/branch-diff/6-hardening-and-validation",
-			"worktreePathKey": ".stacked/worktrees/feature-branch-diff-6-hardening-and-validation",
-			"createdAt": "2026-02-20T13:10:50.097Z",
-			"updatedAt": "2026-02-20T13:10:50.426Z",
-			"opencodeSessionId": "ses_384d3579cffeKPErYNwD0ZhSRS"
-		},
-		{
-			"id": "impl-5iotmpqw",
-			"stackId": "merging-the-entire-stack-feature-rqh4z2",
-			"stageId": "stage-1",
-			"branchName": "feature/merging-the-entire-stack-feature/1-define-merge-and-checks-cont",
-			"worktreePathKey": ".stacked/worktrees/feature-merging-the-entire-stack-feature-1-define-merge-and-checks-cont",
-			"createdAt": "2026-02-20T13:48:48.963Z",
-			"updatedAt": "2026-02-20T13:48:49.424Z",
-			"opencodeSessionId": "ses_384b0911fffeDr7J81mp7Kb7Vk"
-		},
-		{
-			"id": "impl-c6zrd0l0",
-			"stackId": "branch-diff-cpbrce",
-			"stageId": "stage-7",
-			"branchName": "feature/branch-diff/7-immediate-v2-line-selection-",
-			"worktreePathKey": ".stacked/worktrees/feature-branch-diff-7-immediate-v2-line-selection-",
-			"createdAt": "2026-02-20T13:51:16.538Z",
-			"updatedAt": "2026-02-20T13:51:16.844Z",
-			"opencodeSessionId": "ses_384ae518bffeeu75GJJ2vVS665"
-		},
-		{
-			"id": "impl-hctv8xn8",
-			"stackId": "merging-the-entire-stack-feature-rqh4z2",
-			"stageId": "stage-2",
-			"branchName": "feature/merging-the-entire-stack-feature/2-implement-strict-pr-checks-r",
-			"worktreePathKey": ".stacked/worktrees/feature-merging-the-entire-stack-feature-2-implement-strict-pr-checks-r",
-			"createdAt": "2026-02-20T13:52:54.177Z",
-			"updatedAt": "2026-02-20T13:52:54.294Z",
-			"opencodeSessionId": "ses_384acd3f3ffeygLbP9E4hOBhm5"
-		},
-		{
-			"id": "impl-wb9htfpo",
-			"stackId": "merging-the-entire-stack-feature-rqh4z2",
-			"stageId": "stage-3",
-			"branchName": "feature/merging-the-entire-stack-feature/3-build-stack-merge-readiness-",
-			"worktreePathKey": ".stacked/worktrees/feature-merging-the-entire-stack-feature-3-build-stack-merge-readiness-",
-			"createdAt": "2026-02-20T14:20:06.276Z",
-			"updatedAt": "2026-02-20T14:20:06.306Z",
-			"opencodeSessionId": "ses_38493ececffeLfwRDifSjahn2w"
-		}
-	]
+	"implementationSessions": []
 }

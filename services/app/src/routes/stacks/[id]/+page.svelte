@@ -843,7 +843,7 @@
 										{/if}
 										{#if stageCanOpenDiff}
 											<p class="mt-1 text-xs stacked-subtle">Branch: {stageDiffMeta.branchName}</p>
-										{:else}
+										{:else if currentStageStatus !== 'not-started'}
 											<p class="mt-1 text-xs text-amber-300">
 												{stageDiffMeta.reasonIfNotDiffable ?? 'Stage diff is unavailable.'}
 											</p>
