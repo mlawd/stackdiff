@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import PlanningChat from '$lib/components/PlanningChat.svelte';
 
 	import type { StackStatus } from '$lib/types/stack';
 	import type { PageData } from './$types';
@@ -174,13 +175,14 @@
 		</div>
 
 		<div class="mb-4">
-			<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--stacked-accent-strong)]">Feature</p>
-			<h1 class="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">{data.stack.name}</h1>
-			<p class="mt-2 text-sm stacked-subtle">{data.stack.notes ?? 'No description provided for this feature yet.'}</p>
-			<div class="mt-3 flex flex-wrap items-center gap-2">
-				<span class={typeClass[data.stack.type]}>{typeLabel[data.stack.type]}</span>
-				<span class={statusClass[data.stack.status]}>{statusLabel[data.stack.status]}</span>
+			<div class="flex flex-wrap items-center justify-between gap-3">
+				<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">{data.stack.name}</h1>
+				<div class="flex flex-wrap items-center gap-2">
+					<span class={typeClass[data.stack.type]}>{typeLabel[data.stack.type]}</span>
+					<span class={statusClass[data.stack.status]}>{statusLabel[data.stack.status]}</span>
+				</div>
 			</div>
+			<p class="mt-2 text-sm stacked-subtle">{data.stack.notes ?? 'No description provided for this feature yet.'}</p>
 		</div>
 
 		<div class="mb-4 border-b stacked-divider">
@@ -208,18 +210,12 @@
 
 		{#if activeTab === 'plan'}
 			<div class="stacked-panel-elevated p-4">
-				<p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle">Planning chat</p>
-				{#if data.stack.status === 'created'}
-					<p class="text-sm stacked-subtle">This feature is not planned yet. Open planning chat to define scope and save the plan.</p>
-				{:else}
-					<p class="text-sm stacked-subtle">You can revisit planning chat anytime to refine scope and update implementation stages.</p>
-				{/if}
-				<a
-					href={resolve(`/stacks/${data.stack.id}/plan`)}
-					class="mt-3 inline-flex rounded-md border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#2a97ff]"
-				>
-					Open planning chat
-				</a>
+				<PlanningChat
+					stackId={data.stack.id}
+					session={data.session}
+					messages={data.messages}
+					awaitingResponse={data.awaitingResponse}
+				/>
 			</div>
 		{:else}
 			<div class="space-y-4">

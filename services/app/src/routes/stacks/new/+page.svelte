@@ -46,7 +46,7 @@
 				throw new Error(body.error ?? 'Unable to create feature.');
 			}
 
-			await goto(resolve(`/stacks/${body.stack.id}/plan`));
+			await goto(resolve(`/stacks/${body.stack.id}`));
 		} catch (error) {
 			message = error instanceof Error ? error.message : 'Unable to create feature.';
 		} finally {
@@ -60,7 +60,7 @@
 		<div class="mb-6 border-b stacked-divider pb-4">
 			<a href={resolve('/')} class="stacked-link text-sm font-semibold">Back to feature pipeline</a>
 			<h1 class="mt-2 text-3xl font-semibold tracking-tight">Create New Feature</h1>
-			<p class="mt-2 text-sm stacked-subtle">Define the work item, pick its type, then continue in planning chat.</p>
+			<p class="mt-2 text-sm stacked-subtle">Define the work item, pick its type, then continue in the feature workspace.</p>
 		</div>
 
 		{#if message}
@@ -119,7 +119,7 @@
 					disabled={submitting}
 					class="cursor-pointer rounded-lg border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-70"
 				>
-					{submitting ? 'Creating...' : 'Create and Open Planning'}
+					{submitting ? 'Creating...' : 'Create Feature'}
 				</button>
 			</div>
 		</form>
