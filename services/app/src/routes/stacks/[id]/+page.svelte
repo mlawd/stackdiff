@@ -11,11 +11,14 @@
 		StageDiffPayload,
 		StageDiffChatResult,
 		StageDiffabilityMetadata,
+		StackPullRequest,
 		StackStatus
 	} from '$lib/types/stack';
 	import type { PageData } from './$types';
 
 	interface StartResponse {
+		stageNumber?: number;
+		stageTitle?: string;
 		reusedWorktree?: boolean;
 		reusedSession?: boolean;
 		startedNow?: boolean;
@@ -38,6 +41,7 @@
 		runtimeState?: 'idle' | 'busy' | 'retry' | 'missing';
 		todoCompleted?: number;
 		todoTotal?: number;
+		pullRequest?: StackPullRequest;
 		error?: string;
 	}
 
@@ -46,6 +50,7 @@
 		runtimeState: 'idle' | 'busy' | 'retry' | 'missing';
 		todoCompleted: number;
 		todoTotal: number;
+		pullRequest?: StackPullRequest;
 	}
 
 	interface StageDiffChatSuccessResponse {
@@ -111,6 +116,7 @@
 	let stageDiffCloseButton: HTMLButtonElement | null = null;
 	let previousFocusedElement: HTMLElement | null = null;
 	let previousBodyOverflow = '';
+	let runtimeInvalidating = false;
 
 	$effect(() => {
 		if (tabInitialized) {
@@ -153,17 +159,45 @@
 		return 'Not started';
 	}
 
+	function hasInProgressStage(): boolean {
+		return (data.stack.stages ?? []).some((stage) => stageStatus(stage.id, stage.status) === 'in-progress');
+	}
+
+	function hasRemainingNotStartedStage(): boolean {
+		return (data.stack.stages ?? []).some((stage) => stageStatus(stage.id, stage.status) === 'not-started');
+	}
+
 	function canStartFeature(): boolean {
-		return (data.stack.stages?.length ?? 0) > 0 && !startPending;
+		return hasRemainingNotStartedStage() && !hasInProgressStage() && !startPending;
+	}
+
+	function startButtonLabel(): string {
+		if (startPending) {
+			return 'Starting...';
+		}
+
+		if (hasInProgressStage()) {
+			return 'Start feature';
+		}
+
+		return 'Next stage';
 	}
 
 	function stageStatus(stageId: string, fallback: FeatureStageStatus): FeatureStageStatus {
 		return implementationRuntimeByStageId[stageId]?.stageStatus ?? fallback;
 	}
 
-	function inProgressStageIds(): string[] {
+	function stagePullRequest(stageId: string, fallback?: StackPullRequest): StackPullRequest | undefined {
+		return implementationRuntimeByStageId[stageId]?.pullRequest ?? fallback;
+	}
+
+	function stageIdsForRuntimePolling(): string[] {
 		return (data.stack.stages ?? [])
-			.filter((stage) => stageStatus(stage.id, stage.status) === 'in-progress')
+			.filter((stage) => {
+				const currentStatus = stageStatus(stage.id, stage.status);
+				const currentPullRequest = stagePullRequest(stage.id, stage.pullRequest);
+				return currentStatus === 'in-progress' || (currentStatus === 'review-ready' && !currentPullRequest?.number);
+			})
 			.map((stage) => stage.id);
 	}
 
@@ -173,11 +207,12 @@
 	}
 
 	async function refreshImplementationRuntime(): Promise<void> {
-		const stageIds = inProgressStageIds();
+		const stageIds = stageIdsForRuntimePolling();
 		if (stageIds.length === 0) {
-			implementationRuntimeByStageId = {};
 			return;
 		}
+
+		let shouldInvalidate = false;
 
 		const entries = await Promise.all(
 			stageIds.map(async (stageId) => {
@@ -197,7 +232,8 @@
 							stageStatus: payload.stageStatus ?? fallbackStatus,
 							runtimeState: payload.runtimeState ?? 'missing',
 							todoCompleted: payload.todoCompleted ?? 0,
-							todoTotal: payload.todoTotal ?? 0
+							todoTotal: payload.todoTotal ?? 0,
+							pullRequest: payload.pullRequest
 						} satisfies ImplementationStageRuntime
 					] as const;
 				} catch {
@@ -207,14 +243,44 @@
 							stageStatus: fallbackStatus,
 							runtimeState: 'missing',
 							todoCompleted: 0,
-							todoTotal: 0
+							todoTotal: 0,
+							pullRequest: undefined
 						} satisfies ImplementationStageRuntime
 					] as const;
 				}
 			})
 		);
 
-		implementationRuntimeByStageId = Object.fromEntries(entries);
+		const nextRuntime = {
+			...implementationRuntimeByStageId,
+			...Object.fromEntries(entries)
+		};
+
+		for (const [stageId, runtime] of entries) {
+			const stageEntry = (data.stack.stages ?? []).find((stage) => stage.id === stageId);
+			if (!stageEntry) {
+				continue;
+			}
+
+			if (stageEntry.status === 'in-progress' && runtime.stageStatus !== 'in-progress') {
+				shouldInvalidate = true;
+			}
+
+			if (runtime.pullRequest && !stageEntry.pullRequest?.number) {
+				shouldInvalidate = true;
+			}
+		}
+
+		implementationRuntimeByStageId = nextRuntime;
+
+		if (shouldInvalidate && !runtimeInvalidating) {
+			runtimeInvalidating = true;
+			try {
+				await invalidateAll();
+			} finally {
+				runtimeInvalidating = false;
+			}
+		}
 	}
 
 	$effect(() => {
@@ -222,9 +288,8 @@
 			return;
 		}
 
-		const stageIds = inProgressStageIds();
+		const stageIds = stageIdsForRuntimePolling();
 		if (stageIds.length === 0) {
-			implementationRuntimeByStageId = {};
 			return;
 		}
 
@@ -601,7 +666,13 @@
 				throw new Error(body.error ?? 'Unable to start feature.');
 			}
 
-			const mode = body.startedNow ? 'Started stage 1.' : 'Stage 1 is already running.';
+			const titledStage = body.stageTitle?.trim();
+			const stageLabel = body.stageNumber
+				? titledStage
+					? `stage ${body.stageNumber}: ${titledStage}`
+					: `stage ${body.stageNumber}`
+				: 'next stage';
+			const mode = body.startedNow ? `Started ${stageLabel}.` : `${stageLabel} is already running.`;
 			const worktreeState = body.reusedWorktree ? 'Reused existing worktree.' : 'Created worktree.';
 			const sessionState = body.reusedSession ? 'Reused implementation session.' : 'Created implementation session.';
 			startSuccess = `${mode} ${worktreeState} ${sessionState}`;
@@ -739,47 +810,45 @@
 							disabled={!canStartFeature()}
 							class="cursor-pointer rounded-lg border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-70"
 						>
-							{startPending ? 'Starting...' : 'Start feature'}
+							{startButtonLabel()}
 						</button>
 					</div>
 					{#if data.stack.stages && data.stack.stages.length > 0}
 						<div class="space-y-2">
-						{#each data.stack.stages as implementationStage (implementationStage.id)}
-							{@const stageRuntime = implementationRuntimeByStageId[implementationStage.id]}
-							{@const currentStageStatus = stageStatus(implementationStage.id, implementationStage.status)}
-							{@const stageWorking = currentStageStatus === 'in-progress' && isStageAgentWorking(implementationStage.id)}
-							<button
-								type="button"
-								onclick={() => openStageDiff(implementationStage.id, implementationStage.title)}
-									disabled={!canOpenStageDiff(implementationStage.id)}
-									title={
-										canOpenStageDiff(implementationStage.id)
-											? `Open diff for ${implementationStage.title}`
-											: stageDiffability(implementationStage.id).reasonIfNotDiffable ??
-												'Stage diff is unavailable.'
-									}
-									class={`w-full rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 text-left ${implementationStageRowClass(implementationStage.id)}`}
-								>
-									<div class="flex flex-wrap items-start justify-between gap-2">
-										<div>
-											<p class="text-sm font-medium text-[var(--stacked-text)]">{implementationStage.title}</p>
-											{#if implementationStage.details}
-												<p class="mt-1 text-xs stacked-subtle">{implementationStage.details}</p>
-											{/if}
-											{#if canOpenStageDiff(implementationStage.id)}
-												<p class="mt-1 text-xs stacked-subtle">
-													Branch: {stageDiffability(implementationStage.id).branchName}
-												</p>
-											{:else}
-												<p class="mt-1 text-xs text-amber-300">
-													{stageDiffability(implementationStage.id).reasonIfNotDiffable ??
-														'Stage diff is unavailable.'}
-												</p>
-											{/if}
-										</div>
+							{#each data.stack.stages as implementationStage (implementationStage.id)}
+								{@const stageRuntime = implementationRuntimeByStageId[implementationStage.id]}
+								{@const currentStageStatus = stageStatus(implementationStage.id, implementationStage.status)}
+								{@const currentStagePullRequest = stagePullRequest(
+									implementationStage.id,
+									implementationStage.pullRequest
+								)}
+								{@const stageWorking = currentStageStatus === 'in-progress' && isStageAgentWorking(implementationStage.id)}
+								{@const stageCanOpenDiff = canOpenStageDiff(implementationStage.id)}
+								{@const stageDiffMeta = stageDiffability(implementationStage.id)}
+								<div class={`flex flex-wrap items-start justify-between gap-2 rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 ${implementationStageRowClass(implementationStage.id)}`}>
+									<div>
+										<p class="text-sm font-medium text-[var(--stacked-text)]">{implementationStage.title}</p>
+										{#if implementationStage.details}
+											<p class="mt-1 text-xs stacked-subtle">{implementationStage.details}</p>
+										{/if}
+										{#if stageCanOpenDiff}
+											<p class="mt-1 text-xs stacked-subtle">Branch: {stageDiffMeta.branchName}</p>
+										{:else}
+											<p class="mt-1 text-xs text-amber-300">
+												{stageDiffMeta.reasonIfNotDiffable ?? 'Stage diff is unavailable.'}
+											</p>
+										{/if}
+									</div>
 									<div class="flex flex-wrap items-center justify-end gap-2">
-										{#if canOpenStageDiff(implementationStage.id)}
-											<span class="stacked-chip stacked-chip-review">View diff</span>
+										{#if stageCanOpenDiff}
+											<button
+												type="button"
+												onclick={() => openStageDiff(implementationStage.id, implementationStage.title)}
+												title={`Open diff for ${implementationStage.title}`}
+												class="stacked-chip stacked-chip-review cursor-pointer"
+											>
+												View diff
+											</button>
 										{/if}
 										<span class={`${implementationStageClass(currentStageStatus)} ${stageWorking ? 'stacked-chip-no-dot' : ''} inline-flex items-center gap-1.5`}>
 											{#if stageWorking}
@@ -792,13 +861,22 @@
 											{/if}
 											<span>{implementationStageLabel(currentStageStatus)}</span>
 										</span>
+										{#if currentStagePullRequest?.url && currentStagePullRequest.number}
+											<a
+												href={currentStagePullRequest.url}
+												target="_blank"
+												rel="noopener noreferrer"
+												class="stacked-link text-xs font-medium"
+											>
+												PR #{currentStagePullRequest.number}
+											</a>
+										{/if}
 										{#if currentStageStatus === 'in-progress' && stageRuntime}
 											<p class="text-xs stacked-subtle whitespace-nowrap">{stageRuntime.todoCompleted}/{stageRuntime.todoTotal} Todos done</p>
 										{/if}
 									</div>
 								</div>
-							</button>
-						{/each}
+							{/each}
 						</div>
 					{:else}
 						<p class="text-sm stacked-subtle">Save a plan in planning chat to generate implementation stages.</p>

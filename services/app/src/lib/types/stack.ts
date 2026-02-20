@@ -11,6 +11,7 @@ export interface FeatureStage {
 	title: string;
 	details?: string;
 	status: FeatureStageStatus;
+	pullRequest?: StackPullRequest;
 }
 
 export interface StackMetadata {

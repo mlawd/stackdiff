@@ -60,47 +60,190 @@
 					"id": "stage-1",
 					"title": "Diff domain and API contract",
 					"details": "Define structured stage diff types, implement server diff resolution/parsing with previous-stage baseline logic, and expose GET /api/stacks/[id]/stages/[stageId]/diff with deterministic status/error mapping.",
-					"status": "review-ready"
+					"status": "review-ready",
+					"pullRequest": {
+						"number": 1,
+						"title": "feat: add stage diff domain model and API endpoint",
+						"state": "OPEN",
+						"isDraft": false,
+						"url": "https://github.com/mlawd/stackdiff/pull/1",
+						"updatedAt": "2026-02-20T11:26:04Z"
+					}
 				},
 				{
 					"id": "stage-2",
 					"title": "Stage diffability metadata",
 					"details": "Augment feature page server load with per-stage runtime metadata indicating whether a stage has a diffable branch/worktree and why it may be unavailable.",
-					"status": "not-started"
+					"status": "review-ready",
+					"pullRequest": {
+						"number": 2,
+						"title": "feature: Branch diff - 2: Stage diffability metadata",
+						"state": "OPEN",
+						"isDraft": false,
+						"url": "https://github.com/mlawd/stackdiff/pull/2",
+						"updatedAt": "2026-02-20T12:19:07Z"
+					}
 				},
 				{
 					"id": "stage-3",
 					"title": "Slide-out panel shell and fetch lifecycle",
 					"details": "Add clickable behavior only for diffable stages, implement panel open/close mechanics, and wire lazy loading/error/empty handling for stage diff API calls.",
-					"status": "not-started"
+					"status": "review-ready",
+					"pullRequest": {
+						"number": 3,
+						"title": "feature: Branch diff - 3: Slide-out panel shell and fetch lifecycle",
+						"state": "OPEN",
+						"isDraft": false,
+						"url": "https://github.com/mlawd/stackdiff/pull/3",
+						"updatedAt": "2026-02-20T12:25:23Z"
+					}
 				},
 				{
 					"id": "stage-4",
 					"title": "Structured side-by-side diff renderer",
 					"details": "Build reusable Svelte diff components that render files, hunks, and paired lines side-by-side from structured payload data with stable per-line identifiers.",
-					"status": "not-started"
+					"status": "review-ready",
+					"pullRequest": {
+						"number": 4,
+						"title": "feature: Branch diff - 4: Structured side-by-side diff renderer",
+						"state": "OPEN",
+						"isDraft": false,
+						"url": "https://github.com/mlawd/stackdiff/pull/4",
+						"updatedAt": "2026-02-20T12:31:32Z"
+					}
 				},
 				{
 					"id": "stage-5",
 					"title": "UX polish and performance guardrails",
 					"details": "Add file collapse/navigation, truncation safeguards for large diffs, keyboard/mobile panel behavior improvements, and optional syntax highlighting integration.",
-					"status": "not-started"
+					"status": "review-ready",
+					"pullRequest": {
+						"number": 5,
+						"title": "feature: Branch diff - 5: UX polish and performance guardrails",
+						"state": "OPEN",
+						"isDraft": false,
+						"url": "https://github.com/mlawd/stackdiff/pull/5",
+						"updatedAt": "2026-02-20T12:51:27Z"
+					}
 				},
 				{
 					"id": "stage-6",
 					"title": "Hardening and validation",
 					"details": "Add unit and route-level tests for diff resolution and API statuses, verify edge-case handling, and run full typecheck/build validation.",
-					"status": "not-started"
+					"status": "review-ready",
+					"pullRequest": {
+						"number": 6,
+						"title": "feature: Branch diff - 6: Hardening and validation",
+						"state": "OPEN",
+						"isDraft": false,
+						"url": "https://github.com/mlawd/stackdiff/pull/6",
+						"updatedAt": "2026-02-20T13:51:10Z"
+					}
 				},
 				{
 					"id": "stage-7",
 					"title": "Immediate v2 line selection and AI chat",
 					"details": "Implement line selection over stable diff line IDs and add a chat endpoint that accepts selected diff ranges to start focused AI discussion immediately after v1.",
-					"status": "not-started"
+					"status": "review-ready",
+					"pullRequest": {
+						"number": 9,
+						"title": "feature: Branch diff - 7: Immediate v2 line selection and AI chat",
+						"state": "OPEN",
+						"isDraft": false,
+						"url": "https://github.com/mlawd/stackdiff/pull/9",
+						"updatedAt": "2026-02-20T14:23:03Z"
+					}
 				}
 			],
 			"name": "Branch diff",
 			"notes": "I want to be able to view changes made in a branch/stage. The way I want this to work is that if I click on a stage in the feature page, a panel slides out showing a side-by-side git diff of the changes introduced by the stage's branch",
+			"type": "feature"
+		},
+		{
+			"id": "merging-the-entire-stack-feature-rqh4z2",
+			"status": "started",
+			"stages": [
+				{
+					"id": "stage-1",
+					"title": "Define merge and checks contracts",
+					"details": "Add/extend TypeScript domain contracts for checks summary, merge readiness blockers, merge result payloads, and persisted merge metadata so downstream services and routes share deterministic typed interfaces.",
+					"status": "done",
+					"pullRequest": {
+						"number": 7,
+						"title": "feature: Merging the entire stack/feature - 1: Define merge and checks contracts",
+						"state": "OPEN",
+						"isDraft": false,
+						"url": "https://github.com/mlawd/stackdiff/pull/7",
+						"updatedAt": "2026-02-20T13:52:32Z"
+					}
+				},
+				{
+					"id": "stage-2",
+					"title": "Implement strict PR checks resolver",
+					"details": "Build a server-side GitHub checks resolver that fetches stage PR check contexts/runs via gh, normalizes states, counts passed/total/pending, and marks any non-pass or lookup failure as blocking.",
+					"status": "done",
+					"pullRequest": {
+						"number": 8,
+						"title": "feature: Merging the entire stack/feature - 2: Implement strict PR checks resolver",
+						"state": "OPEN",
+						"isDraft": false,
+						"url": "https://github.com/mlawd/stackdiff/pull/8",
+						"updatedAt": "2026-02-20T13:56:37Z"
+					}
+				},
+				{
+					"id": "stage-3",
+					"title": "Build stack merge readiness evaluator",
+					"details": "Create readiness logic that requires all stages done, all stage PRs present, and all checks passing; emit structured blocker reasons and aggregate check summary for API and UI consumption.",
+					"status": "review-ready",
+					"pullRequest": {
+						"number": 10,
+						"title": "feature: Merging the entire stack/feature - 3: Build stack merge readiness evaluator",
+						"state": "OPEN",
+						"isDraft": false,
+						"url": "https://github.com/mlawd/stackdiff/pull/10",
+						"updatedAt": "2026-02-20T14:25:28Z"
+					}
+				},
+				{
+					"id": "stage-4",
+					"title": "Implement squash merge orchestration",
+					"details": "Add merge service that revalidates readiness at execution time, resolves target default branch and source stage branch, performs isolated squash merge, writes required commit subject/body format, and pushes target branch.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-5",
+					"title": "Add post-merge automatic cleanup",
+					"details": "Implement automatic cleanup for stage PRs, local/remote stage branches, and stage worktrees after successful merge, returning structured cleanup results with non-fatal warnings.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-6",
+					"title": "Expose merge readiness and execution APIs",
+					"details": "Create GET/POST /api/stacks/[id]/merge handlers that return readiness data, blockers, checks summary, and merge execution results with stable status code/error mapping.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-7",
+					"title": "Add feature list checks summary note",
+					"details": "Integrate per-stack aggregated checks summary into home page data and render `X/Y checks passed (Z pending)` beside existing type/status pills with safe fallbacks.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-8",
+					"title": "Integrate stack-page merge action UX",
+					"details": "Add Merge feature button on stack page with eligibility gating, blocker rendering, execution flow, and post-merge success/cleanup presentation.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-9",
+					"title": "Validate behavior and harden edge cases",
+					"details": "Cover strict non-pass check gating, readiness race conditions, protected branch push errors, cleanup partial failures, and run check/build validation gates before completion.",
+					"status": "not-started"
+				}
+			],
+			"name": "Merging the entire stack/feature",
+			"notes": "As a user, I want to be able to merge the entire feature in one go. Ideally creating a single squash merge with feat|fix|chore: feature name as the commit message, with detail for each branch that has made up the commit.",
 			"type": "feature"
 		}
 	],
@@ -125,6 +268,16 @@
 			"savedPlanPath": ".stacked/plans/branch-diff-cpbrce.md",
 			"savedStageConfigPath": ".stacked/plans/branch-diff-cpbrce.stages.json",
 			"savedAt": "2026-02-19T22:26:44.713Z"
+		},
+		{
+			"id": "session-dnr54dgt",
+			"stackId": "merging-the-entire-stack-feature-rqh4z2",
+			"createdAt": "2026-02-20T13:13:01.472Z",
+			"updatedAt": "2026-02-20T13:48:29.422Z",
+			"opencodeSessionId": "ses_384d156dbffeIckrClaChUOAtY",
+			"savedPlanPath": ".stacked/plans/merging-the-entire-stack-feature-rqh4z2.md",
+			"savedStageConfigPath": ".stacked/plans/merging-the-entire-stack-feature-rqh4z2.stages.json",
+			"savedAt": "2026-02-20T13:48:29.422Z"
 		}
 	],
 	"implementationSessions": [
@@ -137,6 +290,96 @@
 			"createdAt": "2026-02-20T10:52:59.320Z",
 			"updatedAt": "2026-02-20T10:52:59.415Z",
 			"opencodeSessionId": "ses_385518bb1ffe72qlVLGlpFruV7"
+		},
+		{
+			"id": "impl-4ljajl2w",
+			"stackId": "branch-diff-cpbrce",
+			"stageId": "stage-2",
+			"branchName": "feature/branch-diff/2-stage-diffability-metadata",
+			"worktreePathKey": ".stacked/worktrees/feature-branch-diff-2-stage-diffability-metadata",
+			"createdAt": "2026-02-20T11:56:03.047Z",
+			"updatedAt": "2026-02-20T11:56:03.353Z",
+			"opencodeSessionId": "ses_38517cf2dffeGF1mJpcUX5EReZ"
+		},
+		{
+			"id": "impl-5ccm7a9t",
+			"stackId": "branch-diff-cpbrce",
+			"stageId": "stage-3",
+			"branchName": "feature/branch-diff/3-slide-out-panel-shell-and-fe",
+			"worktreePathKey": ".stacked/worktrees/feature-branch-diff-3-slide-out-panel-shell-and-fe",
+			"createdAt": "2026-02-20T12:21:47.544Z",
+			"updatedAt": "2026-02-20T12:21:47.635Z",
+			"opencodeSessionId": "ses_385003e1bffeqVcmfsdLVqfjTr"
+		},
+		{
+			"id": "impl-7lqh9ed6",
+			"stackId": "branch-diff-cpbrce",
+			"stageId": "stage-4",
+			"branchName": "feature/branch-diff/4-structured-side-by-side-diff",
+			"worktreePathKey": ".stacked/worktrees/feature-branch-diff-4-structured-side-by-side-diff",
+			"createdAt": "2026-02-20T12:25:56.483Z",
+			"updatedAt": "2026-02-20T12:25:56.547Z",
+			"opencodeSessionId": "ses_384fc71c4ffetzuF7Zata0g4GF"
+		},
+		{
+			"id": "impl-9bggi63b",
+			"stackId": "branch-diff-cpbrce",
+			"stageId": "stage-5",
+			"branchName": "feature/branch-diff/5-ux-polish-and-performance-gu",
+			"worktreePathKey": ".stacked/worktrees/feature-branch-diff-5-ux-polish-and-performance-gu",
+			"createdAt": "2026-02-20T12:33:12.279Z",
+			"updatedAt": "2026-02-20T12:33:12.355Z",
+			"opencodeSessionId": "ses_384f5cb6affe2X29lxEa5oDxef"
+		},
+		{
+			"id": "impl-m7xi8a7t",
+			"stackId": "branch-diff-cpbrce",
+			"stageId": "stage-6",
+			"branchName": "feature/branch-diff/6-hardening-and-validation",
+			"worktreePathKey": ".stacked/worktrees/feature-branch-diff-6-hardening-and-validation",
+			"createdAt": "2026-02-20T13:10:50.097Z",
+			"updatedAt": "2026-02-20T13:10:50.426Z",
+			"opencodeSessionId": "ses_384d3579cffeKPErYNwD0ZhSRS"
+		},
+		{
+			"id": "impl-5iotmpqw",
+			"stackId": "merging-the-entire-stack-feature-rqh4z2",
+			"stageId": "stage-1",
+			"branchName": "feature/merging-the-entire-stack-feature/1-define-merge-and-checks-cont",
+			"worktreePathKey": ".stacked/worktrees/feature-merging-the-entire-stack-feature-1-define-merge-and-checks-cont",
+			"createdAt": "2026-02-20T13:48:48.963Z",
+			"updatedAt": "2026-02-20T13:48:49.424Z",
+			"opencodeSessionId": "ses_384b0911fffeDr7J81mp7Kb7Vk"
+		},
+		{
+			"id": "impl-c6zrd0l0",
+			"stackId": "branch-diff-cpbrce",
+			"stageId": "stage-7",
+			"branchName": "feature/branch-diff/7-immediate-v2-line-selection-",
+			"worktreePathKey": ".stacked/worktrees/feature-branch-diff-7-immediate-v2-line-selection-",
+			"createdAt": "2026-02-20T13:51:16.538Z",
+			"updatedAt": "2026-02-20T13:51:16.844Z",
+			"opencodeSessionId": "ses_384ae518bffeeu75GJJ2vVS665"
+		},
+		{
+			"id": "impl-hctv8xn8",
+			"stackId": "merging-the-entire-stack-feature-rqh4z2",
+			"stageId": "stage-2",
+			"branchName": "feature/merging-the-entire-stack-feature/2-implement-strict-pr-checks-r",
+			"worktreePathKey": ".stacked/worktrees/feature-merging-the-entire-stack-feature-2-implement-strict-pr-checks-r",
+			"createdAt": "2026-02-20T13:52:54.177Z",
+			"updatedAt": "2026-02-20T13:52:54.294Z",
+			"opencodeSessionId": "ses_384acd3f3ffeygLbP9E4hOBhm5"
+		},
+		{
+			"id": "impl-wb9htfpo",
+			"stackId": "merging-the-entire-stack-feature-rqh4z2",
+			"stageId": "stage-3",
+			"branchName": "feature/merging-the-entire-stack-feature/3-build-stack-merge-readiness-",
+			"worktreePathKey": ".stacked/worktrees/feature-merging-the-entire-stack-feature-3-build-stack-merge-readiness-",
+			"createdAt": "2026-02-20T14:20:06.276Z",
+			"updatedAt": "2026-02-20T14:20:06.306Z",
+			"opencodeSessionId": "ses_38493ececffeLfwRDifSjahn2w"
 		}
 	]
 }

@@ -5,6 +5,7 @@ import type {
 	FeatureStageStatus,
 	FeatureType,
 	StackImplementationSession,
+	StackPullRequest,
 	StackStatus,
 	StackFile,
 	StackMetadata,
@@ -28,6 +29,23 @@ function isFeatureStageStatus(value: unknown): value is FeatureStageStatus {
 	return value === 'not-started' || value === 'in-progress' || value === 'review-ready' || value === 'done';
 }
 
+function isStackPullRequest(value: unknown): value is StackPullRequest {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const pullRequest = value as Partial<StackPullRequest>;
+
+	return (
+		typeof pullRequest.number === 'number' &&
+		typeof pullRequest.title === 'string' &&
+		(pullRequest.state === 'OPEN' || pullRequest.state === 'CLOSED' || pullRequest.state === 'MERGED') &&
+		typeof pullRequest.isDraft === 'boolean' &&
+		typeof pullRequest.url === 'string' &&
+		typeof pullRequest.updatedAt === 'string'
+	);
+}
+
 function isFeatureStage(value: unknown): value is FeatureStage {
 	if (typeof value !== 'object' || value === null) {
 		return false;
@@ -39,7 +57,8 @@ function isFeatureStage(value: unknown): value is FeatureStage {
 		typeof stage.id === 'string' &&
 		typeof stage.title === 'string' &&
 		(stage.details === undefined || typeof stage.details === 'string') &&
-		isFeatureStageStatus(stage.status)
+		isFeatureStageStatus(stage.status) &&
+		(stage.pullRequest === undefined || isStackPullRequest(stage.pullRequest))
 	);
 }
 
@@ -522,6 +541,48 @@ export async function setStackStageStatus(
 		return {
 			...stage,
 			status
+		};
+	});
+
+	const next: StackMetadata = {
+		...stack,
+		stages: nextStages
+	};
+
+	file.stacks[index] = next;
+	await writeStackFile(file);
+
+	return next;
+}
+
+export async function setStackStagePullRequest(
+	id: string,
+	stageId: string,
+	pullRequest: StackPullRequest
+): Promise<StackMetadata> {
+	const file = await readStackFile();
+	const index = file.stacks.findIndex((stack) => stack.id === id);
+
+	if (index === -1) {
+		throw new Error('Feature not found.');
+	}
+
+	const stack = file.stacks[index];
+	const stages = stack.stages ?? [];
+	const stageIndex = stages.findIndex((stage) => stage.id === stageId);
+
+	if (stageIndex === -1) {
+		throw new Error('Stage not found.');
+	}
+
+	const nextStages = stages.map((stage, indexCandidate) => {
+		if (indexCandidate !== stageIndex) {
+			return stage;
+		}
+
+		return {
+			...stage,
+			pullRequest
 		};
 	});
 

@@ -30,7 +30,7 @@ function buildInitialImplementationPrompt(
 	const stageDetails = stage.details?.trim() || 'No stage details were provided.';
 
 	const lines = [
-		'Start implementing stage 1 for this stack.',
+		`Start implementing stage ${stageNumber} for this stack.`,
 		`Feature type: ${stack.type}`,
 		`Feature name: ${stack.name}`,
 		`Feature notes: ${details}`,
