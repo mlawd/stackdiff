@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { Button } from 'flowbite-svelte';
 
 	import type { FeatureType, StackUpsertInput, StackViewModel } from '$lib/types/stack';
 
@@ -108,19 +109,12 @@
 			</label>
 
 			<div class="flex flex-wrap items-center justify-end gap-2">
-				<a
-					href={resolve('/')}
-					class="cursor-pointer rounded-lg border border-[var(--stacked-border-soft)] px-3 py-2 text-sm font-medium text-[var(--stacked-text-muted)] transition hover:border-[var(--stacked-border)] hover:text-[var(--stacked-text)]"
-				>
+				<Button href={resolve('/')} size="sm" color="alternative">
 					Cancel
-				</a>
-				<button
-					type="submit"
-					disabled={submitting}
-					class="cursor-pointer rounded-lg border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-70"
-				>
+				</Button>
+				<Button type="submit" size="sm" color="primary" disabled={submitting}>
 					{submitting ? 'Creating...' : 'Create Feature'}
-				</button>
+				</Button>
 			</div>
 		</form>
 	</section>

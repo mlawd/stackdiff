@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { Badge } from 'flowbite-svelte';
 
 	import type { StackStatus, StackViewModel } from '$lib/types/stack';
 	import type { PageData } from './$types';
@@ -8,6 +9,8 @@
 		kind: 'success' | 'error';
 		text: string;
 	}
+
+	type BadgeColor = 'gray' | 'yellow' | 'green' | 'red' | 'purple';
 
 	let { data }: { data: PageData } = $props();
 	let initialized = false;
@@ -21,11 +24,11 @@
 		chore: 'Chore'
 	} as const;
 
-	const typeClass = {
-		feature: 'stacked-chip stacked-chip-review',
-		bugfix: 'stacked-chip stacked-chip-danger',
-		chore: 'stacked-chip'
-	} as const;
+	const typeColor: Record<StackViewModel['type'], BadgeColor> = {
+		feature: 'purple',
+		bugfix: 'red',
+		chore: 'gray'
+	};
 
 	const statusLabel: Record<StackStatus, string> = {
 		created: 'Created',
@@ -34,11 +37,11 @@
 		complete: 'Complete'
 	};
 
-	const statusClass: Record<StackStatus, string> = {
-		created: 'stacked-chip',
-		planned: 'stacked-chip stacked-chip-warning',
-		started: 'stacked-chip stacked-chip-review',
-		complete: 'stacked-chip stacked-chip-success'
+	const statusColor: Record<StackStatus, BadgeColor> = {
+		created: 'gray',
+		planned: 'yellow',
+		started: 'purple',
+		complete: 'green'
 	};
 
 	$effect(() => {
@@ -95,8 +98,8 @@
 							<p class="text-xs stacked-subtle">Open</p>
 						</div>
 						<div class="mt-3 flex flex-wrap items-center gap-2">
-							<span class={typeClass[stack.type]}>{typeLabel[stack.type]}</span>
-							<span class={statusClass[stack.status]}>{statusLabel[stack.status]}</span>
+							<Badge rounded color={typeColor[stack.type]}>{typeLabel[stack.type]}</Badge>
+							<Badge rounded color={statusColor[stack.status]}>{statusLabel[stack.status]}</Badge>
 						</div>
 					</a>
 				{/each}

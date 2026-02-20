@@ -118,6 +118,7 @@ export interface StackPullRequest {
 	isDraft: boolean;
 	url: string;
 	updatedAt: string;
+	commentCount?: number;
 }
 
 export interface StackViewModel extends StackMetadata {
@@ -129,12 +130,21 @@ export interface StackViewModel extends StackMetadata {
 	ghError?: string;
 	pullRequest?: StackPullRequest;
 	stageDiffabilityById?: Record<string, StageDiffabilityMetadata>;
+	stageSyncById?: Record<string, StageSyncMetadata>;
 }
 
 export interface StageDiffabilityMetadata {
 	isDiffable: boolean;
 	branchName?: string;
 	reasonIfNotDiffable?: string;
+}
+
+export interface StageSyncMetadata {
+	isOutOfSync: boolean;
+	behindBy: number;
+	branchName?: string;
+	baseRef?: string;
+	reasonIfUnavailable?: string;
 }
 
 export type StageDiffLineType = 'context' | 'add' | 'del';

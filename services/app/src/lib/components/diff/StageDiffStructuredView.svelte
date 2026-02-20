@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Button } from 'flowbite-svelte';
 	import StageDiffFileView from '$lib/components/diff/StageDiffFileView.svelte';
 	import type { StageDiffPayload } from '$lib/types/stack';
 
@@ -93,8 +94,8 @@
 			<div class="stage-diff-file-nav-header">
 				<p class="stage-diff-file-nav-label">Files</p>
 				<div class="stage-diff-file-nav-actions">
-					<button type="button" onclick={expandAllFiles}>Expand all</button>
-					<button type="button" onclick={collapseAllFiles}>Collapse all</button>
+					<Button size="xs" color="alternative" onclick={expandAllFiles}>Expand all</Button>
+					<Button size="xs" color="alternative" onclick={collapseAllFiles}>Collapse all</Button>
 				</div>
 			</div>
 			<div class="stage-diff-file-nav-list">
@@ -153,22 +154,6 @@
 		display: flex;
 		align-items: center;
 		gap: 0.35rem;
-	}
-
-	.stage-diff-file-nav-actions button {
-		padding: 0.2rem 0.4rem;
-		border-radius: 7px;
-		border: 1px solid color-mix(in oklab, var(--stacked-border-soft) 88%, transparent);
-		background: color-mix(in oklab, var(--stacked-surface-elevated) 84%, transparent);
-		font-size: 0.7rem;
-		line-height: 1.2;
-		color: var(--stacked-text-muted);
-		cursor: pointer;
-	}
-
-	.stage-diff-file-nav-actions button:hover {
-		color: var(--stacked-text);
-		border-color: color-mix(in oklab, var(--stacked-accent) 35%, var(--stacked-border-soft));
 	}
 
 	.stage-diff-file-nav-label {

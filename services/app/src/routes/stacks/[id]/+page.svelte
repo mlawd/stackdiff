@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { Spinner } from 'flowbite-svelte';
+	import { Badge, Button, Spinner } from 'flowbite-svelte';
+	import AnnotationSolid from 'flowbite-svelte-icons/AnnotationSolid.svelte';
+	import CodePullRequestSolid from 'flowbite-svelte-icons/CodePullRequestSolid.svelte';
 	import PlanningChat from '$lib/components/PlanningChat.svelte';
 	import StageDiffStructuredView from '$lib/components/diff/StageDiffStructuredView.svelte';
 
@@ -11,6 +13,7 @@
 		StageDiffPayload,
 		StageDiffChatResult,
 		StageDiffabilityMetadata,
+		StageSyncMetadata,
 		StackPullRequest,
 		StackStatus
 	} from '$lib/types/stack';
@@ -23,6 +26,18 @@
 		reusedSession?: boolean;
 		startedNow?: boolean;
 		error?: string;
+	}
+
+	interface SyncStackResponse {
+		result?: {
+			totalStages: number;
+			rebasedStages: number;
+			skippedStages: number;
+		};
+		error?: {
+			code?: string;
+			message?: string;
+		};
 	}
 
 	interface StageDiffSuccessResponse {
@@ -58,11 +73,13 @@
 	}
 
 	interface StageDiffChatErrorResponse {
-			error?: {
+		error?: {
 			code?: string;
 			message?: string;
 		};
 	}
+
+	type BadgeColor = 'gray' | 'yellow' | 'green' | 'red' | 'purple';
 
 	let { data }: { data: PageData } = $props();
 
@@ -72,11 +89,11 @@
 		chore: 'Chore'
 	} as const;
 
-	const typeClass = {
-		feature: 'stacked-chip stacked-chip-review',
-		bugfix: 'stacked-chip stacked-chip-danger',
-		chore: 'stacked-chip'
-	} as const;
+	const typeColor: Record<'feature' | 'bugfix' | 'chore', BadgeColor> = {
+		feature: 'purple',
+		bugfix: 'red',
+		chore: 'gray'
+	};
 
 	const statusLabel: Record<StackStatus, string> = {
 		created: 'Created',
@@ -85,11 +102,11 @@
 		complete: 'Complete'
 	};
 
-	const statusClass: Record<StackStatus, string> = {
-		created: 'stacked-chip',
-		planned: 'stacked-chip stacked-chip-warning',
-		started: 'stacked-chip stacked-chip-review',
-		complete: 'stacked-chip stacked-chip-success'
+	const statusColor: Record<StackStatus, BadgeColor> = {
+		created: 'gray',
+		planned: 'yellow',
+		started: 'purple',
+		complete: 'green'
 	};
 
 	type TabKey = 'plan' | 'stack';
@@ -98,6 +115,9 @@
 	let startPending = $state(false);
 	let startError = $state<string | null>(null);
 	let startSuccess = $state<string | null>(null);
+	let syncPending = $state(false);
+	let syncError = $state<string | null>(null);
+	let syncSuccess = $state<string | null>(null);
 	let implementationRuntimeByStageId = $state<Record<string, ImplementationStageRuntime>>({});
 	let isStageDiffPanelOpen = $state(false);
 	let activeDiffStageId = $state<string | null>(null);
@@ -127,20 +147,20 @@
 		tabInitialized = true;
 	});
 
-	function implementationStageClass(status: FeatureStageStatus): string {
+	function implementationStageColor(status: FeatureStageStatus): BadgeColor {
 		if (status === 'done') {
-			return 'stacked-chip stacked-chip-success';
+			return 'green';
 		}
 
 		if (status === 'review-ready') {
-			return 'stacked-chip stacked-chip-review';
+			return 'purple';
 		}
 
 		if (status === 'in-progress') {
-			return 'stacked-chip stacked-chip-warning';
+			return 'yellow';
 		}
 
-		return 'stacked-chip';
+		return 'gray';
 	}
 
 	function implementationStageLabel(status: FeatureStageStatus): string {
@@ -168,7 +188,33 @@
 	}
 
 	function canStartFeature(): boolean {
-		return hasRemainingNotStartedStage() && !hasInProgressStage() && !startPending;
+		return hasRemainingNotStartedStage() && !hasInProgressStage() && !startPending && !syncPending;
+	}
+
+	function stageSyncMetadata(stageId: string): StageSyncMetadata {
+		return (
+			data.stack.stageSyncById?.[stageId] ?? {
+				isOutOfSync: false,
+				behindBy: 0,
+				reasonIfUnavailable: 'Stage sync status is unavailable.'
+			}
+		);
+	}
+
+	function hasOutOfSyncStages(): boolean {
+		return (data.stack.stages ?? []).some((stage) => stageSyncMetadata(stage.id).isOutOfSync);
+	}
+
+	function canSyncStack(): boolean {
+		return hasOutOfSyncStages() && !syncPending && !startPending;
+	}
+
+	function syncStackButtonLabel(): string {
+		if (syncPending) {
+			return 'Syncing...';
+		}
+
+		return 'Sync Stack';
 	}
 
 	function startButtonLabel(): string {
@@ -326,14 +372,6 @@
 
 	function canOpenStageDiff(stageId: string): boolean {
 		return stageDiffability(stageId).isDiffable;
-	}
-
-	function implementationStageRowClass(stageId: string): string {
-		if (canOpenStageDiff(stageId)) {
-			return 'cursor-pointer transition hover:border-[var(--stacked-accent)] hover:bg-[color-mix(in_oklab,var(--stacked-bg-soft)_80%,var(--stacked-accent)_20%)]';
-		}
-
-		return 'cursor-not-allowed opacity-80';
 	}
 
 	async function loadStageDiff(stageId: string): Promise<void> {
@@ -668,6 +706,7 @@
 		startPending = true;
 		startError = null;
 		startSuccess = null;
+		syncError = null;
 
 		try {
 			const response = await fetch(`/api/stacks/${data.stack.id}/start`, { method: 'POST' });
@@ -691,6 +730,34 @@
 			startError = error instanceof Error ? error.message : 'Unable to start feature.';
 		} finally {
 			startPending = false;
+		}
+	}
+
+	async function syncStack(): Promise<void> {
+		if (!canSyncStack()) {
+			return;
+		}
+
+		syncPending = true;
+		syncError = null;
+		syncSuccess = null;
+		startError = null;
+
+		try {
+			const response = await fetch(`/api/stacks/${data.stack.id}/sync`, { method: 'POST' });
+			const body = (await response.json()) as SyncStackResponse;
+			if (!response.ok) {
+				throw new Error(body.error?.message ?? 'Unable to sync stack.');
+			}
+
+			const rebased = body.result?.rebasedStages ?? 0;
+			const skipped = body.result?.skippedStages ?? 0;
+			syncSuccess = `Stack sync complete. Rebases: ${rebased}. Skipped: ${skipped}.`;
+			await invalidateAll();
+		} catch (error) {
+			syncError = error instanceof Error ? error.message : 'Unable to sync stack.';
+		} finally {
+			syncPending = false;
 		}
 	}
 
@@ -758,8 +825,8 @@
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">{data.stack.name}</h1>
 				<div class="flex flex-wrap items-center gap-2">
-					<span class={typeClass[data.stack.type]}>{typeLabel[data.stack.type]}</span>
-					<span class={statusClass[data.stack.status]}>{statusLabel[data.stack.status]}</span>
+					<Badge rounded color={typeColor[data.stack.type]}>{typeLabel[data.stack.type]}</Badge>
+					<Badge rounded color={statusColor[data.stack.status]}>{statusLabel[data.stack.status]}</Badge>
 				</div>
 			</div>
 			<p class="mt-2 text-sm stacked-subtle">{data.stack.notes ?? 'No description provided for this feature yet.'}</p>
@@ -767,24 +834,12 @@
 
 		<div class="mb-4 border-b stacked-divider">
 			<div class="flex flex-wrap gap-1.5">
-				<button
-					type="button"
-					onclick={() => (activeTab = 'plan')}
-					class={`rounded-t-md border border-b-0 px-3 py-2 text-sm font-medium transition ${activeTab === 'plan'
-						? 'border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] text-[var(--stacked-text)]'
-						: 'border-transparent text-[var(--stacked-text-muted)] hover:text-[var(--stacked-text)]'}`}
-				>
+				<Button size="sm" color={activeTab === 'plan' ? 'primary' : 'alternative'} onclick={() => (activeTab = 'plan')}>
 					Plan
-				</button>
-				<button
-					type="button"
-					onclick={() => (activeTab = 'stack')}
-					class={`rounded-t-md border border-b-0 px-3 py-2 text-sm font-medium transition ${activeTab === 'stack'
-						? 'border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] text-[var(--stacked-text)]'
-						: 'border-transparent text-[var(--stacked-text-muted)] hover:text-[var(--stacked-text)]'}`}
-				>
+				</Button>
+				<Button size="sm" color={activeTab === 'stack' ? 'primary' : 'alternative'} onclick={() => (activeTab = 'stack')}>
 					Stack
-				</button>
+				</Button>
 			</div>
 		</div>
 
@@ -799,6 +854,18 @@
 			</div>
 		{:else}
 			<div class="space-y-4">
+				{#if syncError}
+					<div class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+						{syncError}
+					</div>
+				{/if}
+
+				{#if syncSuccess}
+					<div class="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+						{syncSuccess}
+					</div>
+				{/if}
+
 				{#if startError}
 					<div class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
 						{startError}
@@ -814,14 +881,14 @@
 				<div class="stacked-panel-elevated p-4">
 					<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 						<p class="text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle">Implementation stages</p>
-						<button
-							type="button"
-							onclick={startFeature}
-							disabled={!canStartFeature()}
-							class="cursor-pointer rounded-lg border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-70"
-						>
-							{startButtonLabel()}
-						</button>
+						<div class="flex flex-wrap items-center gap-2">
+							<Button size="xs" color="alternative" onclick={syncStack} disabled={!canSyncStack()}>
+								{syncStackButtonLabel()}
+							</Button>
+							<Button size="xs" color="primary" onclick={startFeature} disabled={!canStartFeature()}>
+								{startButtonLabel()}
+							</Button>
+						</div>
 					</div>
 					{#if data.stack.stages && data.stack.stages.length > 0}
 						<div class="space-y-2">
@@ -835,7 +902,8 @@
 								{@const stageWorking = currentStageStatus === 'in-progress' && isStageAgentWorking(implementationStage.id)}
 								{@const stageCanOpenDiff = canOpenStageDiff(implementationStage.id)}
 								{@const stageDiffMeta = stageDiffability(implementationStage.id)}
-								<div class={`flex flex-wrap items-start justify-between gap-2 rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 ${implementationStageRowClass(implementationStage.id)}`}>
+								{@const stageSyncMeta = stageSyncMetadata(implementationStage.id)}
+								<div class="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2">
 									<div>
 										<p class="text-sm font-medium text-[var(--stacked-text)]">{implementationStage.title}</p>
 										{#if implementationStage.details}
@@ -850,17 +918,13 @@
 										{/if}
 									</div>
 									<div class="flex flex-wrap items-center justify-end gap-2">
-										{#if stageCanOpenDiff}
-											<button
-												type="button"
-												onclick={() => openStageDiff(implementationStage.id, implementationStage.title)}
-												title={`Open diff for ${implementationStage.title}`}
-												class="stacked-chip stacked-chip-review cursor-pointer"
-											>
-												View diff
-											</button>
+										{#if stageSyncMeta.isOutOfSync}
+											<Badge rounded border color="yellow" title={`Behind ${stageSyncMeta.baseRef ?? 'base'} by ${stageSyncMeta.behindBy} commit${stageSyncMeta.behindBy === 1 ? '' : 's'}`}>
+												Out of sync
+											</Badge>
 										{/if}
-										<span class={`${implementationStageClass(currentStageStatus)} ${stageWorking ? 'stacked-chip-no-dot' : ''} inline-flex items-center gap-1.5`}>
+										<Badge rounded border color={implementationStageColor(currentStageStatus)}>
+											<span class="inline-flex items-center gap-1.5">
 											{#if stageWorking}
 												<Spinner
 													size="4"
@@ -870,19 +934,38 @@
 												/>
 											{/if}
 											<span>{implementationStageLabel(currentStageStatus)}</span>
-										</span>
+											</span>
+										</Badge>
 										{#if currentStagePullRequest?.url && currentStagePullRequest.number}
-											<a
-												href={currentStagePullRequest.url}
-												target="_blank"
-												rel="noopener noreferrer"
-												class="stacked-link text-xs font-medium"
+											<Badge rounded border color="purple">
+												<a
+													href={currentStagePullRequest.url}
+													target="_blank"
+													rel="noopener noreferrer"
+													class="inline-flex items-center gap-1"
+												>
+													<CodePullRequestSolid class="h-3.5 w-3.5" aria-hidden="true" />
+													<span>#{currentStagePullRequest.number}</span>
+												</a>
+											</Badge>
+										{/if}
+										{#if currentStagePullRequest}
+											<Badge
+												rounded
+												border
+												color="blue"
+												title={`${currentStagePullRequest.commentCount ?? 0} comment${(currentStagePullRequest.commentCount ?? 0) === 1 ? '' : 's'}`}
 											>
-												PR #{currentStagePullRequest.number}
-											</a>
+												<span class="inline-flex items-center gap-1">
+													<span>{currentStagePullRequest.commentCount ?? 0}</span>
+													<AnnotationSolid class="h-3.5 w-3.5" aria-hidden="true" />
+												</span>
+											</Badge>
 										{/if}
 										{#if currentStageStatus === 'in-progress' && stageRuntime}
-											<p class="text-xs stacked-subtle whitespace-nowrap">{stageRuntime.todoCompleted}/{stageRuntime.todoTotal} Todos done</p>
+											<p class="text-xs stacked-subtle whitespace-nowrap">
+												{stageRuntime.todoCompleted}/{stageRuntime.todoTotal} Todos done
+											</p>
 										{/if}
 									</div>
 								</div>
@@ -902,13 +985,22 @@
 						<p class="mt-1 text-xs stacked-subtle">
 							{data.stack.pullRequest.state}{data.stack.pullRequest.isDraft ? ' (draft)' : ''}
 						</p>
-						<button
-							type="button"
-							onclick={() => window.open(data.stack.pullRequest?.url ?? '', '_blank', 'noopener,noreferrer')}
-							class="stacked-link mt-2 cursor-pointer text-sm font-medium"
+						<Badge rounded color="blue" class="mt-1 w-fit">
+							<span class="inline-flex items-center gap-1">
+								<span>{data.stack.pullRequest.commentCount ?? 0}</span>
+								<AnnotationSolid class="h-3.5 w-3.5" aria-hidden="true" />
+							</span>
+						</Badge>
+						<Button
+							href={data.stack.pullRequest?.url ?? '#'}
+							target="_blank"
+							rel="noopener noreferrer"
+							color="alternative"
+							size="sm"
+							class="mt-2"
 						>
 							Open on GitHub
-						</button>
+						</Button>
 					{:else}
 						<p class="text-sm stacked-subtle">No active PR for this branch yet.</p>
 					{/if}
@@ -964,9 +1056,9 @@
 					<aside class="stage-diff-sidebar stacked-scroll">
 						<div class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-3">
 							<div class="mb-2 flex flex-wrap gap-2">
-								<span class="stacked-chip">Files {activeStageDiff.summary.filesChanged}</span>
-								<span class="stacked-chip stacked-chip-success">+{activeStageDiff.summary.additions}</span>
-								<span class="stacked-chip stacked-chip-danger">-{activeStageDiff.summary.deletions}</span>
+								<Badge rounded color="gray">Files {activeStageDiff.summary.filesChanged}</Badge>
+								<Badge rounded color="green">+{activeStageDiff.summary.additions}</Badge>
+								<Badge rounded color="red">-{activeStageDiff.summary.deletions}</Badge>
 							</div>
 							<p class="text-xs stacked-subtle">Comparing {activeStageDiff.baseRef} -> {activeStageDiff.targetRef}</p>
 							<p class="mt-1 text-xs stacked-subtle">Use Arrow Up/Down or J/K to move between diffable stages.</p>
@@ -1007,18 +1099,18 @@
 							<div class="flex flex-wrap items-center justify-between gap-2">
 								<p class="text-xs font-semibold uppercase tracking-[0.15em] stacked-subtle">Selected lines</p>
 								<div class="flex flex-wrap items-center gap-2">
-									<span class="stacked-chip stacked-chip-review">{activeSelectedLineIds.length} selected</span>
+									<Badge rounded color="purple">{activeSelectedLineIds.length} selected</Badge>
 									{#if activeSelectedFilePath}
-										<span class="stacked-chip">{activeSelectedFilePath}</span>
+										<Badge rounded color="gray">{activeSelectedFilePath}</Badge>
 									{/if}
-									<button
-										type="button"
+									<Button
+										size="xs"
+										color="alternative"
 										onclick={() => activeDiffStageId && clearSelectedLinesForStage(activeDiffStageId)}
 										disabled={activeSelectedLineIds.length === 0 || activeStageDiffChatSending}
-										class="rounded-md border border-[var(--stacked-border-soft)] px-2 py-1 text-xs font-semibold text-[var(--stacked-text-muted)] transition hover:text-[var(--stacked-text)] disabled:cursor-not-allowed disabled:opacity-60"
 									>
 										Clear selection
-									</button>
+									</Button>
 								</div>
 							</div>
 							<p class="mt-1 text-xs stacked-subtle">
@@ -1043,14 +1135,14 @@
 								class="mt-1 w-full rounded-md border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-2 py-1.5 text-sm text-[var(--stacked-text)] outline-none transition focus:border-[var(--stacked-accent)]"
 							></textarea>
 							<div class="mt-2 flex flex-wrap items-center gap-2">
-								<button
-									type="button"
+								<Button
+									size="xs"
+									color="primary"
 									onclick={startFocusedDiffChat}
 									disabled={!canStartFocusedDiffChat() || activeStageDiffChatSending}
-									class="cursor-pointer rounded-md border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-65"
 								>
 									{activeStageDiffChatSending ? 'Starting chat...' : 'Start focused chat'}
-								</button>
+								</Button>
 								{#if activeSelectedSnippet}
 									<span class="text-xs stacked-subtle">Snippet ready ({activeSelectedSnippet.split('\n').length} lines)</span>
 								{/if}

@@ -3,6 +3,7 @@ import type { PageServerLoad } from './$types';
 
 import { loadExistingPlanningSession } from '$lib/server/planning-service';
 import { getStageDiffabilityById } from '$lib/server/stage-diffability-service';
+import { getStageSyncById } from '$lib/server/stack-sync-service';
 import { enrichStackStatus } from '$lib/server/stack-status';
 import { getStackById } from '$lib/server/stack-store';
 
@@ -15,12 +16,14 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	const enriched = await enrichStackStatus(stack);
 	const stageDiffabilityById = await getStageDiffabilityById(stack);
+	const stageSyncById = await getStageSyncById(stack);
 	const { session, messages, awaitingResponse } = await loadExistingPlanningSession(params.id);
 
 	return {
 		stack: {
 			...enriched,
-			stageDiffabilityById
+			stageDiffabilityById,
+			stageSyncById
 		},
 		session,
 		messages,

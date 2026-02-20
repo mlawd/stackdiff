@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Badge } from 'flowbite-svelte';
 	import StageDiffHunkView from '$lib/components/diff/StageDiffHunkView.svelte';
 	import type { StageDiffFile } from '$lib/types/stack';
 
@@ -11,22 +12,24 @@
 		onLinePress?: (input: { lineId: string; filePath: string; shiftKey: boolean }) => void;
 	}
 
+	type BadgeColor = 'gray' | 'yellow' | 'green' | 'red';
+
 	let { file, anchorId, collapsed, onToggleCollapsed, selectedLineIds, onLinePress }: Props = $props();
 
-	function changeTypeChipClass(changeType: StageDiffFile['changeType']): string {
+	function changeTypeBadgeColor(changeType: StageDiffFile['changeType']): BadgeColor {
 		if (changeType === 'added') {
-			return 'stacked-chip stacked-chip-success';
+			return 'green';
 		}
 
 		if (changeType === 'deleted') {
-			return 'stacked-chip stacked-chip-danger';
+			return 'red';
 		}
 
 		if (changeType === 'renamed') {
-			return 'stacked-chip stacked-chip-warning';
+			return 'yellow';
 		}
 
-		return 'stacked-chip';
+		return 'gray';
 	}
 
 	function changeLabel(changeType: StageDiffFile['changeType']): string {
@@ -72,9 +75,9 @@
 			{/if}
 		</div>
 		<div class="stage-diff-file-meta">
-			<span class={changeTypeChipClass(file.changeType)}>{changeLabel(file.changeType)}</span>
-			<span class="stacked-chip stacked-chip-success">+{file.additions}</span>
-			<span class="stacked-chip stacked-chip-danger">-{file.deletions}</span>
+			<Badge rounded color={changeTypeBadgeColor(file.changeType)}>{changeLabel(file.changeType)}</Badge>
+			<Badge rounded color="green">+{file.additions}</Badge>
+			<Badge rounded color="red">-{file.deletions}</Badge>
 		</div>
 	</header>
 

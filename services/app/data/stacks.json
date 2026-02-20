@@ -86,7 +86,7 @@
 					"id": "stage-2",
 					"title": "Extract top-level page sections",
 					"details": "Split header, tabs, plan panel, and stack panel into standalone components while retaining existing state and actions in the page orchestrator.",
-					"status": "not-started"
+					"status": "in-progress"
 				},
 				{
 					"id": "stage-3",
@@ -171,6 +171,16 @@
 			"createdAt": "2026-02-20T16:09:57.906Z",
 			"updatedAt": "2026-02-20T16:09:58.007Z",
 			"opencodeSessionId": "ses_3842f5815ffeF7vUBc0vrs0tHH"
+		},
+		{
+			"id": "impl-r81l3dwy",
+			"stackId": "refactor-feature-page-3ckfas",
+			"stageId": "stage-2",
+			"branchName": "chore/refactor-feature-page/2-extract-top-level-page-secti",
+			"worktreePathKey": ".stacked/worktrees/chore-refactor-feature-page-2-extract-top-level-page-secti",
+			"createdAt": "2026-02-20T19:51:56.642Z",
+			"updatedAt": "2026-02-20T19:51:56.757Z",
+			"opencodeSessionId": "ses_383641e08ffeTvblErCfaLLUOU"
 		}
 	]
 }

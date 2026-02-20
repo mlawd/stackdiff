@@ -87,57 +87,6 @@ a:focus-visible {
 	border-color: color-mix(in oklab, var(--stacked-accent) 20%, var(--stacked-border-soft));
 }
 
-.stacked-chip {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.45rem;
-	border-radius: 999px;
-	border: 1px solid var(--stacked-border-soft);
-	padding: 0.26rem 0.65rem;
-	font-size: 0.68rem;
-	font-weight: 600;
-	line-height: 1;
-	letter-spacing: 0.08em;
-	color: var(--stacked-text-muted);
-}
-
-.stacked-chip::before {
-	content: '';
-	width: 0.45rem;
-	height: 0.45rem;
-	border-radius: 999px;
-	background: currentColor;
-	opacity: 0.95;
-}
-
-.stacked-chip-no-dot::before {
-	display: none;
-}
-
-.stacked-chip-success {
-	color: var(--stacked-success);
-	border-color: color-mix(in oklab, var(--stacked-success) 45%, var(--stacked-border));
-	background: color-mix(in oklab, var(--stacked-success) 11%, transparent);
-}
-
-.stacked-chip-warning {
-	color: var(--stacked-warning);
-	border-color: color-mix(in oklab, var(--stacked-warning) 45%, var(--stacked-border));
-	background: color-mix(in oklab, var(--stacked-warning) 9%, transparent);
-}
-
-.stacked-chip-danger {
-	color: var(--stacked-danger);
-	border-color: color-mix(in oklab, var(--stacked-danger) 45%, var(--stacked-border));
-	background: color-mix(in oklab, var(--stacked-danger) 9%, transparent);
-}
-
-.stacked-chip-review {
-	color: var(--stacked-review);
-	border-color: color-mix(in oklab, var(--stacked-review) 45%, var(--stacked-border));
-	background: color-mix(in oklab, var(--stacked-review) 8%, transparent);
-}
-
 .stacked-title {
 	font-size: clamp(1.45rem, 2.2vw, 2.2rem);
 	font-weight: 700;
@@ -319,10 +268,4 @@ a:focus-visible {
 		border-radius: 12px;
 	}
 
-	.stacked-chip {
-		font-size: 0.66rem;
-		padding: 0.22rem 0.56rem;
-		line-height: 1;
-		letter-spacing: 0.06em;
-	}
 }

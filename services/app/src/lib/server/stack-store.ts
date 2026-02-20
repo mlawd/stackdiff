@@ -42,7 +42,8 @@ function isStackPullRequest(value: unknown): value is StackPullRequest {
 		(pullRequest.state === 'OPEN' || pullRequest.state === 'CLOSED' || pullRequest.state === 'MERGED') &&
 		typeof pullRequest.isDraft === 'boolean' &&
 		typeof pullRequest.url === 'string' &&
-		typeof pullRequest.updatedAt === 'string'
+		typeof pullRequest.updatedAt === 'string' &&
+		(pullRequest.commentCount === undefined || typeof pullRequest.commentCount === 'number')
 	);
 }
 

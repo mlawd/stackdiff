@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { Spinner } from 'flowbite-svelte';
+	import { Button, Spinner } from 'flowbite-svelte';
 
 	import { renderMarkdown } from '$lib/markdown';
 	import type {
@@ -1044,32 +1044,32 @@
 				{/if}
 			</div>
 			<div class="mt-4 flex items-center justify-end gap-2">
-				<button
-					type="button"
+				<Button
+					size="sm"
+					color="alternative"
 					onclick={goToPreviousQuestion}
 					disabled={sending || saving || activeQuestionIndex === 0}
-					class="cursor-pointer rounded-lg border border-[var(--stacked-border-soft)] px-4 py-2 text-sm font-semibold text-[var(--stacked-text)] transition hover:bg-[var(--stacked-bg)]/50 disabled:cursor-not-allowed disabled:opacity-70"
 				>
 					Back
-				</button>
+				</Button>
 				{#if activeQuestionIndex < activeQuestionDialog.questions.length - 1}
-					<button
-						type="button"
+					<Button
+						size="sm"
+						color="primary"
 						onclick={goToNextQuestion}
 						disabled={sending || saving || !canAnswerQuestion(activeQuestionIndex)}
-						class="cursor-pointer rounded-lg border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-70"
 					>
 						Next
-					</button>
+					</Button>
 				{:else}
-					<button
-						type="button"
+					<Button
+						size="sm"
+						color="primary"
 						onclick={submitQuestionAnswer}
 						disabled={sending || saving || !canSubmitQuestionAnswers()}
-						class="cursor-pointer rounded-lg border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-70"
 					>
 						Send Answer
-					</button>
+					</Button>
 				{/if}
 			</div>
 				</div>
@@ -1090,22 +1090,20 @@
 		class="rounded-xl border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 text-[0.95rem] text-[var(--stacked-text)] outline-none transition focus:border-[var(--stacked-accent)]"
 	></textarea>
 	<div class="flex gap-2 sm:flex-col sm:items-stretch">
-		<button
-			type="submit"
-			disabled={sending || saving}
-			class="cursor-pointer rounded-lg border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-70"
-		>
+		<Button type="submit" size="sm" color="primary" disabled={sending || saving}>
 			{sending ? 'Streaming...' : 'Send'}
-		</button>
+		</Button>
 		{#if saveUrl}
-			<button
+			<Button
 				type="button"
+				size="sm"
+				outline
+				color="emerald"
 				onclick={saveConversation}
 				disabled={sending || saving}
-				class="cursor-pointer rounded-lg border border-emerald-500/45 px-4 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-70"
 			>
 				{saving ? 'Saving...' : saveButtonLabel}
-			</button>
+			</Button>
 		{/if}
 	</div>
 	<p class="text-xs stacked-subtle sm:col-span-2">Enter for new line, Cmd/Ctrl+Enter to send</p>

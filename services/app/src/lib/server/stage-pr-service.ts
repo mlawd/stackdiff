@@ -13,6 +13,7 @@ interface GitHubPullRequestPayload {
 	isDraft: boolean;
 	url: string;
 	updatedAt: string;
+	comments?: unknown[];
 }
 
 function toStackPullRequest(payload: GitHubPullRequestPayload | undefined): StackPullRequest | undefined {
@@ -26,7 +27,8 @@ function toStackPullRequest(payload: GitHubPullRequestPayload | undefined): Stac
 		state: payload.state,
 		isDraft: payload.isDraft,
 		url: payload.url,
-		updatedAt: payload.updatedAt
+		updatedAt: payload.updatedAt,
+		commentCount: Array.isArray(payload.comments) ? payload.comments.length : 0
 	};
 }
 
@@ -57,7 +59,7 @@ async function lookupPullRequestByHeadBranch(
 			'--limit',
 			'1',
 			'--json',
-			'number,title,state,isDraft,url,updatedAt'
+			'number,title,state,isDraft,url,updatedAt,comments'
 		],
 		repositoryRoot
 	);
