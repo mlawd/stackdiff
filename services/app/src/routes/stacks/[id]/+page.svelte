@@ -6,27 +6,37 @@
 	import CodePullRequestSolid from 'flowbite-svelte-icons/CodePullRequestSolid.svelte';
 	import PlanningChat from '$lib/components/PlanningChat.svelte';
 	import StageDiffStructuredView from '$lib/components/diff/StageDiffStructuredView.svelte';
+	import {
+		canStartFeature as canStartFeatureWithRuntime,
+		implementationStageLabel,
+		stagePullRequest as resolveStagePullRequest,
+		stageStatus as resolveStageStatus,
+		startButtonLabel as startButtonLabelWithRuntime,
+		statusLabel,
+		typeLabel
+	} from './feature-page/behavior';
+	import type {
+		FeaturePageTabKey,
+		ImplementationStageRuntime,
+		ImplementationStatusResponse,
+		OrderedDiffLine,
+		StageDiffChatErrorResponse,
+		StageDiffChatSuccessResponse,
+		StageDiffErrorResponse,
+		StageDiffSuccessResponse,
+		StartResponse
+	} from './feature-page/contracts';
 
 	import type {
 		FeatureStageStatus,
 		DiffSelection,
 		StageDiffPayload,
-		StageDiffChatResult,
 		StageDiffabilityMetadata,
 		StageSyncMetadata,
 		StackPullRequest,
 		StackStatus
 	} from '$lib/types/stack';
 	import type { PageData } from './$types';
-
-	interface StartResponse {
-		stageNumber?: number;
-		stageTitle?: string;
-		reusedWorktree?: boolean;
-		reusedSession?: boolean;
-		startedNow?: boolean;
-		error?: string;
-	}
 
 	interface SyncStackResponse {
 		result?: {
@@ -40,66 +50,14 @@
 		};
 	}
 
-	interface StageDiffSuccessResponse {
-		diff: StageDiffPayload;
-	}
-
-	interface StageDiffErrorResponse {
-		error?: {
-			code?: string;
-			message?: string;
-		};
-	}
-
-	interface ImplementationStatusResponse {
-		stageStatus?: FeatureStageStatus;
-		runtimeState?: 'idle' | 'busy' | 'retry' | 'missing';
-		todoCompleted?: number;
-		todoTotal?: number;
-		pullRequest?: StackPullRequest;
-		error?: string;
-	}
-
-	interface ImplementationStageRuntime {
-		stageStatus: FeatureStageStatus;
-		runtimeState: 'idle' | 'busy' | 'retry' | 'missing';
-		todoCompleted: number;
-		todoTotal: number;
-		pullRequest?: StackPullRequest;
-	}
-
-	interface StageDiffChatSuccessResponse {
-		result: StageDiffChatResult;
-	}
-
-	interface StageDiffChatErrorResponse {
-		error?: {
-			code?: string;
-			message?: string;
-		};
-	}
-
 	type BadgeColor = 'gray' | 'yellow' | 'green' | 'red' | 'purple';
 
 	let { data }: { data: PageData } = $props();
-
-	const typeLabel = {
-		feature: 'Feature',
-		bugfix: 'Bugfix',
-		chore: 'Chore'
-	} as const;
 
 	const typeColor: Record<'feature' | 'bugfix' | 'chore', BadgeColor> = {
 		feature: 'purple',
 		bugfix: 'red',
 		chore: 'gray'
-	};
-
-	const statusLabel: Record<StackStatus, string> = {
-		created: 'Created',
-		planned: 'Planned',
-		started: 'Started',
-		complete: 'Complete'
 	};
 
 	const statusColor: Record<StackStatus, BadgeColor> = {
@@ -108,10 +66,8 @@
 		started: 'purple',
 		complete: 'green'
 	};
-
-	type TabKey = 'plan' | 'stack';
 	let tabInitialized = false;
-	let activeTab = $state<TabKey>('plan');
+	let activeTab = $state<FeaturePageTabKey>('plan');
 	let startPending = $state(false);
 	let startError = $state<string | null>(null);
 	let startSuccess = $state<string | null>(null);
@@ -163,32 +119,14 @@
 		return 'gray';
 	}
 
-	function implementationStageLabel(status: FeatureStageStatus): string {
-		if (status === 'done') {
-			return 'Done';
-		}
-
-		if (status === 'review-ready') {
-			return 'Review ready';
-		}
-
-		if (status === 'in-progress') {
-			return 'In progress';
-		}
-
-		return 'Not started';
-	}
-
-	function hasInProgressStage(): boolean {
-		return (data.stack.stages ?? []).some((stage) => stageStatus(stage.id, stage.status) === 'in-progress');
-	}
-
-	function hasRemainingNotStartedStage(): boolean {
-		return (data.stack.stages ?? []).some((stage) => stageStatus(stage.id, stage.status) === 'not-started');
-	}
-
 	function canStartFeature(): boolean {
-		return hasRemainingNotStartedStage() && !hasInProgressStage() && !startPending && !syncPending;
+		return (
+			canStartFeatureWithRuntime({
+				stages: data.stack.stages ?? [],
+				implementationRuntimeByStageId,
+				startPending
+			}) && !syncPending
+		);
 	}
 
 	function stageSyncMetadata(stageId: string): StageSyncMetadata {
@@ -218,23 +156,19 @@
 	}
 
 	function startButtonLabel(): string {
-		if (startPending) {
-			return 'Starting...';
-		}
-
-		if (hasInProgressStage()) {
-			return 'Start feature';
-		}
-
-		return 'Next stage';
+		return startButtonLabelWithRuntime({
+			stages: data.stack.stages ?? [],
+			implementationRuntimeByStageId,
+			startPending
+		});
 	}
 
 	function stageStatus(stageId: string, fallback: FeatureStageStatus): FeatureStageStatus {
-		return implementationRuntimeByStageId[stageId]?.stageStatus ?? fallback;
+		return resolveStageStatus(implementationRuntimeByStageId, stageId, fallback);
 	}
 
 	function stagePullRequest(stageId: string, fallback?: StackPullRequest): StackPullRequest | undefined {
-		return implementationRuntimeByStageId[stageId]?.pullRequest ?? fallback;
+		return resolveStagePullRequest(implementationRuntimeByStageId, stageId, fallback);
 	}
 
 	function stageIdsForRuntimePolling(): string[] {
@@ -427,8 +361,8 @@
 		void loadStageDiff(stageId);
 	}
 
-	function orderedLinesForDiff(diff: StageDiffPayload): Array<{ lineId: string; filePath: string; content: string; type: 'context' | 'add' | 'del' }> {
-		const lines: Array<{ lineId: string; filePath: string; content: string; type: 'context' | 'add' | 'del' }> = [];
+	function orderedLinesForDiff(diff: StageDiffPayload): OrderedDiffLine[] {
+		const lines: OrderedDiffLine[] = [];
 
 		for (const file of diff.files) {
 			for (const hunk of file.hunks) {
