@@ -3,6 +3,20 @@
 @plugin 'flowbite/plugin';
 @source '../../../node_modules/flowbite-svelte/dist';
 
+@theme {
+	--color-primary-50: #e8f1ff;
+	--color-primary-100: #d2e4ff;
+	--color-primary-200: #afceff;
+	--color-primary-300: #78adff;
+	--color-primary-400: #4d91ff;
+	--color-primary-500: #2c78f0;
+	--color-primary-600: #1f63ce;
+	--color-primary-700: #1b53ac;
+	--color-primary-800: #1a478d;
+	--color-primary-900: #193c74;
+	--color-primary-950: #11274d;
+}
+
 :root {
 	--stacked-bg: #121317;
 	--stacked-bg-soft: #171922;
@@ -48,6 +62,14 @@ button,
 input,
 textarea {
 	font: inherit;
+}
+
+button:not(:disabled) {
+	cursor: pointer;
+}
+
+button:disabled {
+	cursor: not-allowed;
 }
 
 button:focus-visible,

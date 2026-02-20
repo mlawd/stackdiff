@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	import { Spinner } from 'flowbite-svelte';
+	import { Badge, Button, Spinner } from 'flowbite-svelte';
+	import { CodeMergeOutline, CodePullRequestOutline } from 'flowbite-svelte-icons';
 	import {
 		canStartFeature as canStartFeatureWithRuntime,
-		implementationStageClass,
 		implementationStageLabel,
 		stagePullRequest as resolveStagePullRequest,
 		stageStatus as resolveStageStatus,
@@ -27,6 +27,8 @@
 			message?: string;
 		};
 	}
+
+	type StageBadgeColor = 'gray' | 'yellow' | 'green' | 'purple';
 
 	let { stack }: { stack: StackViewModel } = $props();
 
@@ -89,6 +91,22 @@
 
 	function stagePullRequest(stageId: string, fallback?: StackPullRequest): StackPullRequest | undefined {
 		return resolveStagePullRequest(implementationRuntimeByStageId, stageId, fallback);
+	}
+
+	function implementationStageColor(status: FeatureStageStatus): StageBadgeColor {
+		if (status === 'done') {
+			return 'green';
+		}
+
+		if (status === 'review-ready') {
+			return 'purple';
+		}
+
+		if (status === 'in-progress') {
+			return 'yellow';
+		}
+
+		return 'gray';
 	}
 
 	function stageIdsForRuntimePolling(): string[] {
@@ -307,26 +325,28 @@
 		</div>
 	{/if}
 
-	<div class="stacked-panel-elevated p-4">
+	<div>
 		<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 			<p class="text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle">Implementation stages</p>
 			<div class="flex flex-wrap items-center gap-2">
-				<button
+				<Button
 					type="button"
+					size="sm"
+					color="alternative"
 					onclick={syncStack}
 					disabled={!canSyncStack()}
-					class="cursor-pointer rounded-lg border border-[var(--stacked-border-soft)] bg-transparent px-3 py-1.5 text-xs font-semibold text-[var(--stacked-text)] transition hover:border-[var(--stacked-accent)] disabled:cursor-not-allowed disabled:opacity-70"
 				>
 					{syncStackButtonLabel()}
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
+					size="sm"
+					color="primary"
 					onclick={startFeature}
 					disabled={!canStartFeature()}
-					class="cursor-pointer rounded-lg border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-70"
 				>
 					{startButtonLabel()}
-				</button>
+				</Button>
 			</div>
 		</div>
 		{#if stack.stages && stack.stages.length > 0}
@@ -349,14 +369,15 @@
 						</div>
 						<div class="flex flex-wrap items-center justify-end gap-2">
 							{#if stageSyncMeta.isOutOfSync}
-								<span
-									class="stacked-chip stacked-chip-warning"
+								<Badge
+									rounded
+									color="yellow"
 									title={`Behind ${stageSyncMeta.baseRef ?? 'base'} by ${stageSyncMeta.behindBy} commit${stageSyncMeta.behindBy === 1 ? '' : 's'}`}
 								>
 									Out of sync
-								</span>
+								</Badge>
 							{/if}
-							<span class={`${implementationStageClass(currentStageStatus)} ${stageWorking ? 'stacked-chip-no-dot' : ''} inline-flex items-center gap-1.5`}>
+							<Badge rounded color={implementationStageColor(currentStageStatus)} class="inline-flex items-center gap-1.5">
 								{#if stageWorking}
 									<Spinner
 										size="4"
@@ -366,15 +387,27 @@
 									/>
 								{/if}
 								<span>{implementationStageLabel(currentStageStatus)}</span>
-							</span>
+							</Badge>
 							{#if currentStagePullRequest?.url && currentStagePullRequest.number}
 								<a
 									href={currentStagePullRequest.url}
 									target="_blank"
 									rel="noopener noreferrer"
-									class="stacked-link text-xs font-medium"
+									class="inline-flex"
+									aria-label={`Open pull request #${currentStagePullRequest.number} on GitHub`}
 								>
-									PR #{currentStagePullRequest.number}
+									<Badge
+										rounded
+										color={currentStagePullRequest.state === 'MERGED' ? 'green' : 'blue'}
+										class="inline-flex items-center gap-1"
+									>
+										{#if currentStagePullRequest.state === 'MERGED'}
+											<CodeMergeOutline class="h-3.5 w-3.5" />
+										{:else}
+											<CodePullRequestOutline class="h-3.5 w-3.5" />
+										{/if}
+										<span>#{currentStagePullRequest.number}</span>
+									</Badge>
 								</a>
 							{/if}
 							{#if currentStageStatus === 'in-progress' && stageRuntime}
@@ -389,7 +422,7 @@
 		{/if}
 	</div>
 
-	<div class="stacked-panel-elevated p-4">
+	<div>
 		{#if stack.pullRequest}
 			<p class="text-xs uppercase tracking-wide stacked-subtle">Current PR</p>
 			<p class="mt-1 text-sm font-semibold text-[var(--stacked-text)]">
@@ -405,8 +438,6 @@
 			>
 				Open on GitHub
 			</button>
-		{:else}
-			<p class="text-sm stacked-subtle">No active PR for this branch yet.</p>
 		{/if}
 	</div>
 </div>

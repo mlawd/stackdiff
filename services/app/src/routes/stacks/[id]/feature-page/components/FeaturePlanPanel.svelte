@@ -15,6 +15,6 @@
 	} = $props();
 </script>
 
-<div class="stacked-panel-elevated p-4">
+<div>
 	<PlanningChat {stackId} {session} {messages} {awaitingResponse} />
 </div>

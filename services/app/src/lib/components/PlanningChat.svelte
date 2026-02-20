@@ -74,16 +74,3 @@
 	{formatSaveSuccess}
 	onSaveResponse={handleSaveResponse}
 />
-
-{#if session.savedPlanPath}
-	<div class="mt-3 rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] p-3">
-		<p class="mb-1 text-[11px] uppercase tracking-wide stacked-subtle">Saved plan path</p>
-		<p class="stacked-chat-font break-all text-sm text-[var(--stacked-text)]">{session.savedPlanPath}</p>
-		{#if session.savedStageConfigPath}
-			<p class="mb-1 mt-3 text-[11px] uppercase tracking-wide stacked-subtle">Saved stage config path</p>
-			<p class="stacked-chat-font break-all text-sm text-[var(--stacked-text)]">
-				{session.savedStageConfigPath}
-			</p>
-		{/if}
-	</div>
-{/if}
