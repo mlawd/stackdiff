@@ -2,8 +2,15 @@
 	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import PlanningChat from '$lib/components/PlanningChat.svelte';
+	import StageDiffStructuredView from '$lib/components/diff/StageDiffStructuredView.svelte';
 
-	import type { StackStatus } from '$lib/types/stack';
+	import type {
+		DiffSelection,
+		StageDiffPayload,
+		StageDiffChatResult,
+		StageDiffabilityMetadata,
+		StackStatus
+	} from '$lib/types/stack';
 	import type { PageData } from './$types';
 
 	interface StartResponse {
@@ -11,6 +18,28 @@
 		reusedSession?: boolean;
 		startedNow?: boolean;
 		error?: string;
+	}
+
+	interface StageDiffSuccessResponse {
+		diff: StageDiffPayload;
+	}
+
+	interface StageDiffErrorResponse {
+		error?: {
+			code?: string;
+			message?: string;
+		};
+	}
+
+	interface StageDiffChatSuccessResponse {
+		result: StageDiffChatResult;
+	}
+
+	interface StageDiffChatErrorResponse {
+		error?: {
+			code?: string;
+			message?: string;
+		};
 	}
 
 	let { data }: { data: PageData } = $props();
@@ -49,6 +78,23 @@
 	let startPending = $state(false);
 	let startError = $state<string | null>(null);
 	let startSuccess = $state<string | null>(null);
+	let isStageDiffPanelOpen = $state(false);
+	let activeDiffStageId = $state<string | null>(null);
+	let activeDiffStageTitle = $state<string | null>(null);
+	let stageDiffCache = $state<Record<string, StageDiffPayload>>({});
+	let stageDiffErrors = $state<Record<string, string>>({});
+	let loadingDiffStageId = $state<string | null>(null);
+	let selectedDiffLineIdsByStageId = $state<Record<string, string[]>>({});
+	let selectedDiffFilePathByStageId = $state<Record<string, string | null>>({});
+	let selectionAnchorLineIdByStageId = $state<Record<string, string | null>>({});
+	let selectedDiffChatMessageByStageId = $state<Record<string, string>>({});
+	let stageDiffChatReplyByStageId = $state<Record<string, string>>({});
+	let stageDiffChatErrorsByStageId = $state<Record<string, string>>({});
+	let stageDiffChatSendingByStageId = $state<Record<string, boolean>>({});
+	let stageDiffAbortController: AbortController | null = null;
+	let stageDiffCloseButton: HTMLButtonElement | null = null;
+	let previousFocusedElement: HTMLElement | null = null;
+	let previousBodyOverflow = '';
 
 	$effect(() => {
 		if (tabInitialized) {
@@ -138,6 +184,341 @@
 		return (data.stack.stages?.length ?? 0) > 0 && !startPending;
 	}
 
+	function stageDiffability(stageId: string): StageDiffabilityMetadata {
+		return (
+			data.stack.stageDiffabilityById?.[stageId] ?? {
+				isDiffable: false,
+				reasonIfNotDiffable: 'Stage diff is unavailable.'
+			}
+		);
+	}
+
+	function canOpenStageDiff(stageId: string): boolean {
+		return stageDiffability(stageId).isDiffable;
+	}
+
+	function implementationStageRowClass(stageId: string): string {
+		if (canOpenStageDiff(stageId)) {
+			return 'cursor-pointer transition hover:border-[var(--stacked-accent)] hover:bg-[color-mix(in_oklab,var(--stacked-bg-soft)_80%,var(--stacked-accent)_20%)]';
+		}
+
+		return 'cursor-not-allowed opacity-80';
+	}
+
+	async function loadStageDiff(stageId: string): Promise<void> {
+		if (stageDiffCache[stageId]) {
+			return;
+		}
+
+		if (loadingDiffStageId === stageId) {
+			return;
+		}
+
+		loadingDiffStageId = stageId;
+		delete stageDiffErrors[stageId];
+
+		stageDiffAbortController?.abort();
+		stageDiffAbortController = new AbortController();
+
+		try {
+			const response = await fetch(`/api/stacks/${data.stack.id}/stages/${stageId}/diff`, {
+				method: 'GET',
+				signal: stageDiffAbortController.signal
+			});
+			if (!response.ok) {
+				const body = (await response.json()) as StageDiffErrorResponse;
+				throw new Error(body.error?.message ?? 'Unable to load stage diff.');
+			}
+
+			const body = (await response.json()) as StageDiffSuccessResponse;
+			stageDiffCache[stageId] = body.diff;
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
+				return;
+			}
+
+			stageDiffErrors[stageId] =
+				error instanceof Error ? error.message : 'Unable to load stage diff.';
+		} finally {
+			if (loadingDiffStageId === stageId) {
+				loadingDiffStageId = null;
+			}
+		}
+	}
+
+	function openStageDiff(stageId: string, stageTitle: string): void {
+		if (!canOpenStageDiff(stageId)) {
+			return;
+		}
+
+		activeDiffStageId = stageId;
+		activeDiffStageTitle = stageTitle;
+		isStageDiffPanelOpen = true;
+
+		void loadStageDiff(stageId);
+	}
+
+	function orderedLinesForDiff(diff: StageDiffPayload): Array<{ lineId: string; filePath: string; content: string; type: 'context' | 'add' | 'del' }> {
+		const lines: Array<{ lineId: string; filePath: string; content: string; type: 'context' | 'add' | 'del' }> = [];
+
+		for (const file of diff.files) {
+			for (const hunk of file.hunks) {
+				for (const line of hunk.lines) {
+					lines.push({
+						lineId: line.lineId,
+						filePath: file.path,
+						content: line.content,
+						type: line.type
+					});
+				}
+			}
+		}
+
+		return lines;
+	}
+
+	function linePrefix(type: 'context' | 'add' | 'del'): string {
+		if (type === 'add') {
+			return '+';
+		}
+
+		if (type === 'del') {
+			return '-';
+		}
+
+		return ' ';
+	}
+
+	function selectedLineIdsForStage(stageId: string): string[] {
+		return selectedDiffLineIdsByStageId[stageId] ?? [];
+	}
+
+	function selectedFilePathForStage(stageId: string): string | null {
+		return selectedDiffFilePathByStageId[stageId] ?? null;
+	}
+
+	function clearSelectedLinesForStage(stageId: string): void {
+		selectedDiffLineIdsByStageId[stageId] = [];
+		selectedDiffFilePathByStageId[stageId] = null;
+		selectionAnchorLineIdByStageId[stageId] = null;
+	}
+
+	function applyStageLineSelection(input: { lineId: string; filePath: string; shiftKey: boolean }): void {
+		if (!activeDiffStageId || !activeStageDiff) {
+			return;
+		}
+
+		const stageId = activeDiffStageId;
+		const orderedLines = orderedLinesForDiff(activeStageDiff);
+		const lineIds = orderedLines.map((line) => line.lineId);
+		const clickedIndex = lineIds.indexOf(input.lineId);
+		if (clickedIndex === -1) {
+			return;
+		}
+
+		const currentFilePath = selectedFilePathForStage(stageId);
+		const currentSelection = selectedLineIdsForStage(stageId);
+		const currentSelectionSet = new Set(currentSelection);
+		const anchorLineId = selectionAnchorLineIdByStageId[stageId] ?? null;
+		const anchorIndex = anchorLineId ? lineIds.indexOf(anchorLineId) : -1;
+
+		if (
+			currentFilePath &&
+			currentFilePath !== input.filePath &&
+			(currentSelection.length > 0 || input.shiftKey)
+		) {
+			selectedDiffLineIdsByStageId[stageId] = [input.lineId];
+			selectedDiffFilePathByStageId[stageId] = input.filePath;
+			selectionAnchorLineIdByStageId[stageId] = input.lineId;
+			delete stageDiffChatReplyByStageId[stageId];
+			delete stageDiffChatErrorsByStageId[stageId];
+			return;
+		}
+
+		if (input.shiftKey && anchorIndex !== -1) {
+			const start = Math.min(anchorIndex, clickedIndex);
+			const end = Math.max(anchorIndex, clickedIndex);
+			for (let index = start; index <= end; index += 1) {
+				const rangeLine = orderedLines[index];
+				if (rangeLine.filePath === input.filePath) {
+					currentSelectionSet.add(rangeLine.lineId);
+				}
+			}
+		} else if (currentSelectionSet.has(input.lineId)) {
+			currentSelectionSet.delete(input.lineId);
+		} else {
+			currentSelectionSet.add(input.lineId);
+		}
+
+		const nextSelection: string[] = [];
+		for (const line of orderedLines) {
+			if (line.filePath === input.filePath && currentSelectionSet.has(line.lineId)) {
+				nextSelection.push(line.lineId);
+			}
+		}
+
+		selectedDiffLineIdsByStageId[stageId] = nextSelection;
+		selectedDiffFilePathByStageId[stageId] = nextSelection.length > 0 ? input.filePath : null;
+		selectionAnchorLineIdByStageId[stageId] = input.lineId;
+		delete stageDiffChatReplyByStageId[stageId];
+		delete stageDiffChatErrorsByStageId[stageId];
+	}
+
+	function selectedSnippetForActiveStage(): string {
+		if (!activeDiffStageId || !activeStageDiff) {
+			return '';
+		}
+
+		const stageId = activeDiffStageId;
+		const selectedLineIds = selectedLineIdsForStage(stageId);
+		if (selectedLineIds.length === 0) {
+			return '';
+		}
+
+		const selectedLineSet = new Set(selectedLineIds);
+		const selectedFilePath = selectedFilePathForStage(stageId);
+		if (!selectedFilePath) {
+			return '';
+		}
+
+		const orderedLines = orderedLinesForDiff(activeStageDiff);
+		return orderedLines
+			.filter((line) => line.filePath === selectedFilePath && selectedLineSet.has(line.lineId))
+			.map((line) => `${linePrefix(line.type)}${line.content}`)
+			.join('\n');
+	}
+
+	function canStartFocusedDiffChat(): boolean {
+		if (!activeDiffStageId || !activeStageDiff) {
+			return false;
+		}
+
+		return selectedLineIdsForStage(activeDiffStageId).length > 0;
+	}
+
+	async function startFocusedDiffChat(): Promise<void> {
+		if (!activeDiffStageId || !activeStageDiff || !canStartFocusedDiffChat()) {
+			return;
+		}
+
+		const stageId = activeDiffStageId;
+		const filePath = selectedFilePathForStage(stageId);
+		if (!filePath) {
+			return;
+		}
+
+		const selection: DiffSelection = {
+			refs: {
+				baseRef: activeStageDiff.baseRef,
+				targetRef: activeStageDiff.targetRef
+			},
+			filePath,
+			selectedLineIds: selectedLineIdsForStage(stageId),
+			snippet: selectedSnippetForActiveStage()
+		};
+
+		stageDiffChatSendingByStageId[stageId] = true;
+		delete stageDiffChatErrorsByStageId[stageId];
+
+		try {
+			const response = await fetch(`/api/stacks/${data.stack.id}/stages/${stageId}/diff/chat`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					selection,
+					message: (selectedDiffChatMessageByStageId[stageId] ?? '').trim() || undefined
+				})
+			});
+
+			if (!response.ok) {
+				const body = (await response.json()) as StageDiffChatErrorResponse;
+				throw new Error(body.error?.message ?? 'Unable to start focused stage chat.');
+			}
+
+			const body = (await response.json()) as StageDiffChatSuccessResponse;
+			stageDiffChatReplyByStageId[stageId] = body.result.assistantReply;
+		} catch (error) {
+			stageDiffChatErrorsByStageId[stageId] =
+				error instanceof Error ? error.message : 'Unable to start focused stage chat.';
+		} finally {
+			stageDiffChatSendingByStageId[stageId] = false;
+		}
+	}
+
+	function closeStageDiffPanel(): void {
+		isStageDiffPanelOpen = false;
+	}
+
+	function orderedDiffableStages(): Array<{ id: string; title: string }> {
+		const stages = data.stack.stages ?? [];
+		const items: Array<{ id: string; title: string }> = [];
+
+		for (const stage of stages) {
+			if (!canOpenStageDiff(stage.id)) {
+				continue;
+			}
+
+			items.push({ id: stage.id, title: stage.title });
+		}
+
+		return items;
+	}
+
+	function moveToAdjacentDiff(direction: 1 | -1): void {
+		const stages = orderedDiffableStages();
+		if (stages.length <= 1) {
+			return;
+		}
+
+		const activeIndex = stages.findIndex((stage) => stage.id === activeDiffStageId);
+		if (activeIndex === -1) {
+			return;
+		}
+
+		const nextIndex = activeIndex + direction;
+		if (nextIndex < 0 || nextIndex >= stages.length) {
+			return;
+		}
+
+		const next = stages[nextIndex];
+		openStageDiff(next.id, next.title);
+	}
+
+	function handleWindowKeydown(event: KeyboardEvent): void {
+		if (!isStageDiffPanelOpen) {
+			return;
+		}
+
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			closeStageDiffPanel();
+			return;
+		}
+
+		if (event.key === 'ArrowDown') {
+			event.preventDefault();
+			moveToAdjacentDiff(1);
+			return;
+		}
+
+		if (event.key === 'ArrowUp') {
+			event.preventDefault();
+			moveToAdjacentDiff(-1);
+			return;
+		}
+
+		if (event.key.toLowerCase() === 'j') {
+			event.preventDefault();
+			moveToAdjacentDiff(1);
+			return;
+		}
+
+		if (event.key.toLowerCase() === 'k') {
+			event.preventDefault();
+			moveToAdjacentDiff(-1);
+		}
+	}
+
 	async function startFeature(): Promise<void> {
 		if (!canStartFeature()) {
 			return;
@@ -165,7 +546,59 @@
 			startPending = false;
 		}
 	}
+
+	const activeStageDiff = $derived(activeDiffStageId ? stageDiffCache[activeDiffStageId] : null);
+	const activeStageDiffError = $derived(activeDiffStageId ? stageDiffErrors[activeDiffStageId] : null);
+	const activeStageDiffLoading = $derived(
+		activeDiffStageId ? loadingDiffStageId === activeDiffStageId : false
+	);
+	const activeSelectedLineIds = $derived(
+		activeDiffStageId ? selectedLineIdsForStage(activeDiffStageId) : []
+	);
+	const activeSelectedFilePath = $derived(
+		activeDiffStageId ? selectedFilePathForStage(activeDiffStageId) : null
+	);
+	const activeSelectedSnippet = $derived(selectedSnippetForActiveStage());
+	const activeStageDiffChatReply = $derived(
+		activeDiffStageId ? stageDiffChatReplyByStageId[activeDiffStageId] : null
+	);
+	const activeStageDiffChatError = $derived(
+		activeDiffStageId ? stageDiffChatErrorsByStageId[activeDiffStageId] : null
+	);
+	const activeStageDiffChatSending = $derived(
+		activeDiffStageId ? stageDiffChatSendingByStageId[activeDiffStageId] === true : false
+	);
+	const activeDiffChatMessage = $derived(
+		activeDiffStageId ? selectedDiffChatMessageByStageId[activeDiffStageId] ?? '' : ''
+	);
+
+	$effect(() => {
+		if (typeof document === 'undefined') {
+			return;
+		}
+
+		if (!isStageDiffPanelOpen) {
+			return;
+		}
+
+		previousFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		previousBodyOverflow = document.body.style.overflow;
+		document.body.style.overflow = 'hidden';
+
+		queueMicrotask(() => {
+			stageDiffCloseButton?.focus();
+		});
+
+		return () => {
+			document.body.style.overflow = previousBodyOverflow;
+			if (previousFocusedElement) {
+				previousFocusedElement.focus();
+			}
+		};
+	});
 </script>
+
+<svelte:window onkeydown={handleWindowKeydown} />
 
 <main class="stacked-shell mx-auto w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-6">
 	<div class="stacked-fade-in">
@@ -257,15 +690,43 @@
 					{#if data.stack.stages && data.stack.stages.length > 0}
 						<div class="space-y-2">
 							{#each data.stack.stages as implementationStage (implementationStage.id)}
-								<div class="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2">
-									<div>
-										<p class="text-sm font-medium text-[var(--stacked-text)]">{implementationStage.title}</p>
-										{#if implementationStage.details}
-											<p class="mt-1 text-xs stacked-subtle">{implementationStage.details}</p>
-										{/if}
+								<button
+									type="button"
+									onclick={() => openStageDiff(implementationStage.id, implementationStage.title)}
+									disabled={!canOpenStageDiff(implementationStage.id)}
+									title={
+										canOpenStageDiff(implementationStage.id)
+											? `Open diff for ${implementationStage.title}`
+											: stageDiffability(implementationStage.id).reasonIfNotDiffable ??
+												'Stage diff is unavailable.'
+									}
+									class={`w-full rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 text-left ${implementationStageRowClass(implementationStage.id)}`}
+								>
+									<div class="flex flex-wrap items-start justify-between gap-2">
+										<div>
+											<p class="text-sm font-medium text-[var(--stacked-text)]">{implementationStage.title}</p>
+											{#if implementationStage.details}
+												<p class="mt-1 text-xs stacked-subtle">{implementationStage.details}</p>
+											{/if}
+											{#if canOpenStageDiff(implementationStage.id)}
+												<p class="mt-1 text-xs stacked-subtle">
+													Branch: {stageDiffability(implementationStage.id).branchName}
+												</p>
+											{:else}
+												<p class="mt-1 text-xs text-amber-300">
+													{stageDiffability(implementationStage.id).reasonIfNotDiffable ??
+														'Stage diff is unavailable.'}
+												</p>
+											{/if}
+										</div>
+										<div class="flex flex-wrap items-center gap-2">
+											{#if canOpenStageDiff(implementationStage.id)}
+												<span class="stacked-chip stacked-chip-review">View diff</span>
+											{/if}
+											<span class={implementationStageClass(implementationStage.status)}>{implementationStageLabel(implementationStage.status)}</span>
+										</div>
 									</div>
-									<span class={implementationStageClass(implementationStage.status)}>{implementationStageLabel(implementationStage.status)}</span>
-								</div>
+								</button>
 							{/each}
 						</div>
 					{:else}
@@ -297,3 +758,229 @@
 		{/if}
 	</div>
 </main>
+
+<div class={`stage-diff-drawer ${isStageDiffPanelOpen ? 'is-open' : ''}`} aria-hidden={!isStageDiffPanelOpen}>
+	<button
+		type="button"
+		class="stage-diff-backdrop"
+		onclick={closeStageDiffPanel}
+		aria-label="Close stage diff panel"
+		tabindex={isStageDiffPanelOpen ? 0 : -1}
+	></button>
+	<div
+		class="stage-diff-panel stacked-panel"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="stage-diff-panel-title"
+	>
+		<div class="stage-diff-panel-header">
+			<div>
+				<p class="text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle">Branch diff</p>
+				<h2 id="stage-diff-panel-title" class="mt-1 text-lg font-semibold text-[var(--stacked-text)]">
+					{activeDiffStageTitle ?? 'Stage diff'}
+				</h2>
+			</div>
+			<button
+				type="button"
+				onclick={closeStageDiffPanel}
+				bind:this={stageDiffCloseButton}
+				class="rounded-md border border-[var(--stacked-border-soft)] px-2 py-1 text-xs font-semibold text-[var(--stacked-text-muted)] transition hover:text-[var(--stacked-text)]"
+			>
+				Close
+			</button>
+		</div>
+		<div class="stage-diff-panel-body stacked-scroll">
+			{#if !activeDiffStageId}
+				<p class="text-sm stacked-subtle">Select a diffable implementation stage to load changes.</p>
+			{:else if activeStageDiffLoading}
+				<div class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 text-sm stacked-subtle">
+					Loading stage diff...
+				</div>
+			{:else if activeStageDiffError}
+				<div class="rounded-lg border border-red-500/45 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+					{activeStageDiffError}
+				</div>
+			{:else if activeStageDiff}
+				<div class="space-y-3">
+					<div class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-3">
+						<div class="mb-2 flex flex-wrap gap-2">
+							<span class="stacked-chip">Files {activeStageDiff.summary.filesChanged}</span>
+							<span class="stacked-chip stacked-chip-success">+{activeStageDiff.summary.additions}</span>
+							<span class="stacked-chip stacked-chip-danger">-{activeStageDiff.summary.deletions}</span>
+						</div>
+						<p class="text-xs stacked-subtle">Comparing {activeStageDiff.baseRef} -> {activeStageDiff.targetRef}</p>
+						<p class="mt-1 text-xs stacked-subtle">Use Arrow Up/Down or J/K to move between diffable stages.</p>
+						{#if activeStageDiff.isTruncated}
+							<div class="mt-2 rounded-md border border-amber-300/35 bg-amber-400/10 px-2 py-1.5 text-xs text-amber-200">
+								Showing a truncated diff for performance.
+								{#if activeStageDiff.truncation}
+									{activeStageDiff.truncation.omittedFiles > 0
+										? ` Omitted files: ${activeStageDiff.truncation.omittedFiles}.`
+										: ''}
+									{activeStageDiff.truncation.omittedLines > 0
+										? ` Omitted lines: ${activeStageDiff.truncation.omittedLines}.`
+										: ''}
+								{/if}
+							</div>
+						{/if}
+						<div class="mt-3 rounded-md border border-[var(--stacked-border-soft)] bg-[var(--stacked-surface-elevated)]/65 p-2.5">
+							<div class="flex flex-wrap items-center justify-between gap-2">
+								<p class="text-xs font-semibold uppercase tracking-[0.15em] stacked-subtle">Selected lines</p>
+								<div class="flex flex-wrap items-center gap-2">
+									<span class="stacked-chip stacked-chip-review">{activeSelectedLineIds.length} selected</span>
+									{#if activeSelectedFilePath}
+										<span class="stacked-chip">{activeSelectedFilePath}</span>
+									{/if}
+									<button
+										type="button"
+										onclick={() => activeDiffStageId && clearSelectedLinesForStage(activeDiffStageId)}
+										disabled={activeSelectedLineIds.length === 0 || activeStageDiffChatSending}
+										class="rounded-md border border-[var(--stacked-border-soft)] px-2 py-1 text-xs font-semibold text-[var(--stacked-text-muted)] transition hover:text-[var(--stacked-text)] disabled:cursor-not-allowed disabled:opacity-60"
+									>
+										Clear selection
+									</button>
+								</div>
+							</div>
+							<p class="mt-1 text-xs stacked-subtle">
+								Click lines to select. Shift+click extends contiguous ranges in the same file.
+							</p>
+							<label class="mt-2 block text-xs stacked-subtle" for="stage-diff-chat-message">
+								Focus prompt (optional)
+							</label>
+							<textarea
+								id="stage-diff-chat-message"
+								rows="2"
+								value={activeDiffChatMessage}
+								oninput={(event) => {
+									if (!activeDiffStageId) {
+										return;
+									}
+
+									selectedDiffChatMessageByStageId[activeDiffStageId] =
+										(event.currentTarget as HTMLTextAreaElement).value;
+								}}
+								placeholder="What should the assistant focus on in these selected lines?"
+								class="mt-1 w-full rounded-md border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-2 py-1.5 text-sm text-[var(--stacked-text)] outline-none transition focus:border-[var(--stacked-accent)]"
+							></textarea>
+							<div class="mt-2 flex flex-wrap items-center gap-2">
+								<button
+									type="button"
+									onclick={startFocusedDiffChat}
+									disabled={!canStartFocusedDiffChat() || activeStageDiffChatSending}
+									class="cursor-pointer rounded-md border border-[var(--stacked-accent)] bg-[var(--stacked-accent)] px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[#2a97ff] disabled:cursor-not-allowed disabled:opacity-65"
+								>
+									{activeStageDiffChatSending ? 'Starting chat...' : 'Start focused chat'}
+								</button>
+								{#if activeSelectedSnippet}
+									<span class="text-xs stacked-subtle">Snippet ready ({activeSelectedSnippet.split('\n').length} lines)</span>
+								{/if}
+							</div>
+							{#if activeStageDiffChatError}
+								<div class="mt-2 rounded-md border border-red-500/45 bg-red-500/10 px-2 py-1.5 text-xs text-red-200">
+									{activeStageDiffChatError}
+								</div>
+							{/if}
+							{#if activeStageDiffChatReply}
+								<div class="mt-2 rounded-md border border-emerald-400/35 bg-emerald-500/10 px-2 py-2 text-xs text-emerald-100">
+									<p class="mb-1 font-semibold uppercase tracking-[0.12em]">Focused chat reply</p>
+									<p class="whitespace-pre-wrap">{activeStageDiffChatReply}</p>
+								</div>
+							{/if}
+						</div>
+					</div>
+
+					{#if activeStageDiff.files.length === 0}
+						<div class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-3 text-sm stacked-subtle">
+							No committed changes found for this stage branch.
+						</div>
+					{:else}
+						<StageDiffStructuredView
+							diff={activeStageDiff}
+							selectedLineIds={activeSelectedLineIds}
+							onLinePress={applyStageLineSelection}
+						/>
+					{/if}
+				</div>
+			{:else}
+				<p class="text-sm stacked-subtle">Select a diffable implementation stage to load changes.</p>
+			{/if}
+		</div>
+	</div>
+</div>
+
+<style>
+	.stage-diff-drawer {
+		position: fixed;
+		inset: 0;
+		z-index: 40;
+		pointer-events: none;
+	}
+
+	.stage-diff-drawer.is-open {
+		pointer-events: auto;
+	}
+
+	.stage-diff-backdrop {
+		position: absolute;
+		inset: 0;
+		border: 0;
+		background: rgba(4, 6, 10, 0.52);
+		opacity: 0;
+		transition: opacity 180ms ease;
+	}
+
+	.stage-diff-drawer.is-open .stage-diff-backdrop {
+		opacity: 1;
+	}
+
+	.stage-diff-panel {
+		position: absolute;
+		top: 0;
+		right: 0;
+		height: 100%;
+		width: min(880px, 100vw);
+		display: flex;
+		flex-direction: column;
+		transform: translateX(100%);
+		transition: transform 230ms cubic-bezier(0.16, 1, 0.3, 1);
+		border-radius: 0;
+	}
+
+	.stage-diff-drawer.is-open .stage-diff-panel {
+		transform: translateX(0);
+	}
+
+	.stage-diff-panel-header {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.75rem;
+		padding: 1rem;
+		border-bottom: 1px solid var(--stacked-border-soft);
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		background: color-mix(in oklab, var(--stacked-surface-elevated) 92%, transparent);
+	}
+
+	.stage-diff-panel-body {
+		padding: 1rem;
+		overflow: auto;
+		overscroll-behavior: contain;
+	}
+
+	@media (max-width: 640px) {
+		.stage-diff-panel {
+			width: 100vw;
+			height: min(92dvh, 100%);
+			top: auto;
+			bottom: 0;
+			border-radius: 16px 16px 0 0;
+			transform: translateY(100%);
+		}
+
+		.stage-diff-drawer.is-open .stage-diff-panel {
+			transform: translateY(0);
+		}
+	}
+</style>
