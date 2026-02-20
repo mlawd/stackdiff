@@ -32,6 +32,12 @@ interface OpencodeDirectoryOptions {
 
 export type OpencodeSessionRuntimeState = 'idle' | 'busy' | 'retry' | 'missing';
 
+export interface OpencodeTodo {
+	content: string;
+	status: string;
+	priority: string;
+}
+
 const MAX_ERROR_BODY_LENGTH = 300;
 
 type OpencodeRuntime = {
@@ -628,6 +634,50 @@ export async function getOpencodeSessionRuntimeState(
 	}
 
 	return 'idle';
+}
+
+export async function getOpencodeSessionTodos(
+	sessionId: string,
+	options?: OpencodeDirectoryOptions
+): Promise<OpencodeTodo[]> {
+	const { client } = await getRuntime();
+	const todoResult = await client.session.todo({
+		path: { id: sessionId },
+		query: { directory: getDirectory(options) }
+	});
+	const todos = unwrapData(todoResult);
+
+	if (!Array.isArray(todos)) {
+		return [];
+	}
+
+	return todos
+		.map((todo) => {
+			if (typeof todo !== 'object' || todo === null) {
+				return null;
+			}
+
+			const candidate = todo as {
+				content?: unknown;
+				status?: unknown;
+				priority?: unknown;
+			};
+
+			if (
+				typeof candidate.content !== 'string' ||
+				typeof candidate.status !== 'string' ||
+				typeof candidate.priority !== 'string'
+			) {
+				return null;
+			}
+
+			return {
+				content: candidate.content,
+				status: candidate.status,
+				priority: candidate.priority
+			} satisfies OpencodeTodo;
+		})
+		.filter((todo): todo is OpencodeTodo => todo !== null);
 }
 
 async function* streamOpencodeSessionEvents(

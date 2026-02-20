@@ -49,6 +49,10 @@ function buildInitialImplementationPrompt(
 	}
 
 	lines.push('Implement the stage in this worktree and keep changes scoped to this stage.');
+	lines.push('Keep a todo list updated while you work so progress is visible.');
+	lines.push('Before finishing, run relevant validation checks for the changes you made.');
+	lines.push('When implementation is complete, commit the changes with a clear message.');
+	lines.push('If there are no code changes, do not create an empty commit.');
 
 	return lines.join('\n');
 }

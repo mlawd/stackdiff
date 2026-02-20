@@ -25,7 +25,7 @@ function isStackStatus(value: unknown): value is StackStatus {
 }
 
 function isFeatureStageStatus(value: unknown): value is FeatureStageStatus {
-	return value === 'not-started' || value === 'in-progress' || value === 'done';
+	return value === 'not-started' || value === 'in-progress' || value === 'review-ready' || value === 'done';
 }
 
 function isFeatureStage(value: unknown): value is FeatureStage {
@@ -458,6 +458,52 @@ export async function setStackStatus(id: string, status: StackStatus): Promise<S
 	const next: StackMetadata = {
 		...file.stacks[index],
 		status
+	};
+
+	file.stacks[index] = next;
+	await writeStackFile(file);
+
+	return next;
+}
+
+export async function setStackStageStatus(
+	id: string,
+	stageId: string,
+	status: FeatureStageStatus
+): Promise<StackMetadata> {
+	const file = await readStackFile();
+	const index = file.stacks.findIndex((stack) => stack.id === id);
+
+	if (index === -1) {
+		throw new Error('Feature not found.');
+	}
+
+	const stack = file.stacks[index];
+	const stages = stack.stages ?? [];
+	const stageIndex = stages.findIndex((stage) => stage.id === stageId);
+
+	if (stageIndex === -1) {
+		throw new Error('Stage not found.');
+	}
+
+	const nextStages = stages.map((stage, indexCandidate) => {
+		if (indexCandidate !== stageIndex) {
+			return stage;
+		}
+
+		if (stage.status === status) {
+			return stage;
+		}
+
+		return {
+			...stage,
+			status
+		};
+	});
+
+	const next: StackMetadata = {
+		...stack,
+		stages: nextStages
 	};
 
 	file.stacks[index] = next;

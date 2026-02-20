@@ -54,13 +54,13 @@
 		},
 		{
 			"id": "branch-diff-cpbrce",
-			"status": "planned",
+			"status": "started",
 			"stages": [
 				{
 					"id": "stage-1",
 					"title": "Diff domain and API contract",
 					"details": "Define structured stage diff types, implement server diff resolution/parsing with previous-stage baseline logic, and expose GET /api/stacks/[id]/stages/[stageId]/diff with deterministic status/error mapping.",
-					"status": "not-started"
+					"status": "review-ready"
 				},
 				{
 					"id": "stage-2",
@@ -127,5 +127,16 @@
 			"savedAt": "2026-02-19T22:26:44.713Z"
 		}
 	],
-	"implementationSessions": []
+	"implementationSessions": [
+		{
+			"id": "impl-pcn0mjul",
+			"stackId": "branch-diff-cpbrce",
+			"stageId": "stage-1",
+			"branchName": "feature/branch-diff/1-diff-domain-and-api-contract",
+			"worktreePathKey": ".stacked/worktrees/feature-branch-diff-1-diff-domain-and-api-contract",
+			"createdAt": "2026-02-20T10:52:59.320Z",
+			"updatedAt": "2026-02-20T10:52:59.415Z",
+			"opencodeSessionId": "ses_385518bb1ffe72qlVLGlpFruV7"
+		}
+	]
 }

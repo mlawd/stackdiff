@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { Spinner } from 'flowbite-svelte';
 	import PlanningChat from '$lib/components/PlanningChat.svelte';
 
-	import type { StackStatus } from '$lib/types/stack';
+	import type { FeatureStageStatus, StackStatus } from '$lib/types/stack';
 	import type { PageData } from './$types';
 
 	interface StartResponse {
@@ -11,6 +12,21 @@
 		reusedSession?: boolean;
 		startedNow?: boolean;
 		error?: string;
+	}
+
+	interface ImplementationStatusResponse {
+		stageStatus?: FeatureStageStatus;
+		runtimeState?: 'idle' | 'busy' | 'retry' | 'missing';
+		todoCompleted?: number;
+		todoTotal?: number;
+		error?: string;
+	}
+
+	interface ImplementationStageRuntime {
+		stageStatus: FeatureStageStatus;
+		runtimeState: 'idle' | 'busy' | 'retry' | 'missing';
+		todoCompleted: number;
+		todoTotal: number;
 	}
 
 	let { data }: { data: PageData } = $props();
@@ -41,14 +57,13 @@
 		complete: 'stacked-chip stacked-chip-success'
 	};
 
-	const pipelineStages = ['Planned', 'In Progress', 'PR Open', 'In Review', 'Merged'] as const;
-
 	type TabKey = 'plan' | 'stack';
 	let tabInitialized = false;
 	let activeTab = $state<TabKey>('plan');
 	let startPending = $state(false);
 	let startError = $state<string | null>(null);
 	let startSuccess = $state<string | null>(null);
+	let implementationRuntimeByStageId = $state<Record<string, ImplementationStageRuntime>>({});
 
 	$effect(() => {
 		if (tabInitialized) {
@@ -59,45 +74,13 @@
 		tabInitialized = true;
 	});
 
-	function currentPipelineStage(): (typeof pipelineStages)[number] {
-		if (data.stack.pullRequest?.state === 'MERGED') {
-			return 'Merged';
-		}
-
-		if (data.stack.pullRequest?.state === 'OPEN' && data.stack.pullRequest.isDraft) {
-			return 'PR Open';
-		}
-
-		if (data.stack.pullRequest?.state === 'OPEN') {
-			return 'In Review';
-		}
-
-		if (data.stack.syncState === 'dirty') {
-			return 'In Progress';
-		}
-
-		return 'Planned';
-	}
-
-	function pipelineChipClass(stage: (typeof pipelineStages)[number]): string {
-		if (stage === 'Merged') {
-			return 'stacked-chip stacked-chip-success';
-		}
-
-		if (stage === 'In Review') {
-			return 'stacked-chip stacked-chip-review';
-		}
-
-		if (stage === 'PR Open' || stage === 'In Progress') {
-			return 'stacked-chip stacked-chip-warning';
-		}
-
-		return 'stacked-chip';
-	}
-
-	function implementationStageClass(status: string): string {
+	function implementationStageClass(status: FeatureStageStatus): string {
 		if (status === 'done') {
 			return 'stacked-chip stacked-chip-success';
+		}
+
+		if (status === 'review-ready') {
+			return 'stacked-chip stacked-chip-review';
 		}
 
 		if (status === 'in-progress') {
@@ -107,9 +90,13 @@
 		return 'stacked-chip';
 	}
 
-	function implementationStageLabel(status: string): string {
+	function implementationStageLabel(status: FeatureStageStatus): string {
 		if (status === 'done') {
 			return 'Done';
+		}
+
+		if (status === 'review-ready') {
+			return 'Review ready';
 		}
 
 		if (status === 'in-progress') {
@@ -119,24 +106,102 @@
 		return 'Not started';
 	}
 
-	function stageContainerClass(stage: (typeof pipelineStages)[number]): string {
-		const active = pipelineStages.indexOf(currentPipelineStage());
-		const index = pipelineStages.indexOf(stage);
-
-		if (index < active) {
-			return 'stacked-stage stacked-stage-past';
-		}
-
-		if (index === active) {
-			return 'stacked-stage stacked-stage-current';
-		}
-
-		return 'stacked-stage';
-	}
-
 	function canStartFeature(): boolean {
 		return (data.stack.stages?.length ?? 0) > 0 && !startPending;
 	}
+
+	function stageStatus(stageId: string, fallback: FeatureStageStatus): FeatureStageStatus {
+		return implementationRuntimeByStageId[stageId]?.stageStatus ?? fallback;
+	}
+
+	function inProgressStageIds(): string[] {
+		return (data.stack.stages ?? [])
+			.filter((stage) => stageStatus(stage.id, stage.status) === 'in-progress')
+			.map((stage) => stage.id);
+	}
+
+	function isStageAgentWorking(stageId: string): boolean {
+		const runtime = implementationRuntimeByStageId[stageId];
+		return runtime?.runtimeState === 'busy' || runtime?.runtimeState === 'retry';
+	}
+
+	async function refreshImplementationRuntime(): Promise<void> {
+		const stageIds = inProgressStageIds();
+		if (stageIds.length === 0) {
+			implementationRuntimeByStageId = {};
+			return;
+		}
+
+		const entries = await Promise.all(
+			stageIds.map(async (stageId) => {
+				const stageEntry = (data.stack.stages ?? []).find((stage) => stage.id === stageId);
+				const fallbackStatus = stageEntry ? stageStatus(stageId, stageEntry.status) : 'in-progress';
+
+				try {
+					const response = await fetch(`/api/stacks/${data.stack.id}/stages/${stageId}/implementation/status`);
+					const payload = (await response.json()) as ImplementationStatusResponse;
+					if (!response.ok) {
+						throw new Error(payload.error ?? 'Unable to load implementation status.');
+					}
+
+					return [
+						stageId,
+						{
+							stageStatus: payload.stageStatus ?? fallbackStatus,
+							runtimeState: payload.runtimeState ?? 'missing',
+							todoCompleted: payload.todoCompleted ?? 0,
+							todoTotal: payload.todoTotal ?? 0
+						} satisfies ImplementationStageRuntime
+					] as const;
+				} catch {
+					return [
+						stageId,
+						{
+							stageStatus: fallbackStatus,
+							runtimeState: 'missing',
+							todoCompleted: 0,
+							todoTotal: 0
+						} satisfies ImplementationStageRuntime
+					] as const;
+				}
+			})
+		);
+
+		implementationRuntimeByStageId = Object.fromEntries(entries);
+	}
+
+	$effect(() => {
+		if (activeTab !== 'stack') {
+			return;
+		}
+
+		const stageIds = inProgressStageIds();
+		if (stageIds.length === 0) {
+			implementationRuntimeByStageId = {};
+			return;
+		}
+
+		let cancelled = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+
+		const poll = async () => {
+			await refreshImplementationRuntime();
+			if (cancelled) {
+				return;
+			}
+
+			timer = setTimeout(poll, 2000);
+		};
+
+		void poll();
+
+		return () => {
+			cancelled = true;
+			if (timer !== undefined) {
+				clearTimeout(timer);
+			}
+		};
+	});
 
 	async function startFeature(): Promise<void> {
 		if (!canStartFeature()) {
@@ -232,17 +297,6 @@
 				{/if}
 
 				<div class="stacked-panel-elevated p-4">
-					<p class="mb-3 text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle">Pipeline</p>
-					<div class="grid gap-2 sm:grid-cols-5">
-						{#each pipelineStages as stage (stage)}
-							<div class={`rounded-lg border bg-[var(--stacked-bg-soft)] px-3 py-2 text-center ${stageContainerClass(stage)}`}>
-								<span class={pipelineChipClass(stage)}>{stage}</span>
-							</div>
-						{/each}
-					</div>
-				</div>
-
-				<div class="stacked-panel-elevated p-4">
 					<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 						<p class="text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle">Implementation stages</p>
 						<button
@@ -257,6 +311,9 @@
 					{#if data.stack.stages && data.stack.stages.length > 0}
 						<div class="space-y-2">
 							{#each data.stack.stages as implementationStage (implementationStage.id)}
+								{@const stageRuntime = implementationRuntimeByStageId[implementationStage.id]}
+								{@const currentStageStatus = stageStatus(implementationStage.id, implementationStage.status)}
+								{@const stageWorking = currentStageStatus === 'in-progress' && isStageAgentWorking(implementationStage.id)}
 								<div class="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2">
 									<div>
 										<p class="text-sm font-medium text-[var(--stacked-text)]">{implementationStage.title}</p>
@@ -264,7 +321,22 @@
 											<p class="mt-1 text-xs stacked-subtle">{implementationStage.details}</p>
 										{/if}
 									</div>
-									<span class={implementationStageClass(implementationStage.status)}>{implementationStageLabel(implementationStage.status)}</span>
+									<div class="flex flex-wrap items-center justify-end gap-2">
+										<span class={`${implementationStageClass(currentStageStatus)} ${stageWorking ? 'stacked-chip-no-dot' : ''} inline-flex items-center gap-1.5`}>
+											{#if stageWorking}
+												<Spinner
+													size="4"
+													currentFill="var(--stacked-accent)"
+													currentColor="color-mix(in oklab, var(--stacked-border-soft) 82%, #9aa3b7 18%)"
+													class="opacity-90"
+												/>
+											{/if}
+											<span>{implementationStageLabel(currentStageStatus)}</span>
+										</span>
+										{#if currentStageStatus === 'in-progress' && stageRuntime}
+											<p class="text-xs stacked-subtle whitespace-nowrap">{stageRuntime.todoCompleted}/{stageRuntime.todoTotal} Todos done</p>
+										{/if}
+									</div>
 								</div>
 							{/each}
 						</div>

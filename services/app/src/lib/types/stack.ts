@@ -4,7 +4,7 @@ export type FeatureType = 'feature' | 'bugfix' | 'chore';
 
 export type StackStatus = 'created' | 'planned' | 'started' | 'complete';
 
-export type FeatureStageStatus = 'not-started' | 'in-progress' | 'done';
+export type FeatureStageStatus = 'not-started' | 'in-progress' | 'review-ready' | 'done';
 
 export interface FeatureStage {
 	id: string;

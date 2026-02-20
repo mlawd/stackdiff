@@ -93,10 +93,10 @@ a:focus-visible {
 	gap: 0.45rem;
 	border-radius: 999px;
 	border: 1px solid var(--stacked-border-soft);
-	padding: 0.2rem 0.65rem;
+	padding: 0.26rem 0.65rem;
 	font-size: 0.68rem;
 	font-weight: 600;
-	text-transform: uppercase;
+	line-height: 1;
 	letter-spacing: 0.08em;
 	color: var(--stacked-text-muted);
 }
@@ -108,6 +108,10 @@ a:focus-visible {
 	border-radius: 999px;
 	background: currentColor;
 	opacity: 0.95;
+}
+
+.stacked-chip-no-dot::before {
+	display: none;
 }
 
 .stacked-chip-success {
@@ -317,7 +321,8 @@ a:focus-visible {
 
 	.stacked-chip {
 		font-size: 0.66rem;
-		padding: 0.16rem 0.56rem;
+		padding: 0.22rem 0.56rem;
+		line-height: 1;
 		letter-spacing: 0.06em;
 	}
 }
