@@ -1,8 +1,7 @@
-import { createOpencodeSession, sendOpencodeSessionMessage } from '$lib/server/opencode';
+import { createAndSeedOpencodeSession } from '$lib/server/opencode';
 import {
 	createOrGetImplementationSession,
 	getPlanningSessionByStackId,
-	markImplementationSessionSeeded,
 	setImplementationSessionOpencodeId
 } from '$lib/server/stack-store';
 import type { FeatureStage, StackImplementationSession, StackMetadata } from '$lib/types/stack';
@@ -73,12 +72,6 @@ export async function ensureImplementationSessionBootstrap(input: {
 	let reusedSession = !ensured.created;
 
 	if (!session.opencodeSessionId) {
-		const opencodeSessionId = await createOpencodeSession({ directory: input.worktreeAbsolutePath });
-		session = await setImplementationSessionOpencodeId(input.stack.id, input.stage.id, opencodeSessionId);
-		reusedSession = false;
-	}
-
-	if (!session.seededAt) {
 		const planningSession = await getPlanningSessionByStackId(input.stack.id);
 		const prompt = buildInitialImplementationPrompt(
 			input.stack,
@@ -90,11 +83,13 @@ export async function ensureImplementationSessionBootstrap(input: {
 			}
 		);
 
-		await sendOpencodeSessionMessage(session.opencodeSessionId as string, prompt, {
+		const opencodeSessionId = await createAndSeedOpencodeSession({
+			prompt,
+			agent: 'build',
 			directory: input.worktreeAbsolutePath
 		});
-
-		session = await markImplementationSessionSeeded(input.stack.id, input.stage.id);
+		session = await setImplementationSessionOpencodeId(input.stack.id, input.stage.id, opencodeSessionId);
+		reusedSession = false;
 	}
 
 	return {

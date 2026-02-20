@@ -162,6 +162,10 @@ export const POST: RequestHandler = async ({ params, request }) => {
 						})
 					);
 				} catch (error) {
+					console.error('[planning-stream] Stream processing failed', {
+						stackId,
+						error: toErrorMessage(error)
+					});
 					controller.enqueue(encodeSse('error', { message: toErrorMessage(error) }));
 				} finally {
 					controller.close();
@@ -177,6 +181,10 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			}
 		});
 	} catch (error) {
+		console.error('[planning-stream] Request failed', {
+			stackId: params.id,
+			error: toErrorMessage(error)
+		});
 		return json({ error: toErrorMessage(error) }, { status: 400 });
 	}
 };

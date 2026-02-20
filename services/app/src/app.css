@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 
 @plugin 'flowbite/plugin';
-@source '../node_modules/flowbite-svelte/dist';
+@source '../../../node_modules/flowbite-svelte/dist';
 
 :root {
 	--stacked-bg: #121317;

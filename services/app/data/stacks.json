@@ -51,6 +51,57 @@
 			"name": "branch creation",
 			"notes": "when a feature has been created and the stages set up, I want to instruct the agent to “start” a feature at which point a new git worktree will be created and a new agent session started to immediately implement stage 1",
 			"type": "feature"
+		},
+		{
+			"id": "branch-diff-cpbrce",
+			"status": "planned",
+			"stages": [
+				{
+					"id": "stage-1",
+					"title": "Diff domain and API contract",
+					"details": "Define structured stage diff types, implement server diff resolution/parsing with previous-stage baseline logic, and expose GET /api/stacks/[id]/stages/[stageId]/diff with deterministic status/error mapping.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-2",
+					"title": "Stage diffability metadata",
+					"details": "Augment feature page server load with per-stage runtime metadata indicating whether a stage has a diffable branch/worktree and why it may be unavailable.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-3",
+					"title": "Slide-out panel shell and fetch lifecycle",
+					"details": "Add clickable behavior only for diffable stages, implement panel open/close mechanics, and wire lazy loading/error/empty handling for stage diff API calls.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-4",
+					"title": "Structured side-by-side diff renderer",
+					"details": "Build reusable Svelte diff components that render files, hunks, and paired lines side-by-side from structured payload data with stable per-line identifiers.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-5",
+					"title": "UX polish and performance guardrails",
+					"details": "Add file collapse/navigation, truncation safeguards for large diffs, keyboard/mobile panel behavior improvements, and optional syntax highlighting integration.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-6",
+					"title": "Hardening and validation",
+					"details": "Add unit and route-level tests for diff resolution and API statuses, verify edge-case handling, and run full typecheck/build validation.",
+					"status": "not-started"
+				},
+				{
+					"id": "stage-7",
+					"title": "Immediate v2 line selection and AI chat",
+					"details": "Implement line selection over stable diff line IDs and add a chat endpoint that accepts selected diff ranges to start focused AI discussion immediately after v1.",
+					"status": "not-started"
+				}
+			],
+			"name": "Branch diff",
+			"notes": "I want to be able to view changes made in a branch/stage. The way I want this to work is that if I click on a stage in the feature page, a panel slides out showing a side-by-side git diff of the changes introduced by the stage's branch",
+			"type": "feature"
 		}
 	],
 	"planningSessions": [
@@ -64,6 +115,17 @@
 			"savedPlanPath": ".stacked/plans/branch-creation-1kda6g.md",
 			"savedStageConfigPath": ".stacked/plans/branch-creation-1kda6g.stages.json",
 			"savedAt": "2026-02-19T20:58:38.784Z"
+		},
+		{
+			"id": "session-e8g4p19b",
+			"stackId": "branch-diff-cpbrce",
+			"createdAt": "2026-02-19T21:53:16.100Z",
+			"updatedAt": "2026-02-19T22:26:44.713Z",
+			"opencodeSessionId": "ses_3881b66a8ffepKSRqggYbxRCwb",
+			"savedPlanPath": ".stacked/plans/branch-diff-cpbrce.md",
+			"savedStageConfigPath": ".stacked/plans/branch-diff-cpbrce.stages.json",
+			"savedAt": "2026-02-19T22:26:44.713Z"
 		}
-	]
+	],
+	"implementationSessions": []
 }

@@ -1,6 +1,6 @@
 import { writeStackPlanFile, writeStackStageConfigFile } from '$lib/server/plan-file';
 import {
-	createOpencodeSession,
+	createAndSeedOpencodeSession,
 	getOpencodeSessionRuntimeState,
 	getOpencodeSessionMessages,
 	sendOpencodeSessionMessage
@@ -10,7 +10,6 @@ import {
 	getStackById,
 	getPlanningSessionByStackId,
 	markPlanningSessionSaved,
-	markPlanningSessionSeeded,
 	setPlanningSessionOpencodeId,
 	setStackStatus,
 	setStackStages,
@@ -206,27 +205,6 @@ export function shouldAutoSavePlan(content: string): boolean {
 	return /\bsave (the )?plan\b/i.test(content.trim());
 }
 
-async function ensureSessionWithOpencodeId(
-	stackId: string
-): Promise<{ session: StackPlanningSession; createdOpencodeSession: boolean }> {
-	const session = await createOrGetPlanningSession(stackId);
-
-	if (session.opencodeSessionId) {
-		return {
-			session,
-			createdOpencodeSession: false
-		};
-	}
-
-	const opencodeSessionId = await createOpencodeSession();
-	const updated = await setPlanningSessionOpencodeId(stackId, opencodeSessionId);
-
-	return {
-		session: updated,
-		createdOpencodeSession: true
-	};
-}
-
 async function requireSessionWithOpencodeId(stackId: string): Promise<StackPlanningSession> {
 	const session = await getPlanningSessionByStackId(stackId);
 	if (!session) {
@@ -243,17 +221,18 @@ async function requireSessionWithOpencodeId(stackId: string): Promise<StackPlann
 export async function createAndSeedPlanningSessionForStack(
 	stack: StackMetadata
 ): Promise<{ session: StackPlanningSession; messages: PlanningMessage[] }> {
-	const { session } = await ensureSessionWithOpencodeId(stack.id);
-	if (session.seededAt) {
+	const session = await createOrGetPlanningSession(stack.id);
+	if (session.opencodeSessionId) {
 		const messages = await getOpencodeSessionMessages(session.opencodeSessionId as string);
 		return { session, messages };
 	}
 
-	await sendOpencodeSessionMessage(session.opencodeSessionId as string, buildInitialPlanningPrompt(stack), {
+	const opencodeSessionId = await createAndSeedOpencodeSession({
+		prompt: buildInitialPlanningPrompt(stack),
+		agent: 'plan',
 		system: PLANNING_SYSTEM_PROMPT
 	});
-
-	const seededSession = await markPlanningSessionSeeded(stack.id);
+	const seededSession = await setPlanningSessionOpencodeId(stack.id, opencodeSessionId);
 	const messages = await getOpencodeSessionMessages(seededSession.opencodeSessionId as string);
 
 	return {
@@ -281,10 +260,6 @@ export async function loadExistingPlanningSession(stackId: string): Promise<{
 		messages,
 		awaitingResponse: runtimeState === 'busy' || runtimeState === 'retry'
 	};
-}
-
-export async function markPlanningSessionSeededState(stackId: string): Promise<void> {
-	await markPlanningSessionSeeded(stackId);
 }
 
 export async function sendPlanningMessage(stackId: string, content: string): Promise<{

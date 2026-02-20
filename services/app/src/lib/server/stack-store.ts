@@ -90,7 +90,6 @@ function isStackPlanningSession(value: unknown): value is StackPlanningSession {
 		typeof session.id === 'string' &&
 		typeof session.stackId === 'string' &&
 		(session.opencodeSessionId === undefined || typeof session.opencodeSessionId === 'string') &&
-		(session.seededAt === undefined || typeof session.seededAt === 'string') &&
 		typeof session.createdAt === 'string' &&
 		typeof session.updatedAt === 'string' &&
 		(session.savedPlanPath === undefined || typeof session.savedPlanPath === 'string') &&
@@ -113,7 +112,6 @@ function isStackImplementationSession(value: unknown): value is StackImplementat
 		typeof session.branchName === 'string' &&
 		typeof session.worktreePathKey === 'string' &&
 		(session.opencodeSessionId === undefined || typeof session.opencodeSessionId === 'string') &&
-		(session.seededAt === undefined || typeof session.seededAt === 'string') &&
 		typeof session.createdAt === 'string' &&
 		typeof session.updatedAt === 'string'
 	);
@@ -280,7 +278,6 @@ export async function createOrGetImplementationSession(
 		branchName,
 		worktreePathKey,
 		opencodeSessionId: undefined,
-		seededAt: undefined,
 		createdAt: now,
 		updatedAt: now
 	};
@@ -312,27 +309,6 @@ export async function setImplementationSessionOpencodeId(
 	return session;
 }
 
-export async function markImplementationSessionSeeded(
-	stackId: string,
-	stageId: string
-): Promise<StackImplementationSession> {
-	const file = await readStackFile();
-	const session = file.implementationSessions?.find(
-		(candidate) => candidate.stackId === stackId && candidate.stageId === stageId
-	);
-
-	if (!session) {
-		throw new Error('Implementation session not found.');
-	}
-
-	const now = new Date().toISOString();
-	session.seededAt = now;
-	session.updatedAt = now;
-	await writeStackFile(file);
-
-	return session;
-}
-
 export async function createOrGetPlanningSession(id: string): Promise<StackPlanningSession> {
 	const file = await readStackFile();
 	const existing = file.planningSessions?.find((session) => session.stackId === id);
@@ -346,7 +322,6 @@ export async function createOrGetPlanningSession(id: string): Promise<StackPlann
 		id: createSessionId(),
 		stackId: id,
 		opencodeSessionId: undefined,
-		seededAt: undefined,
 		createdAt: now,
 		updatedAt: now
 	};
@@ -384,22 +359,6 @@ export async function touchPlanningSessionUpdatedAt(id: string): Promise<StackPl
 	}
 
 	session.updatedAt = new Date().toISOString();
-	await writeStackFile(file);
-
-	return session;
-}
-
-export async function markPlanningSessionSeeded(id: string): Promise<StackPlanningSession> {
-	const file = await readStackFile();
-	const session = file.planningSessions?.find((candidate) => candidate.stackId === id);
-
-	if (!session) {
-		throw new Error('Planning session not found.');
-	}
-
-	const now = new Date().toISOString();
-	session.seededAt = now;
-	session.updatedAt = now;
 	await writeStackFile(file);
 
 	return session;

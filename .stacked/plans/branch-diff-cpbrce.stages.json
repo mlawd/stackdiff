@@ -1,0 +1,71 @@
+{
+	"schemaVersion": 1,
+	"stackId": "branch-diff-cpbrce",
+	"generatedAt": "2026-02-19T22:26:44.699Z",
+	"planMarkdownPath": ".stacked/plans/branch-diff-cpbrce.md",
+	"stages": [
+		{
+			"id": "stage-1",
+			"stageName": "Diff domain and API contract",
+			"stageDescription": "Define structured stage diff types, implement server diff resolution/parsing with previous-stage baseline logic, and expose GET /api/stacks/[id]/stages/[stageId]/diff with deterministic status/error mapping.",
+			"markdownSection": {
+				"heading": "Stack 1: Diff domain and API contract",
+				"anchor": "stack-1-diff-domain-and-api-contract"
+			}
+		},
+		{
+			"id": "stage-2",
+			"stageName": "Stage diffability metadata",
+			"stageDescription": "Augment feature page server load with per-stage runtime metadata indicating whether a stage has a diffable branch/worktree and why it may be unavailable.",
+			"markdownSection": {
+				"heading": "Stack 2: Stage diffability metadata",
+				"anchor": "stack-2-stage-diffability-metadata"
+			}
+		},
+		{
+			"id": "stage-3",
+			"stageName": "Slide-out panel shell and fetch lifecycle",
+			"stageDescription": "Add clickable behavior only for diffable stages, implement panel open/close mechanics, and wire lazy loading/error/empty handling for stage diff API calls.",
+			"markdownSection": {
+				"heading": "Stack 3: Panel shell and interaction",
+				"anchor": "stack-3-panel-shell-and-interaction"
+			}
+		},
+		{
+			"id": "stage-4",
+			"stageName": "Structured side-by-side diff renderer",
+			"stageDescription": "Build reusable Svelte diff components that render files, hunks, and paired lines side-by-side from structured payload data with stable per-line identifiers.",
+			"markdownSection": {
+				"heading": "Stack 4: Structured side-by-side renderer",
+				"anchor": "stack-4-structured-side-by-side-renderer"
+			}
+		},
+		{
+			"id": "stage-5",
+			"stageName": "UX polish and performance guardrails",
+			"stageDescription": "Add file collapse/navigation, truncation safeguards for large diffs, keyboard/mobile panel behavior improvements, and optional syntax highlighting integration.",
+			"markdownSection": {
+				"heading": "Stack 5: UX polish and performance guardrails",
+				"anchor": "stack-5-ux-polish-and-performance-guardrails"
+			}
+		},
+		{
+			"id": "stage-6",
+			"stageName": "Hardening and validation",
+			"stageDescription": "Add unit and route-level tests for diff resolution and API statuses, verify edge-case handling, and run full typecheck/build validation.",
+			"markdownSection": {
+				"heading": "Stack 6: Hardening and validation",
+				"anchor": "stack-6-hardening-and-validation"
+			}
+		},
+		{
+			"id": "stage-7",
+			"stageName": "Immediate v2 line selection and AI chat",
+			"stageDescription": "Implement line selection over stable diff line IDs and add a chat endpoint that accepts selected diff ranges to start focused AI discussion immediately after v1.",
+			"markdownSection": {
+				"heading": "Stack 7 (immediate v2): Line selection and AI chat",
+				"anchor": "stack-7-immediate-v2-line-selection-and-ai-chat"
+			}
+		}
+	]
+}

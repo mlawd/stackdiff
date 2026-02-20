@@ -19,6 +19,7 @@ export type OpencodeStreamEvent =
 	  };
 
 export type OpencodeHistoryLoadState = 'loaded' | 'empty' | 'unavailable';
+export type OpencodeAgent = 'plan' | 'build';
 
 export interface OpencodeHistoryLoadResult {
 	state: OpencodeHistoryLoadState;
@@ -525,10 +526,35 @@ export async function createOpencodeSession(options?: OpencodeDirectoryOptions):
 	return session.id;
 }
 
+export async function createAndSeedOpencodeSession(options: {
+	prompt: string;
+	agent: OpencodeAgent;
+	system?: string;
+	directory?: string;
+}): Promise<string> {
+	const sessionId = await createOpencodeSession({ directory: options.directory });
+	const { client } = await getRuntime();
+	const model = getServerModel();
+
+	const accepted = await client.session.promptAsync({
+		path: { id: sessionId },
+		query: { directory: getDirectory(options) },
+		body: {
+			agent: options.agent,
+			system: options.system,
+			model,
+			parts: [{ type: 'text', text: options.prompt }]
+		}
+	});
+	assertNoResultError(accepted);
+
+	return sessionId;
+}
+
 export async function sendOpencodeSessionMessage(
 	sessionId: string,
 	message: string,
-	options?: { system?: string; directory?: string }
+	options?: { system?: string; directory?: string; agent?: OpencodeAgent }
 ): Promise<string> {
 	const { client } = await getRuntime();
 	const model = getServerModel();
@@ -537,7 +563,7 @@ export async function sendOpencodeSessionMessage(
 		path: { id: sessionId },
 		query: { directory: getDirectory(options) },
 		body: {
-			agent: 'plan',
+			agent: options?.agent ?? 'plan',
 			system: options?.system,
 			model,
 			parts: [{ type: 'text', text: message }]
@@ -794,6 +820,10 @@ export async function* watchOpencodeSession(
 	try {
 		yield* streamOpencodeSessionEvents(sessionId, events.stream);
 	} catch (error) {
+		console.error('[opencode] Streaming session watch failed', {
+			sessionId,
+			error: toErrorMessage(error)
+		});
 		throw new Error(`opencode streaming failed: ${truncate(toErrorMessage(error))}`);
 	} finally {
 		controller.abort();
@@ -803,7 +833,7 @@ export async function* watchOpencodeSession(
 export async function* streamOpencodeSessionMessage(
 	sessionId: string,
 	message: string,
-	options?: { system?: string; directory?: string }
+	options?: { system?: string; directory?: string; agent?: OpencodeAgent }
 ): AsyncGenerator<OpencodeStreamEvent> {
 	const { client } = await getRuntime();
 	const model = getServerModel();
@@ -818,7 +848,7 @@ export async function* streamOpencodeSessionMessage(
 		path: { id: sessionId },
 		query: { directory: getDirectory(options) },
 		body: {
-			agent: 'plan',
+			agent: options?.agent ?? 'plan',
 			system: options?.system,
 			model,
 			parts: [{ type: 'text', text: message }]
@@ -829,6 +859,10 @@ export async function* streamOpencodeSessionMessage(
 	try {
 		yield* streamOpencodeSessionEvents(sessionId, events.stream);
 	} catch (error) {
+		console.error('[opencode] Streaming session message failed', {
+			sessionId,
+			error: toErrorMessage(error)
+		});
 		throw new Error(`opencode streaming failed: ${truncate(toErrorMessage(error))}`);
 	} finally {
 		controller.abort();

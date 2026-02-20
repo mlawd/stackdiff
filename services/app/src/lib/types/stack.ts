@@ -72,7 +72,6 @@ export interface StackPlanningSession {
 	id: string;
 	stackId: string;
 	opencodeSessionId?: string;
-	seededAt?: string;
 	createdAt: string;
 	updatedAt: string;
 	savedPlanPath?: string;
@@ -87,7 +86,6 @@ export interface StackImplementationSession {
 	branchName: string;
 	worktreePathKey: string;
 	opencodeSessionId?: string;
-	seededAt?: string;
 	createdAt: string;
 	updatedAt: string;
 }
