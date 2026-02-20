@@ -128,3 +128,57 @@ export interface StackViewModel extends StackMetadata {
 	ghError?: string;
 	pullRequest?: StackPullRequest;
 }
+
+export type StageDiffLineType = 'context' | 'add' | 'del';
+
+export interface StageDiffLine {
+	lineId: string;
+	type: StageDiffLineType;
+	content: string;
+	oldLineNumber: number | null;
+	newLineNumber: number | null;
+}
+
+export interface StageDiffHunk {
+	header: string;
+	oldStart: number;
+	oldLines: number;
+	newStart: number;
+	newLines: number;
+	lines: StageDiffLine[];
+}
+
+export type StageDiffFileChangeType = 'added' | 'deleted' | 'modified' | 'renamed';
+
+export interface StageDiffFile {
+	path: string;
+	previousPath?: string;
+	changeType: StageDiffFileChangeType;
+	isBinary: boolean;
+	additions: number;
+	deletions: number;
+	hunks: StageDiffHunk[];
+}
+
+export interface StageDiffSummary {
+	filesChanged: number;
+	additions: number;
+	deletions: number;
+}
+
+export interface StageDiffPayload {
+	stackId: string;
+	stageId: string;
+	baseRef: string;
+	targetRef: string;
+	isTruncated: boolean;
+	summary: StageDiffSummary;
+	files: StageDiffFile[];
+}
+
+export type StageDiffErrorCode = 'not-found' | 'not-diffable' | 'command-failed' | 'parse-failed';
+
+export interface StageDiffServiceErrorShape {
+	code: StageDiffErrorCode;
+	message: string;
+}
