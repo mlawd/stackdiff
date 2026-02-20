@@ -314,6 +314,25 @@ export async function setImplementationSessionOpencodeId(
 	return session;
 }
 
+export async function touchImplementationSessionUpdatedAt(
+	stackId: string,
+	stageId: string
+): Promise<StackImplementationSession> {
+	const file = await readStackFile();
+	const session = file.implementationSessions?.find(
+		(candidate) => candidate.stackId === stackId && candidate.stageId === stageId
+	);
+
+	if (!session) {
+		throw new Error('Implementation session not found.');
+	}
+
+	session.updatedAt = new Date().toISOString();
+	await writeStackFile(file);
+
+	return session;
+}
+
 export async function createOrGetPlanningSession(id: string): Promise<StackPlanningSession> {
 	const file = await readStackFile();
 	const existing = file.planningSessions?.find((session) => session.stackId === id);
