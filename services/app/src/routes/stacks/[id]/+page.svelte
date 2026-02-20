@@ -88,6 +88,9 @@
 	let stageDiffErrors = $state<Record<string, string>>({});
 	let loadingDiffStageId = $state<string | null>(null);
 	let stageDiffAbortController: AbortController | null = null;
+	let stageDiffCloseButton: HTMLButtonElement | null = null;
+	let previousFocusedElement: HTMLElement | null = null;
+	let previousBodyOverflow = '';
 
 	$effect(() => {
 		if (tabInitialized) {
@@ -305,12 +308,74 @@
 		isStageDiffPanelOpen = false;
 	}
 
-	function handleWindowKeydown(event: KeyboardEvent): void {
-		if (event.key !== 'Escape' || !isStageDiffPanelOpen) {
+	function orderedDiffableStages(): Array<{ id: string; title: string }> {
+		const stages = data.stack.stages ?? [];
+		const items: Array<{ id: string; title: string }> = [];
+
+		for (const stage of stages) {
+			if (!canOpenStageDiff(stage.id)) {
+				continue;
+			}
+
+			items.push({ id: stage.id, title: stage.title });
+		}
+
+		return items;
+	}
+
+	function moveToAdjacentDiff(direction: 1 | -1): void {
+		const stages = orderedDiffableStages();
+		if (stages.length <= 1) {
 			return;
 		}
 
-		closeStageDiffPanel();
+		const activeIndex = stages.findIndex((stage) => stage.id === activeDiffStageId);
+		if (activeIndex === -1) {
+			return;
+		}
+
+		const nextIndex = activeIndex + direction;
+		if (nextIndex < 0 || nextIndex >= stages.length) {
+			return;
+		}
+
+		const next = stages[nextIndex];
+		openStageDiff(next.id, next.title);
+	}
+
+	function handleWindowKeydown(event: KeyboardEvent): void {
+		if (!isStageDiffPanelOpen) {
+			return;
+		}
+
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			closeStageDiffPanel();
+			return;
+		}
+
+		if (event.key === 'ArrowDown') {
+			event.preventDefault();
+			moveToAdjacentDiff(1);
+			return;
+		}
+
+		if (event.key === 'ArrowUp') {
+			event.preventDefault();
+			moveToAdjacentDiff(-1);
+			return;
+		}
+
+		if (event.key.toLowerCase() === 'j') {
+			event.preventDefault();
+			moveToAdjacentDiff(1);
+			return;
+		}
+
+		if (event.key.toLowerCase() === 'k') {
+			event.preventDefault();
+			moveToAdjacentDiff(-1);
+		}
 	}
 
 	async function startFeature(): Promise<void> {
@@ -346,6 +411,31 @@
 	const activeStageDiffLoading = $derived(
 		activeDiffStageId ? loadingDiffStageId === activeDiffStageId : false
 	);
+
+	$effect(() => {
+		if (typeof document === 'undefined') {
+			return;
+		}
+
+		if (!isStageDiffPanelOpen) {
+			return;
+		}
+
+		previousFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		previousBodyOverflow = document.body.style.overflow;
+		document.body.style.overflow = 'hidden';
+
+		queueMicrotask(() => {
+			stageDiffCloseButton?.focus();
+		});
+
+		return () => {
+			document.body.style.overflow = previousBodyOverflow;
+			if (previousFocusedElement) {
+				previousFocusedElement.focus();
+			}
+		};
+	});
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
@@ -538,6 +628,7 @@
 			<button
 				type="button"
 				onclick={closeStageDiffPanel}
+				bind:this={stageDiffCloseButton}
 				class="rounded-md border border-[var(--stacked-border-soft)] px-2 py-1 text-xs font-semibold text-[var(--stacked-text-muted)] transition hover:text-[var(--stacked-text)]"
 			>
 				Close
@@ -563,6 +654,20 @@
 							<span class="stacked-chip stacked-chip-danger">-{activeStageDiff.summary.deletions}</span>
 						</div>
 						<p class="text-xs stacked-subtle">Comparing {activeStageDiff.baseRef} -> {activeStageDiff.targetRef}</p>
+						<p class="mt-1 text-xs stacked-subtle">Use Arrow Up/Down or J/K to move between diffable stages.</p>
+						{#if activeStageDiff.isTruncated}
+							<div class="mt-2 rounded-md border border-amber-300/35 bg-amber-400/10 px-2 py-1.5 text-xs text-amber-200">
+								Showing a truncated diff for performance.
+								{#if activeStageDiff.truncation}
+									{activeStageDiff.truncation.omittedFiles > 0
+										? ` Omitted files: ${activeStageDiff.truncation.omittedFiles}.`
+										: ''}
+									{activeStageDiff.truncation.omittedLines > 0
+										? ` Omitted lines: ${activeStageDiff.truncation.omittedLines}.`
+										: ''}
+								{/if}
+							</div>
+						{/if}
 					</div>
 
 					{#if activeStageDiff.files.length === 0}
@@ -629,16 +734,30 @@
 		gap: 0.75rem;
 		padding: 1rem;
 		border-bottom: 1px solid var(--stacked-border-soft);
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		background: color-mix(in oklab, var(--stacked-surface-elevated) 92%, transparent);
 	}
 
 	.stage-diff-panel-body {
 		padding: 1rem;
 		overflow: auto;
+		overscroll-behavior: contain;
 	}
 
 	@media (max-width: 640px) {
 		.stage-diff-panel {
 			width: 100vw;
+			height: min(92dvh, 100%);
+			top: auto;
+			bottom: 0;
+			border-radius: 16px 16px 0 0;
+			transform: translateY(100%);
+		}
+
+		.stage-diff-drawer.is-open .stage-diff-panel {
+			transform: translateY(0);
 		}
 	}
 </style>

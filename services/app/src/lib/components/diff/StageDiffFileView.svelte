@@ -5,9 +5,11 @@
 	interface Props {
 		file: StageDiffFile;
 		anchorId: string;
+		collapsed: boolean;
+		onToggleCollapsed?: (nextCollapsed: boolean) => void;
 	}
 
-	let { file, anchorId }: Props = $props();
+	let { file, anchorId, collapsed, onToggleCollapsed }: Props = $props();
 
 	function changeTypeChipClass(changeType: StageDiffFile['changeType']): string {
 		if (changeType === 'added') {
@@ -40,12 +42,27 @@
 
 		return 'Modified';
 	}
+
+	function toggleCollapsed(): void {
+		onToggleCollapsed?.(!collapsed);
+	}
 </script>
 
 <article id={anchorId} class="stage-diff-file">
 	<header class="stage-diff-file-header">
 		<div class="stage-diff-file-title-wrap">
-			<p class="stage-diff-file-path">{file.path}</p>
+			<div class="stage-diff-file-title-row">
+				<button
+					type="button"
+					class="stage-diff-file-collapse"
+					onclick={toggleCollapsed}
+					aria-expanded={!collapsed}
+					aria-controls={`${anchorId}-content`}
+				>
+					<span class="stage-diff-file-chevron" aria-hidden="true">{collapsed ? '>' : 'v'}</span>
+					<span class="stage-diff-file-path">{file.path}</span>
+				</button>
+			</div>
 			{#if file.changeType === 'renamed' && file.previousPath}
 				<p class="stage-diff-file-previous">from {file.previousPath}</p>
 			{:else if file.changeType === 'deleted' && file.previousPath}
@@ -59,7 +76,11 @@
 		</div>
 	</header>
 
-	{#if file.isBinary}
+	{#if collapsed}
+		<div id={`${anchorId}-content`} class="stage-diff-file-collapsed">
+			<p>{file.hunks.length} {file.hunks.length === 1 ? 'hunk' : 'hunks'} hidden</p>
+		</div>
+	{:else if file.isBinary}
 		<div class="stage-diff-file-binary">
 			<p>Binary file change. Text diff is not available.</p>
 		</div>
@@ -68,9 +89,9 @@
 			<p>No textual hunk content in this file diff.</p>
 		</div>
 	{:else}
-		<div class="stage-diff-file-hunks">
+		<div id={`${anchorId}-content`} class="stage-diff-file-hunks">
 			{#each file.hunks as hunk, hunkIndex (`${hunk.header}:${hunkIndex}`)}
-				<StageDiffHunkView {hunk} />
+				<StageDiffHunkView {hunk} filePath={file.path} />
 			{/each}
 		</div>
 	{/if}
@@ -97,12 +118,45 @@
 		min-width: 0;
 	}
 
+	.stage-diff-file-title-row {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+	}
+
+	.stage-diff-file-collapse {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.stage-diff-file-chevron {
+		font-size: 0.7rem;
+		line-height: 1;
+		color: var(--stacked-text-muted);
+	}
+
 	.stage-diff-file-path {
 		margin: 0;
 		font-size: 0.78rem;
 		line-height: 1.4;
 		color: var(--stacked-text);
 		word-break: break-word;
+	}
+
+	.stage-diff-file-collapsed {
+		padding: 0.75rem 0.8rem;
+		font-size: 0.74rem;
+		color: var(--stacked-text-muted);
+	}
+
+	.stage-diff-file-collapsed p {
+		margin: 0;
 	}
 
 	.stage-diff-file-previous {
