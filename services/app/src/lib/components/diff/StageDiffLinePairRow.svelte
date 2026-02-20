@@ -63,7 +63,6 @@
 			shiftKey: event.shiftKey
 		});
 	}
-
 </script>
 
 <div
@@ -78,10 +77,7 @@
 		disabled={!leftLine}
 		onclick={(event) => handleLinePress(leftLine, event)}
 	>
-		<div class="stage-diff-line-numbers" aria-hidden="true">
-			<span>{numberText(leftLine?.oldLineNumber)}</span>
-			<span>{numberText(leftLine?.newLineNumber)}</span>
-		</div>
+		<div class="stage-diff-line-number" aria-hidden="true">{numberText(leftLine?.newLineNumber)}</div>
 		<code class="stage-diff-line-content">{@html lineHtml(leftLine)}</code>
 	</button>
 
@@ -92,10 +88,7 @@
 		disabled={!rightLine}
 		onclick={(event) => handleLinePress(rightLine, event)}
 	>
-		<div class="stage-diff-line-numbers" aria-hidden="true">
-			<span>{numberText(rightLine?.oldLineNumber)}</span>
-			<span>{numberText(rightLine?.newLineNumber)}</span>
-		</div>
+		<div class="stage-diff-line-number" aria-hidden="true">{numberText(rightLine?.newLineNumber)}</div>
 		<code class="stage-diff-line-content">{@html lineHtml(rightLine)}</code>
 	</button>
 </div>
@@ -128,10 +121,9 @@
 		border-left: 1px solid color-mix(in oklab, var(--stacked-border-soft) 88%, transparent);
 	}
 
-	.stage-diff-line-numbers {
+	.stage-diff-line-number {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(2.6rem, auto));
-		gap: 0.35rem;
+		grid-template-columns: minmax(2.8rem, auto);
 		padding: 0.38rem 0.45rem;
 		border-right: 1px solid color-mix(in oklab, var(--stacked-border-soft) 82%, transparent);
 		font-size: 0.68rem;
@@ -156,7 +148,9 @@
 
 	:global(.stage-diff-line-content .hljs-keyword),
 	:global(.stage-diff-line-content .hljs-selector-tag),
-	:global(.stage-diff-line-content .hljs-literal) {
+	:global(.stage-diff-line-content .hljs-literal),
+	:global(.stage-diff-line-content .hljs-tag),
+	:global(.stage-diff-line-content .hljs-name) {
 		color: color-mix(in oklab, var(--stacked-accent) 70%, white);
 	}
 

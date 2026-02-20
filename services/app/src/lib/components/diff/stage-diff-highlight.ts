@@ -1,11 +1,32 @@
+import hljs from 'highlight.js/lib/core';
+import typescript from 'highlight.js/lib/languages/typescript';
+import javascript from 'highlight.js/lib/languages/javascript';
+import xml from 'highlight.js/lib/languages/xml';
+import json from 'highlight.js/lib/languages/json';
+import css from 'highlight.js/lib/languages/css';
+import markdown from 'highlight.js/lib/languages/markdown';
+import bash from 'highlight.js/lib/languages/bash';
+
 interface HighlightResult {
 	html: string;
 	usedSyntaxHighlighting: boolean;
 }
 
-interface HighlightJsLike {
-	highlight: (code: string, options: { language: string; ignoreIllegals?: boolean }) => { value: string };
-	getLanguage: (languageName: string) => boolean;
+let languagesRegistered = false;
+
+function ensureLanguagesRegistered(): void {
+	if (languagesRegistered) {
+		return;
+	}
+
+	hljs.registerLanguage('typescript', typescript);
+	hljs.registerLanguage('javascript', javascript);
+	hljs.registerLanguage('xml', xml);
+	hljs.registerLanguage('json', json);
+	hljs.registerLanguage('css', css);
+	hljs.registerLanguage('markdown', markdown);
+	hljs.registerLanguage('bash', bash);
+	languagesRegistered = true;
 }
 
 function escapeHtml(input: string): string {
@@ -32,7 +53,7 @@ function resolveLanguageFromPath(filePath: string | undefined): string | null {
 	}
 
 	if (normalized.endsWith('.svelte')) {
-		return 'xml';
+		return 'svelte';
 	}
 
 	if (normalized.endsWith('.json')) {
@@ -54,33 +75,16 @@ function resolveLanguageFromPath(filePath: string | undefined): string | null {
 	return null;
 }
 
-function readWindowHighlightJs(): HighlightJsLike | null {
-	if (typeof window === 'undefined') {
-		return null;
-	}
-
-	const candidate = (window as Window & { hljs?: HighlightJsLike }).hljs;
-	if (!candidate) {
-		return null;
-	}
-
-	if (typeof candidate.highlight !== 'function' || typeof candidate.getLanguage !== 'function') {
-		return null;
-	}
-
-	return candidate;
-}
-
 export function toHighlightedDiffLine(input: { content: string; filePath?: string }): HighlightResult {
 	const content = input.content;
 	if (content.length === 0) {
 		return { html: '', usedSyntaxHighlighting: false };
 	}
 
-	const language = resolveLanguageFromPath(input.filePath);
-	const hljs = readWindowHighlightJs();
+	ensureLanguagesRegistered();
 
-	if (!hljs || !language || !hljs.getLanguage(language)) {
+	const language = resolveLanguageFromPath(input.filePath);
+	if (!language) {
 		return {
 			html: escapeHtml(content),
 			usedSyntaxHighlighting: false
@@ -88,6 +92,28 @@ export function toHighlightedDiffLine(input: { content: string; filePath?: strin
 	}
 
 	try {
+		if (language === 'svelte') {
+			const highlighted = hljs.highlightAuto(content, ['xml', 'typescript', 'javascript', 'css']);
+			if (!highlighted.language) {
+				return {
+					html: escapeHtml(content),
+					usedSyntaxHighlighting: false
+				};
+			}
+
+			return {
+				html: highlighted.value,
+				usedSyntaxHighlighting: true
+			};
+		}
+
+		if (!hljs.getLanguage(language)) {
+			return {
+				html: escapeHtml(content),
+				usedSyntaxHighlighting: false
+			};
+		}
+
 		const highlighted = hljs.highlight(content, { language, ignoreIllegals: true });
 		return {
 			html: highlighted.value,

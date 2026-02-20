@@ -2,164 +2,6 @@
 	"version": 2,
 	"stacks": [
 		{
-			"id": "branch-creation-1kda6g",
-			"status": "planned",
-			"stages": [
-				{
-					"id": "stage-1",
-					"title": "Implementation session schema and state transitions",
-					"details": "Add typed implementation session persistence and atomic stack/stage status transition helpers so start-flow state can be recorded and resumed safely.",
-					"status": "not-started"
-				},
-				{
-					"id": "stage-2",
-					"title": "Branch naming and default base branch resolution",
-					"details": "Implement deterministic git-safe naming using feature/stage metadata and resolve the repository default base branch with reliable fallback behavior.",
-					"status": "not-started"
-				},
-				{
-					"id": "stage-3",
-					"title": "Idempotent worktree orchestration service",
-					"details": "Build server-side git service that creates or reuses stage 1 branch/worktree and recovers partial-existing resource states without destructive actions.",
-					"status": "not-started"
-				},
-				{
-					"id": "stage-4",
-					"title": "Directory-aware implementation agent bootstrap",
-					"details": "Extend OpenCode session operations to run in the stage 1 worktree and auto-seed a stage-focused implementation prompt with reuse semantics.",
-					"status": "not-started"
-				},
-				{
-					"id": "stage-5",
-					"title": "Start endpoint orchestration contract",
-					"details": "Add POST start API that validates prerequisites, orchestrates worktree/session setup, updates statuses, and returns explicit created-versus-reused result flags.",
-					"status": "not-started"
-				},
-				{
-					"id": "stage-6",
-					"title": "Feature detail UI start action integration",
-					"details": "Add UI-only Start feature trigger with disabled/loading/success/error states and data refresh to reflect started and in-progress stage state.",
-					"status": "not-started"
-				},
-				{
-					"id": "stage-7",
-					"title": "Validation matrix and quality gate",
-					"details": "Verify fresh, resume, recovery, and failure scenarios, then complete typecheck and build gates before marking the feature ready.",
-					"status": "not-started"
-				}
-			],
-			"name": "branch creation",
-			"notes": "when a feature has been created and the stages set up, I want to instruct the agent to “start” a feature at which point a new git worktree will be created and a new agent session started to immediately implement stage 1",
-			"type": "feature"
-		},
-		{
-			"id": "branch-diff-cpbrce",
-			"status": "started",
-			"stages": [
-				{
-					"id": "stage-1",
-					"title": "Diff domain and API contract",
-					"details": "Define structured stage diff types, implement server diff resolution/parsing with previous-stage baseline logic, and expose GET /api/stacks/[id]/stages/[stageId]/diff with deterministic status/error mapping.",
-					"status": "review-ready",
-					"pullRequest": {
-						"number": 1,
-						"title": "feat: add stage diff domain model and API endpoint",
-						"state": "OPEN",
-						"isDraft": false,
-						"url": "https://github.com/mlawd/stackdiff/pull/1",
-						"updatedAt": "2026-02-20T11:26:04Z"
-					}
-				},
-				{
-					"id": "stage-2",
-					"title": "Stage diffability metadata",
-					"details": "Augment feature page server load with per-stage runtime metadata indicating whether a stage has a diffable branch/worktree and why it may be unavailable.",
-					"status": "review-ready",
-					"pullRequest": {
-						"number": 2,
-						"title": "feature: Branch diff - 2: Stage diffability metadata",
-						"state": "OPEN",
-						"isDraft": false,
-						"url": "https://github.com/mlawd/stackdiff/pull/2",
-						"updatedAt": "2026-02-20T12:19:07Z"
-					}
-				},
-				{
-					"id": "stage-3",
-					"title": "Slide-out panel shell and fetch lifecycle",
-					"details": "Add clickable behavior only for diffable stages, implement panel open/close mechanics, and wire lazy loading/error/empty handling for stage diff API calls.",
-					"status": "review-ready",
-					"pullRequest": {
-						"number": 3,
-						"title": "feature: Branch diff - 3: Slide-out panel shell and fetch lifecycle",
-						"state": "OPEN",
-						"isDraft": false,
-						"url": "https://github.com/mlawd/stackdiff/pull/3",
-						"updatedAt": "2026-02-20T12:25:23Z"
-					}
-				},
-				{
-					"id": "stage-4",
-					"title": "Structured side-by-side diff renderer",
-					"details": "Build reusable Svelte diff components that render files, hunks, and paired lines side-by-side from structured payload data with stable per-line identifiers.",
-					"status": "review-ready",
-					"pullRequest": {
-						"number": 4,
-						"title": "feature: Branch diff - 4: Structured side-by-side diff renderer",
-						"state": "OPEN",
-						"isDraft": false,
-						"url": "https://github.com/mlawd/stackdiff/pull/4",
-						"updatedAt": "2026-02-20T12:31:32Z"
-					}
-				},
-				{
-					"id": "stage-5",
-					"title": "UX polish and performance guardrails",
-					"details": "Add file collapse/navigation, truncation safeguards for large diffs, keyboard/mobile panel behavior improvements, and optional syntax highlighting integration.",
-					"status": "review-ready",
-					"pullRequest": {
-						"number": 5,
-						"title": "feature: Branch diff - 5: UX polish and performance guardrails",
-						"state": "OPEN",
-						"isDraft": false,
-						"url": "https://github.com/mlawd/stackdiff/pull/5",
-						"updatedAt": "2026-02-20T12:51:27Z"
-					}
-				},
-				{
-					"id": "stage-6",
-					"title": "Hardening and validation",
-					"details": "Add unit and route-level tests for diff resolution and API statuses, verify edge-case handling, and run full typecheck/build validation.",
-					"status": "review-ready",
-					"pullRequest": {
-						"number": 6,
-						"title": "feature: Branch diff - 6: Hardening and validation",
-						"state": "OPEN",
-						"isDraft": false,
-						"url": "https://github.com/mlawd/stackdiff/pull/6",
-						"updatedAt": "2026-02-20T13:51:10Z"
-					}
-				},
-				{
-					"id": "stage-7",
-					"title": "Immediate v2 line selection and AI chat",
-					"details": "Implement line selection over stable diff line IDs and add a chat endpoint that accepts selected diff ranges to start focused AI discussion immediately after v1.",
-					"status": "review-ready",
-					"pullRequest": {
-						"number": 9,
-						"title": "feature: Branch diff - 7: Immediate v2 line selection and AI chat",
-						"state": "OPEN",
-						"isDraft": false,
-						"url": "https://github.com/mlawd/stackdiff/pull/9",
-						"updatedAt": "2026-02-20T14:23:03Z"
-					}
-				}
-			],
-			"name": "Branch diff",
-			"notes": "I want to be able to view changes made in a branch/stage. The way I want this to work is that if I click on a stage in the feature page, a panel slides out showing a side-by-side git diff of the changes introduced by the stage's branch",
-			"type": "feature"
-		},
-		{
 			"id": "merging-the-entire-stack-feature-rqh4z2",
 			"status": "planned",
 			"stages": [
@@ -224,13 +66,21 @@
 		},
 		{
 			"id": "refactor-feature-page-3ckfas",
-			"status": "planned",
+			"status": "started",
 			"stages": [
 				{
 					"id": "stage-1",
 					"title": "Baseline behavior and interface contracts",
 					"details": "Capture current feature-page behavior and define typed prop/composable contracts so extraction can proceed with strict parity and low regression risk.",
-					"status": "not-started"
+					"status": "review-ready",
+					"pullRequest": {
+						"number": 11,
+						"title": "chore: Refactor feature page - 1: Baseline behavior and interface contracts",
+						"state": "OPEN",
+						"isDraft": false,
+						"url": "https://github.com/mlawd/stackdiff/pull/11",
+						"updatedAt": "2026-02-20T16:16:08Z"
+					}
 				},
 				{
 					"id": "stage-2",
@@ -311,5 +161,16 @@
 			"savedAt": "2026-02-20T16:03:59.423Z"
 		}
 	],
-	"implementationSessions": []
+	"implementationSessions": [
+		{
+			"id": "impl-u8ym1lnd",
+			"stackId": "refactor-feature-page-3ckfas",
+			"stageId": "stage-1",
+			"branchName": "chore/refactor-feature-page/1-baseline-behavior-and-interf",
+			"worktreePathKey": ".stacked/worktrees/chore-refactor-feature-page-1-baseline-behavior-and-interf",
+			"createdAt": "2026-02-20T16:09:57.906Z",
+			"updatedAt": "2026-02-20T16:09:58.007Z",
+			"opencodeSessionId": "ses_3842f5815ffeF7vUBc0vrs0tHH"
+		}
+	]
 }
