@@ -8,11 +8,14 @@
 	import StageDiffStructuredView from '$lib/components/diff/StageDiffStructuredView.svelte';
 	import {
 		canStartFeature as canStartFeatureWithRuntime,
+		implementationStageClass,
 		implementationStageLabel,
 		stagePullRequest as resolveStagePullRequest,
 		stageStatus as resolveStageStatus,
 		startButtonLabel as startButtonLabelWithRuntime,
+		statusClass,
 		statusLabel,
+		typeClass,
 		typeLabel
 	} from './feature-page/behavior';
 	import type {
@@ -34,9 +37,11 @@
 		StageDiffabilityMetadata,
 		StageSyncMetadata,
 		StackPullRequest,
-		StackStatus
+		StackPullRequest
 	} from '$lib/types/stack';
 	import type { PageData } from './$types';
+
+	let { data }: { data: PageData } = $props();
 
 	interface SyncStackResponse {
 		result?: {
@@ -50,22 +55,6 @@
 		};
 	}
 
-	type BadgeColor = 'gray' | 'yellow' | 'green' | 'red' | 'purple';
-
-	let { data }: { data: PageData } = $props();
-
-	const typeColor: Record<'feature' | 'bugfix' | 'chore', BadgeColor> = {
-		feature: 'purple',
-		bugfix: 'red',
-		chore: 'gray'
-	};
-
-	const statusColor: Record<StackStatus, BadgeColor> = {
-		created: 'gray',
-		planned: 'yellow',
-		started: 'purple',
-		complete: 'green'
-	};
 	let tabInitialized = false;
 	let activeTab = $state<FeaturePageTabKey>('plan');
 	let startPending = $state(false);
@@ -102,22 +91,6 @@
 		activeTab = data.stack.status === 'created' ? 'plan' : 'stack';
 		tabInitialized = true;
 	});
-
-	function implementationStageColor(status: FeatureStageStatus): BadgeColor {
-		if (status === 'done') {
-			return 'green';
-		}
-
-		if (status === 'review-ready') {
-			return 'purple';
-		}
-
-		if (status === 'in-progress') {
-			return 'yellow';
-		}
-
-		return 'gray';
-	}
 
 	function canStartFeature(): boolean {
 		return (
@@ -759,8 +732,8 @@
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">{data.stack.name}</h1>
 				<div class="flex flex-wrap items-center gap-2">
-					<Badge rounded color={typeColor[data.stack.type]}>{typeLabel[data.stack.type]}</Badge>
-					<Badge rounded color={statusColor[data.stack.status]}>{statusLabel[data.stack.status]}</Badge>
+					<Badge rounded class={typeClass[data.stack.type]}>{typeLabel[data.stack.type]}</Badge>
+					<Badge rounded class={statusClass[data.stack.status]}>{statusLabel[data.stack.status]}</Badge>
 				</div>
 			</div>
 			<p class="mt-2 text-sm stacked-subtle">{data.stack.notes ?? 'No description provided for this feature yet.'}</p>
@@ -857,7 +830,7 @@
 												Out of sync
 											</Badge>
 										{/if}
-										<Badge rounded border color={implementationStageColor(currentStageStatus)}>
+									<Badge rounded class={implementationStageClass(currentStageStatus)}>
 											<span class="inline-flex items-center gap-1.5">
 											{#if stageWorking}
 												<Spinner
