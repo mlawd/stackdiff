@@ -1,22 +1,17 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { Badge, Button, Spinner } from 'flowbite-svelte';
-	import AnnotationSolid from 'flowbite-svelte-icons/AnnotationSolid.svelte';
-	import CodePullRequestSolid from 'flowbite-svelte-icons/CodePullRequestSolid.svelte';
-	import PlanningChat from '$lib/components/PlanningChat.svelte';
+	import { Badge, Button } from 'flowbite-svelte';
 	import StageDiffStructuredView from '$lib/components/diff/StageDiffStructuredView.svelte';
+	import FeaturePageHeader from './feature-page/components/FeaturePageHeader.svelte';
+	import FeaturePageTabs from './feature-page/components/FeaturePageTabs.svelte';
+	import FeaturePlanPanel from './feature-page/components/FeaturePlanPanel.svelte';
+	import FeatureStackPanel from './feature-page/components/FeatureStackPanel.svelte';
 	import {
 		canStartFeature as canStartFeatureWithRuntime,
-		implementationStageClass,
-		implementationStageLabel,
 		stagePullRequest as resolveStagePullRequest,
 		stageStatus as resolveStageStatus,
-		startButtonLabel as startButtonLabelWithRuntime,
-		statusClass,
-		statusLabel,
-		typeClass,
-		typeLabel
+		startButtonLabel as startButtonLabelWithRuntime
 	} from './feature-page/behavior';
 	import type {
 		FeaturePageTabKey,
@@ -36,7 +31,6 @@
 		StageDiffPayload,
 		StageDiffabilityMetadata,
 		StageSyncMetadata,
-		StackPullRequest,
 		StackPullRequest
 	} from '$lib/types/stack';
 	import type { PageData } from './$types';
@@ -525,6 +519,15 @@
 		isStageDiffPanelOpen = false;
 	}
 
+	function openStackPullRequest(): void {
+		const pullRequestUrl = data.stack.pullRequest?.url;
+		if (!pullRequestUrl) {
+			return;
+		}
+
+		window.open(pullRequestUrl, '_blank', 'noopener,noreferrer');
+	}
+
 	function orderedDiffableStages(): Array<{ id: string; title: string }> {
 		const stages = data.stack.stages ?? [];
 		const items: Array<{ id: string; title: string }> = [];
@@ -723,196 +726,40 @@
 
 <main class="stacked-shell mx-auto w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-6">
 	<div class="stacked-fade-in">
-		<div class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b stacked-divider pb-3">
-			<a href={resolve('/')} class="stacked-link text-sm font-semibold">Back to features</a>
-			<p class="text-xs stacked-subtle">Loaded {new Date(data.loadedAt).toLocaleString()}</p>
-		</div>
+		<FeaturePageHeader stack={data.stack} loadedAt={data.loadedAt} backHref={resolve('/')} />
 
-		<div class="mb-4">
-			<div class="flex flex-wrap items-center justify-between gap-3">
-				<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">{data.stack.name}</h1>
-				<div class="flex flex-wrap items-center gap-2">
-					<Badge rounded class={typeClass[data.stack.type]}>{typeLabel[data.stack.type]}</Badge>
-					<Badge rounded class={statusClass[data.stack.status]}>{statusLabel[data.stack.status]}</Badge>
-				</div>
-			</div>
-			<p class="mt-2 text-sm stacked-subtle">{data.stack.notes ?? 'No description provided for this feature yet.'}</p>
-		</div>
-
-		<div class="mb-4 border-b stacked-divider">
-			<div class="flex flex-wrap gap-1.5">
-				<Button size="sm" color={activeTab === 'plan' ? 'primary' : 'alternative'} onclick={() => (activeTab = 'plan')}>
-					Plan
-				</Button>
-				<Button size="sm" color={activeTab === 'stack' ? 'primary' : 'alternative'} onclick={() => (activeTab = 'stack')}>
-					Stack
-				</Button>
-			</div>
-		</div>
+		<FeaturePageTabs activeTab={activeTab} onTabChange={(tab) => (activeTab = tab)} />
 
 		{#if activeTab === 'plan'}
-			<div class="stacked-panel-elevated p-4">
-				<PlanningChat
-					stackId={data.stack.id}
-					session={data.session}
-					messages={data.messages}
-					awaitingResponse={data.awaitingResponse}
-				/>
-			</div>
+			<FeaturePlanPanel
+				stackId={data.stack.id}
+				session={data.session}
+				messages={data.messages}
+				awaitingResponse={data.awaitingResponse}
+			/>
 		{:else}
-			<div class="space-y-4">
-				{#if syncError}
-					<div class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-						{syncError}
-					</div>
-				{/if}
-
-				{#if syncSuccess}
-					<div class="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-						{syncSuccess}
-					</div>
-				{/if}
-
-				{#if startError}
-					<div class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-						{startError}
-					</div>
-				{/if}
-
-				{#if startSuccess}
-					<div class="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-						{startSuccess}
-					</div>
-				{/if}
-
-				<div class="stacked-panel-elevated p-4">
-					<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-						<p class="text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle">Implementation stages</p>
-						<div class="flex flex-wrap items-center gap-2">
-							<Button size="xs" color="alternative" onclick={syncStack} disabled={!canSyncStack()}>
-								{syncStackButtonLabel()}
-							</Button>
-							<Button size="xs" color="primary" onclick={startFeature} disabled={!canStartFeature()}>
-								{startButtonLabel()}
-							</Button>
-						</div>
-					</div>
-					{#if data.stack.stages && data.stack.stages.length > 0}
-						<div class="space-y-2">
-							{#each data.stack.stages as implementationStage (implementationStage.id)}
-								{@const stageRuntime = implementationRuntimeByStageId[implementationStage.id]}
-								{@const currentStageStatus = stageStatus(implementationStage.id, implementationStage.status)}
-								{@const currentStagePullRequest = stagePullRequest(
-									implementationStage.id,
-									implementationStage.pullRequest
-								)}
-								{@const stageWorking = currentStageStatus === 'in-progress' && isStageAgentWorking(implementationStage.id)}
-								{@const stageCanOpenDiff = canOpenStageDiff(implementationStage.id)}
-								{@const stageDiffMeta = stageDiffability(implementationStage.id)}
-								{@const stageSyncMeta = stageSyncMetadata(implementationStage.id)}
-								<div class="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2">
-									<div>
-										<p class="text-sm font-medium text-[var(--stacked-text)]">{implementationStage.title}</p>
-										{#if implementationStage.details}
-											<p class="mt-1 text-xs stacked-subtle">{implementationStage.details}</p>
-										{/if}
-										{#if stageCanOpenDiff}
-											<p class="mt-1 text-xs stacked-subtle">Branch: {stageDiffMeta.branchName}</p>
-										{:else if currentStageStatus !== 'not-started'}
-											<p class="mt-1 text-xs text-amber-300">
-												{stageDiffMeta.reasonIfNotDiffable ?? 'Stage diff is unavailable.'}
-											</p>
-										{/if}
-									</div>
-									<div class="flex flex-wrap items-center justify-end gap-2">
-										{#if stageSyncMeta.isOutOfSync}
-											<Badge rounded border color="yellow" title={`Behind ${stageSyncMeta.baseRef ?? 'base'} by ${stageSyncMeta.behindBy} commit${stageSyncMeta.behindBy === 1 ? '' : 's'}`}>
-												Out of sync
-											</Badge>
-										{/if}
-									<Badge rounded class={implementationStageClass(currentStageStatus)}>
-											<span class="inline-flex items-center gap-1.5">
-											{#if stageWorking}
-												<Spinner
-													size="4"
-													currentFill="var(--stacked-accent)"
-													currentColor="color-mix(in oklab, var(--stacked-border-soft) 82%, #9aa3b7 18%)"
-													class="opacity-90"
-												/>
-											{/if}
-											<span>{implementationStageLabel(currentStageStatus)}</span>
-											</span>
-										</Badge>
-										{#if currentStagePullRequest?.url && currentStagePullRequest.number}
-											<Badge rounded border color="purple">
-												<a
-													href={currentStagePullRequest.url}
-													target="_blank"
-													rel="noopener noreferrer"
-													class="inline-flex items-center gap-1"
-												>
-													<CodePullRequestSolid class="h-3.5 w-3.5" aria-hidden="true" />
-													<span>#{currentStagePullRequest.number}</span>
-												</a>
-											</Badge>
-										{/if}
-										{#if currentStagePullRequest}
-											<Badge
-												rounded
-												border
-												color="blue"
-												title={`${currentStagePullRequest.commentCount ?? 0} comment${(currentStagePullRequest.commentCount ?? 0) === 1 ? '' : 's'}`}
-											>
-												<span class="inline-flex items-center gap-1">
-													<span>{currentStagePullRequest.commentCount ?? 0}</span>
-													<AnnotationSolid class="h-3.5 w-3.5" aria-hidden="true" />
-												</span>
-											</Badge>
-										{/if}
-										{#if currentStageStatus === 'in-progress' && stageRuntime}
-											<p class="text-xs stacked-subtle whitespace-nowrap">
-												{stageRuntime.todoCompleted}/{stageRuntime.todoTotal} Todos done
-											</p>
-										{/if}
-									</div>
-								</div>
-							{/each}
-						</div>
-					{:else}
-						<p class="text-sm stacked-subtle">Save a plan in planning chat to generate implementation stages.</p>
-					{/if}
-				</div>
-
-				<div class="stacked-panel-elevated p-4">
-					{#if data.stack.pullRequest}
-						<p class="text-xs uppercase tracking-wide stacked-subtle">Current PR</p>
-						<p class="mt-1 text-sm font-semibold text-[var(--stacked-text)]">
-							#{data.stack.pullRequest.number} {data.stack.pullRequest.title}
-						</p>
-						<p class="mt-1 text-xs stacked-subtle">
-							{data.stack.pullRequest.state}{data.stack.pullRequest.isDraft ? ' (draft)' : ''}
-						</p>
-						<Badge rounded color="blue" class="mt-1 w-fit">
-							<span class="inline-flex items-center gap-1">
-								<span>{data.stack.pullRequest.commentCount ?? 0}</span>
-								<AnnotationSolid class="h-3.5 w-3.5" aria-hidden="true" />
-							</span>
-						</Badge>
-						<Button
-							href={data.stack.pullRequest?.url ?? '#'}
-							target="_blank"
-							rel="noopener noreferrer"
-							color="alternative"
-							size="sm"
-							class="mt-2"
-						>
-							Open on GitHub
-						</Button>
-					{:else}
-						<p class="text-sm stacked-subtle">No active PR for this branch yet.</p>
-					{/if}
-				</div>
-			</div>
+			<FeatureStackPanel
+				stack={data.stack}
+				{syncError}
+				{syncSuccess}
+				{startError}
+				{startSuccess}
+				{implementationRuntimeByStageId}
+				{canSyncStack}
+				syncStackButtonLabel={syncStackButtonLabel}
+				onSyncStack={syncStack}
+				{canStartFeature}
+				{startButtonLabel}
+				onStartFeature={startFeature}
+				{stageStatus}
+				{stagePullRequest}
+				{isStageAgentWorking}
+				{canOpenStageDiff}
+				{stageSyncMetadata}
+				{stageDiffability}
+				onOpenStageDiff={openStageDiff}
+				onOpenStackPullRequest={openStackPullRequest}
+			/>
 		{/if}
 	</div>
 </main>
