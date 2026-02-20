@@ -1,12 +1,14 @@
 <script lang="ts">
+	import { toHighlightedDiffLine } from '$lib/components/diff/stage-diff-highlight';
 	import type { StageDiffLine } from '$lib/types/stack';
 
 	interface Props {
 		leftLine: StageDiffLine | null;
 		rightLine: StageDiffLine | null;
+		filePath: string;
 	}
 
-	let { leftLine, rightLine }: Props = $props();
+	let { leftLine, rightLine, filePath }: Props = $props();
 
 	function sideClass(line: StageDiffLine | null): string {
 		if (!line) {
@@ -31,6 +33,14 @@
 
 		return `${value}`;
 	}
+
+	function lineHtml(line: StageDiffLine | null): string {
+		if (!line) {
+			return '';
+		}
+
+		return toHighlightedDiffLine({ content: line.content, filePath }).html;
+	}
 </script>
 
 <div
@@ -43,7 +53,7 @@
 			<span>{numberText(leftLine?.oldLineNumber)}</span>
 			<span>{numberText(leftLine?.newLineNumber)}</span>
 		</div>
-		<code class="stage-diff-line-content">{leftLine?.content ?? ''}</code>
+		<code class="stage-diff-line-content">{@html lineHtml(leftLine)}</code>
 	</div>
 
 	<div class={`stage-diff-side ${sideClass(rightLine)}`} data-line-id={rightLine?.lineId}>
@@ -51,7 +61,7 @@
 			<span>{numberText(rightLine?.oldLineNumber)}</span>
 			<span>{numberText(rightLine?.newLineNumber)}</span>
 		</div>
-		<code class="stage-diff-line-content">{rightLine?.content ?? ''}</code>
+		<code class="stage-diff-line-content">{@html lineHtml(rightLine)}</code>
 	</div>
 </div>
 
@@ -91,9 +101,27 @@
 		padding: 0.38rem 0.55rem;
 		font-size: 0.78rem;
 		line-height: 1.45;
+		font-family: 'JetBrains Mono', 'Fira Code', monospace;
 		white-space: pre;
 		overflow-x: auto;
 		color: var(--stacked-text);
+	}
+
+	:global(.stage-diff-line-content .hljs-keyword),
+	:global(.stage-diff-line-content .hljs-selector-tag),
+	:global(.stage-diff-line-content .hljs-literal) {
+		color: color-mix(in oklab, var(--stacked-accent) 70%, white);
+	}
+
+	:global(.stage-diff-line-content .hljs-string),
+	:global(.stage-diff-line-content .hljs-attr),
+	:global(.stage-diff-line-content .hljs-template-tag) {
+		color: color-mix(in oklab, var(--stacked-success) 80%, white);
+	}
+
+	:global(.stage-diff-line-content .hljs-comment),
+	:global(.stage-diff-line-content .hljs-quote) {
+		color: color-mix(in oklab, var(--stacked-text-muted) 86%, #8fa0b6);
 	}
 
 	.stage-diff-side-empty .stage-diff-line-content {

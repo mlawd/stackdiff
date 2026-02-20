@@ -13,8 +13,12 @@ import type {
 	StageDiffLine,
 	StageDiffPayload,
 	StageDiffServiceErrorShape,
+	StageDiffTruncation,
 	StackMetadata
 } from '$lib/types/stack';
+
+const MAX_RENDERED_DIFF_FILES = 80;
+const MAX_RENDERED_DIFF_LINES = 6000;
 
 interface ParsedFileState {
 	diffHeaderOldPath: string;
@@ -324,6 +328,97 @@ function parseDiffOutput(rawDiff: string): StageDiffFile[] {
 	return files;
 }
 
+function countFileLines(file: StageDiffFile): number {
+	let total = 0;
+	for (const hunk of file.hunks) {
+		total += hunk.lines.length;
+	}
+
+	return total;
+}
+
+function truncateDiffFiles(files: StageDiffFile[]): {
+	files: StageDiffFile[];
+	isTruncated: boolean;
+	truncation?: StageDiffTruncation;
+} {
+	const truncatedFiles: StageDiffFile[] = [];
+	let remainingLines = MAX_RENDERED_DIFF_LINES;
+	let omittedFiles = 0;
+	let omittedLines = 0;
+
+	for (const file of files) {
+		const fileLineCount = countFileLines(file);
+
+		if (truncatedFiles.length >= MAX_RENDERED_DIFF_FILES) {
+			omittedFiles += 1;
+			omittedLines += fileLineCount;
+			continue;
+		}
+
+		if (remainingLines <= 0) {
+			omittedFiles += 1;
+			omittedLines += fileLineCount;
+			continue;
+		}
+
+		if (fileLineCount <= remainingLines) {
+			truncatedFiles.push(file);
+			remainingLines -= fileLineCount;
+			continue;
+		}
+
+		const nextHunks: StageDiffHunk[] = [];
+		let consumedLines = 0;
+
+		for (const hunk of file.hunks) {
+			if (remainingLines <= 0) {
+				break;
+			}
+
+			if (hunk.lines.length <= remainingLines) {
+				nextHunks.push(hunk);
+				consumedLines += hunk.lines.length;
+				remainingLines -= hunk.lines.length;
+				continue;
+			}
+
+			nextHunks.push({
+				...hunk,
+				lines: hunk.lines.slice(0, remainingLines)
+			});
+			consumedLines += remainingLines;
+			remainingLines = 0;
+			break;
+		}
+
+		truncatedFiles.push({
+			...file,
+			hunks: nextHunks
+		});
+		omittedLines += Math.max(fileLineCount - consumedLines, 0);
+	}
+
+	const isTruncated = omittedFiles > 0 || omittedLines > 0;
+	if (!isTruncated) {
+		return {
+			files: truncatedFiles,
+			isTruncated
+		};
+	}
+
+	return {
+		files: truncatedFiles,
+		isTruncated,
+		truncation: {
+			maxFiles: MAX_RENDERED_DIFF_FILES,
+			maxLines: MAX_RENDERED_DIFF_LINES,
+			omittedFiles,
+			omittedLines
+		}
+	};
+}
+
 async function resolveExistingRef(repositoryRoot: string, ref: string): Promise<string> {
 	const direct = await runCommand('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], repositoryRoot);
 	if (direct.ok) {
@@ -436,14 +531,17 @@ export async function getStageDiff(stackId: string, stageId: string): Promise<St
 		{ filesChanged: 0, additions: 0, deletions: 0 }
 	);
 
+	const truncatedDiff = truncateDiffFiles(files);
+
 	return {
 		stackId,
 		stageId,
 		baseRef,
 		targetRef,
-		isTruncated: false,
+		isTruncated: truncatedDiff.isTruncated,
+		truncation: truncatedDiff.truncation,
 		summary,
-		files
+		files: truncatedDiff.files
 	};
 }
 

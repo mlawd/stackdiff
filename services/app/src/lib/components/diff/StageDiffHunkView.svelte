@@ -10,9 +10,10 @@
 
 	interface Props {
 		hunk: StageDiffHunk;
+		filePath: string;
 	}
 
-	let { hunk }: Props = $props();
+	let { hunk, filePath }: Props = $props();
 
 	function pairHunkLines(lines: StageDiffLine[]): SideBySideRow[] {
 		const rows: SideBySideRow[] = [];
@@ -77,7 +78,7 @@
 		</div>
 		{#each pairedRows as row (row.rowId)}
 			<div role="row">
-				<StageDiffLinePairRow leftLine={row.leftLine} rightLine={row.rightLine} />
+				<StageDiffLinePairRow leftLine={row.leftLine} rightLine={row.rightLine} {filePath} />
 			</div>
 		{/each}
 	</div>

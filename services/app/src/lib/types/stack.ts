@@ -173,12 +173,20 @@ export interface StageDiffSummary {
 	deletions: number;
 }
 
+export interface StageDiffTruncation {
+	maxFiles: number;
+	maxLines: number;
+	omittedFiles: number;
+	omittedLines: number;
+}
+
 export interface StageDiffPayload {
 	stackId: string;
 	stageId: string;
 	baseRef: string;
 	targetRef: string;
 	isTruncated: boolean;
+	truncation?: StageDiffTruncation;
 	summary: StageDiffSummary;
 	files: StageDiffFile[];
 }
