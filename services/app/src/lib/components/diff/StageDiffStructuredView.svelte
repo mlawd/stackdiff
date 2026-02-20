@@ -4,6 +4,8 @@
 
 	interface Props {
 		diff: StageDiffPayload;
+		selectedLineIds?: string[];
+		onLinePress?: (input: { lineId: string; filePath: string; shiftKey: boolean }) => void;
 	}
 
 	interface FileNavItem {
@@ -13,9 +15,10 @@
 		deletions: number;
 	}
 
-	let { diff }: Props = $props();
+	let { diff, selectedLineIds = [], onLinePress }: Props = $props();
 	let collapsedOverridesByAnchorId = $state<Record<string, boolean>>({});
 	let activeFileAnchorId = $state<string | null>(null);
+	const selectedLineIdSet = $derived(new Set(selectedLineIds));
 
 	function toAnchorId(path: string, index: number): string {
 		const normalized = path
@@ -106,6 +109,8 @@
 				file={file}
 				anchorId={fileNavItems[index]?.anchorId ?? toAnchorId(file.path, index)}
 				collapsed={collapsedByAnchorId[fileNavItems[index]?.anchorId ?? toAnchorId(file.path, index)] ?? false}
+				selectedLineIds={selectedLineIdSet}
+				{onLinePress}
 				onToggleCollapsed={(nextCollapsed) =>
 					setFileCollapsed(fileNavItems[index]?.anchorId ?? toAnchorId(file.path, index), nextCollapsed)}
 			/>

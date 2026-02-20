@@ -7,9 +7,11 @@
 		anchorId: string;
 		collapsed: boolean;
 		onToggleCollapsed?: (nextCollapsed: boolean) => void;
+		selectedLineIds?: Set<string>;
+		onLinePress?: (input: { lineId: string; filePath: string; shiftKey: boolean }) => void;
 	}
 
-	let { file, anchorId, collapsed, onToggleCollapsed }: Props = $props();
+	let { file, anchorId, collapsed, onToggleCollapsed, selectedLineIds, onLinePress }: Props = $props();
 
 	function changeTypeChipClass(changeType: StageDiffFile['changeType']): string {
 		if (changeType === 'added') {
@@ -91,7 +93,7 @@
 	{:else}
 		<div id={`${anchorId}-content`} class="stage-diff-file-hunks">
 			{#each file.hunks as hunk, hunkIndex (`${hunk.header}:${hunkIndex}`)}
-				<StageDiffHunkView {hunk} filePath={file.path} />
+				<StageDiffHunkView {hunk} filePath={file.path} {selectedLineIds} {onLinePress} />
 			{/each}
 		</div>
 	{/if}
