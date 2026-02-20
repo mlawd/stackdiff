@@ -239,6 +239,11 @@ export async function getImplementationSessionByStackAndStage(
 	);
 }
 
+export async function getImplementationSessionsByStackId(stackId: string): Promise<StackImplementationSession[]> {
+	const file = await readStackFile();
+	return (file.implementationSessions ?? []).filter((session) => session.stackId === stackId);
+}
+
 export async function createOrGetImplementationSession(
 	stackId: string,
 	stageId: string,

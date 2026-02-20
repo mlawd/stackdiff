@@ -127,6 +127,13 @@ export interface StackViewModel extends StackMetadata {
 	gitError?: string;
 	ghError?: string;
 	pullRequest?: StackPullRequest;
+	stageDiffabilityById?: Record<string, StageDiffabilityMetadata>;
+}
+
+export interface StageDiffabilityMetadata {
+	isDiffable: boolean;
+	branchName?: string;
+	reasonIfNotDiffable?: string;
 }
 
 export type StageDiffLineType = 'context' | 'add' | 'del';
