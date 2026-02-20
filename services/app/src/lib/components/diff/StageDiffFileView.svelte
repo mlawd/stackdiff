@@ -50,7 +50,7 @@
 	}
 </script>
 
-<article id={anchorId} class="stage-diff-file">
+<article id={anchorId} class="stage-diff-file" data-stage-diff-file-path={file.path}>
 	<header class="stage-diff-file-header">
 		<div class="stage-diff-file-title-wrap">
 			<div class="stage-diff-file-title-row">

@@ -119,7 +119,7 @@
 
 	.stage-diff-column-head {
 		display: grid;
-		grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 		border-bottom: 1px solid color-mix(in oklab, var(--stacked-border-soft) 88%, transparent);
 	}
 
@@ -139,7 +139,7 @@
 
 	@media (max-width: 720px) {
 		.stage-diff-column-head {
-			grid-template-columns: minmax(420px, 1fr);
+			grid-template-columns: minmax(0, 1fr);
 		}
 
 		.stage-diff-column-head > div + div {

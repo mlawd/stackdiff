@@ -103,8 +103,7 @@
 <style>
 	.stage-diff-paired-row {
 		display: grid;
-		grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
-		border-bottom: 1px solid color-mix(in oklab, var(--stacked-border-soft) 78%, transparent);
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 	}
 
 	.stage-diff-side {
@@ -149,8 +148,9 @@
 		font-size: 0.78rem;
 		line-height: 1.45;
 		font-family: 'JetBrains Mono', 'Fira Code', monospace;
-		white-space: pre;
-		overflow-x: auto;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		word-break: break-word;
 		color: var(--stacked-text);
 	}
 
@@ -197,7 +197,7 @@
 
 	@media (max-width: 720px) {
 		.stage-diff-paired-row {
-			grid-template-columns: minmax(420px, 1fr);
+			grid-template-columns: minmax(0, 1fr);
 		}
 
 		.stage-diff-side + .stage-diff-side {

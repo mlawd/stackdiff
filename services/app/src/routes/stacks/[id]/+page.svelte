@@ -615,6 +615,16 @@
 		openStageDiff(next.id, next.title);
 	}
 
+	function scrollToDiffFile(filePath: string): void {
+		if (typeof document === 'undefined') {
+			return;
+		}
+
+		const targets = Array.from(document.querySelectorAll<HTMLElement>('[data-stage-diff-file-path]'));
+		const target = targets.find((entry) => entry.dataset.stageDiffFilePath === filePath);
+		target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
+
 	function handleWindowKeydown(event: KeyboardEvent): void {
 		if (!isStageDiffPanelOpen) {
 			return;
@@ -950,29 +960,50 @@
 					{activeStageDiffError}
 				</div>
 			{:else if activeStageDiff}
-				<div class="space-y-3">
-					<div class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-3">
-						<div class="mb-2 flex flex-wrap gap-2">
-							<span class="stacked-chip">Files {activeStageDiff.summary.filesChanged}</span>
-							<span class="stacked-chip stacked-chip-success">+{activeStageDiff.summary.additions}</span>
-							<span class="stacked-chip stacked-chip-danger">-{activeStageDiff.summary.deletions}</span>
-						</div>
-						<p class="text-xs stacked-subtle">Comparing {activeStageDiff.baseRef} -> {activeStageDiff.targetRef}</p>
-						<p class="mt-1 text-xs stacked-subtle">Use Arrow Up/Down or J/K to move between diffable stages.</p>
-						{#if activeStageDiff.isTruncated}
-							<div class="mt-2 rounded-md border border-amber-300/35 bg-amber-400/10 px-2 py-1.5 text-xs text-amber-200">
-								Showing a truncated diff for performance.
-								{#if activeStageDiff.truncation}
-									{activeStageDiff.truncation.omittedFiles > 0
-										? ` Omitted files: ${activeStageDiff.truncation.omittedFiles}.`
-										: ''}
-									{activeStageDiff.truncation.omittedLines > 0
-										? ` Omitted lines: ${activeStageDiff.truncation.omittedLines}.`
-										: ''}
-								{/if}
+				<div class="stage-diff-modal-layout">
+					<aside class="stage-diff-sidebar stacked-scroll">
+						<div class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-3">
+							<div class="mb-2 flex flex-wrap gap-2">
+								<span class="stacked-chip">Files {activeStageDiff.summary.filesChanged}</span>
+								<span class="stacked-chip stacked-chip-success">+{activeStageDiff.summary.additions}</span>
+								<span class="stacked-chip stacked-chip-danger">-{activeStageDiff.summary.deletions}</span>
 							</div>
-						{/if}
-						<div class="mt-3 rounded-md border border-[var(--stacked-border-soft)] bg-[var(--stacked-surface-elevated)]/65 p-2.5">
+							<p class="text-xs stacked-subtle">Comparing {activeStageDiff.baseRef} -> {activeStageDiff.targetRef}</p>
+							<p class="mt-1 text-xs stacked-subtle">Use Arrow Up/Down or J/K to move between diffable stages.</p>
+							{#if activeStageDiff.isTruncated}
+								<div class="mt-2 rounded-md border border-amber-300/35 bg-amber-400/10 px-2 py-1.5 text-xs text-amber-200">
+									Showing a truncated diff for performance.
+									{#if activeStageDiff.truncation}
+										{activeStageDiff.truncation.omittedFiles > 0
+											? ` Omitted files: ${activeStageDiff.truncation.omittedFiles}.`
+											: ''}
+										{activeStageDiff.truncation.omittedLines > 0
+											? ` Omitted lines: ${activeStageDiff.truncation.omittedLines}.`
+											: ''}
+									{/if}
+								</div>
+							{/if}
+						</div>
+
+						<div class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] p-2.5">
+							<div class="mb-2 flex items-center justify-between gap-2">
+								<p class="text-xs font-semibold uppercase tracking-[0.14em] stacked-subtle">Files</p>
+							</div>
+							<div class="stage-diff-sidebar-files">
+								{#each activeStageDiff.files as file (`${file.path}:${file.additions}:${file.deletions}`)}
+									<button
+										type="button"
+										onclick={() => scrollToDiffFile(file.path)}
+										class="stage-diff-sidebar-file"
+									>
+										<span class="stage-diff-sidebar-file-path">{file.path}</span>
+										<span class="stage-diff-sidebar-file-meta">+{file.additions} -{file.deletions}</span>
+									</button>
+								{/each}
+							</div>
+						</div>
+
+						<div class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-surface-elevated)]/65 p-2.5">
 							<div class="flex flex-wrap items-center justify-between gap-2">
 								<p class="text-xs font-semibold uppercase tracking-[0.15em] stacked-subtle">Selected lines</p>
 								<div class="flex flex-wrap items-center gap-2">
@@ -1036,19 +1067,22 @@
 								</div>
 							{/if}
 						</div>
-					</div>
+					</aside>
 
-					{#if activeStageDiff.files.length === 0}
-						<div class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-3 text-sm stacked-subtle">
-							No committed changes found for this stage branch.
-						</div>
-					{:else}
-						<StageDiffStructuredView
-							diff={activeStageDiff}
-							selectedLineIds={activeSelectedLineIds}
-							onLinePress={applyStageLineSelection}
-						/>
-					{/if}
+					<div class="stage-diff-main">
+						{#if activeStageDiff.files.length === 0}
+							<div class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-3 text-sm stacked-subtle">
+								No committed changes found for this stage branch.
+							</div>
+						{:else}
+							<StageDiffStructuredView
+								diff={activeStageDiff}
+								selectedLineIds={activeSelectedLineIds}
+								onLinePress={applyStageLineSelection}
+								showFileNav={false}
+							/>
+						{/if}
+					</div>
 				</div>
 			{:else}
 				<p class="text-sm stacked-subtle">Select a diffable implementation stage to load changes.</p>
@@ -1084,19 +1118,20 @@
 
 	.stage-diff-panel {
 		position: absolute;
-		top: 0;
-		right: 0;
-		height: 100%;
-		width: min(880px, 100vw);
+		inset: 1rem;
 		display: flex;
 		flex-direction: column;
-		transform: translateX(100%);
-		transition: transform 230ms cubic-bezier(0.16, 1, 0.3, 1);
-		border-radius: 0;
+		opacity: 0;
+		transform: scale(0.985) translateY(8px);
+		transition:
+			opacity 170ms ease,
+			transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+		border-radius: 14px;
 	}
 
 	.stage-diff-drawer.is-open .stage-diff-panel {
-		transform: translateX(0);
+		opacity: 1;
+		transform: scale(1) translateY(0);
 	}
 
 	.stage-diff-panel-header {
@@ -1118,18 +1153,74 @@
 		overscroll-behavior: contain;
 	}
 
+	.stage-diff-modal-layout {
+		display: grid;
+		grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+		gap: 0.9rem;
+		align-items: start;
+	}
+
+	.stage-diff-sidebar {
+		position: sticky;
+		top: 0;
+		display: grid;
+		gap: 0.75rem;
+		max-height: calc(100dvh - 9.2rem);
+		overflow: auto;
+		padding-right: 0.2rem;
+	}
+
+	.stage-diff-main {
+		min-width: 0;
+	}
+
+	.stage-diff-sidebar-files {
+		display: grid;
+		gap: 0.35rem;
+	}
+
+	.stage-diff-sidebar-file {
+		display: grid;
+		gap: 0.12rem;
+		padding: 0.45rem 0.55rem;
+		border-radius: 8px;
+		border: 1px solid color-mix(in oklab, var(--stacked-border-soft) 88%, transparent);
+		background: color-mix(in oklab, var(--stacked-surface-elevated) 80%, transparent);
+		text-align: left;
+		cursor: pointer;
+		transition: border-color 130ms ease, transform 130ms ease;
+	}
+
+	.stage-diff-sidebar-file:hover {
+		border-color: color-mix(in oklab, var(--stacked-accent) 42%, var(--stacked-border-soft));
+		transform: translateY(-1px);
+	}
+
+	.stage-diff-sidebar-file-path {
+		font-size: 0.73rem;
+		color: var(--stacked-text);
+		word-break: break-word;
+	}
+
+	.stage-diff-sidebar-file-meta {
+		font-size: 0.68rem;
+		color: var(--stacked-text-muted);
+	}
+
 	@media (max-width: 640px) {
 		.stage-diff-panel {
-			width: 100vw;
-			height: min(92dvh, 100%);
-			top: auto;
-			bottom: 0;
-			border-radius: 16px 16px 0 0;
-			transform: translateY(100%);
+			inset: 0;
+			border-radius: 0;
 		}
 
-		.stage-diff-drawer.is-open .stage-diff-panel {
-			transform: translateY(0);
+		.stage-diff-modal-layout {
+			grid-template-columns: minmax(0, 1fr);
+		}
+
+		.stage-diff-sidebar {
+			position: static;
+			max-height: none;
+			padding-right: 0;
 		}
 	}
 </style>
