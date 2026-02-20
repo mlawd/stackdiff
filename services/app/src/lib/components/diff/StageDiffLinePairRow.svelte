@@ -6,9 +6,11 @@
 		leftLine: StageDiffLine | null;
 		rightLine: StageDiffLine | null;
 		filePath: string;
+		selectedLineIds?: Set<string>;
+		onLinePress?: (input: { lineId: string; filePath: string; shiftKey: boolean }) => void;
 	}
 
-	let { leftLine, rightLine, filePath }: Props = $props();
+	let { leftLine, rightLine, filePath, selectedLineIds, onLinePress }: Props = $props();
 
 	function sideClass(line: StageDiffLine | null): string {
 		if (!line) {
@@ -41,6 +43,27 @@
 
 		return toHighlightedDiffLine({ content: line.content, filePath }).html;
 	}
+
+	function isSelected(line: StageDiffLine | null): boolean {
+		if (!line || !selectedLineIds) {
+			return false;
+		}
+
+		return selectedLineIds.has(line.lineId);
+	}
+
+	function handleLinePress(line: StageDiffLine | null, event: MouseEvent): void {
+		if (!line) {
+			return;
+		}
+
+		onLinePress?.({
+			lineId: line.lineId,
+			filePath,
+			shiftKey: event.shiftKey
+		});
+	}
+
 </script>
 
 <div
@@ -48,21 +71,33 @@
 	data-left-line-id={leftLine?.lineId}
 	data-right-line-id={rightLine?.lineId}
 >
-	<div class={`stage-diff-side ${sideClass(leftLine)}`} data-line-id={leftLine?.lineId}>
+	<button
+		type="button"
+		class={`stage-diff-side ${sideClass(leftLine)} ${isSelected(leftLine) ? 'stage-diff-side-selected' : ''}`}
+		data-line-id={leftLine?.lineId}
+		disabled={!leftLine}
+		onclick={(event) => handleLinePress(leftLine, event)}
+	>
 		<div class="stage-diff-line-numbers" aria-hidden="true">
 			<span>{numberText(leftLine?.oldLineNumber)}</span>
 			<span>{numberText(leftLine?.newLineNumber)}</span>
 		</div>
 		<code class="stage-diff-line-content">{@html lineHtml(leftLine)}</code>
-	</div>
+	</button>
 
-	<div class={`stage-diff-side ${sideClass(rightLine)}`} data-line-id={rightLine?.lineId}>
+	<button
+		type="button"
+		class={`stage-diff-side ${sideClass(rightLine)} ${isSelected(rightLine) ? 'stage-diff-side-selected' : ''}`}
+		data-line-id={rightLine?.lineId}
+		disabled={!rightLine}
+		onclick={(event) => handleLinePress(rightLine, event)}
+	>
 		<div class="stage-diff-line-numbers" aria-hidden="true">
 			<span>{numberText(rightLine?.oldLineNumber)}</span>
 			<span>{numberText(rightLine?.newLineNumber)}</span>
 		</div>
 		<code class="stage-diff-line-content">{@html lineHtml(rightLine)}</code>
-	</div>
+	</button>
 </div>
 
 <style>
@@ -76,6 +111,18 @@
 		display: grid;
 		grid-template-columns: auto 1fr;
 		min-width: 0;
+		padding: 0;
+		border: 0;
+		cursor: pointer;
+		text-align: left;
+	}
+
+	.stage-diff-side-empty {
+		cursor: default;
+	}
+
+	.stage-diff-side:disabled {
+		opacity: 1;
 	}
 
 	.stage-diff-side + .stage-diff-side {
@@ -142,6 +189,10 @@
 
 	.stage-diff-side-empty {
 		background: color-mix(in oklab, var(--stacked-bg-soft) 56%, transparent);
+	}
+
+	.stage-diff-side-selected {
+		box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--stacked-accent) 58%, white 12%);
 	}
 
 	@media (max-width: 720px) {
