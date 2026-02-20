@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { Spinner } from 'flowbite-svelte';
 	import PlanningChat from '$lib/components/PlanningChat.svelte';
+	import StageDiffStructuredView from '$lib/components/diff/StageDiffStructuredView.svelte';
 
 	import type {
 		FeatureStageStatus,
@@ -569,12 +570,7 @@
 							No committed changes found for this stage branch.
 						</div>
 					{:else}
-						<div class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-3">
-							<p class="text-sm font-medium text-[var(--stacked-text)]">Diff content loads in stage 4.</p>
-							<p class="mt-1 text-xs stacked-subtle">
-								Fetched {activeStageDiff.files.length} file{activeStageDiff.files.length === 1 ? '' : 's'} for this stage.
-							</p>
-						</div>
+						<StageDiffStructuredView diff={activeStageDiff} />
 					{/if}
 				</div>
 			{:else}
