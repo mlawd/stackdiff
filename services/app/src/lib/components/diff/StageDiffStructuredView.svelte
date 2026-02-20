@@ -4,6 +4,8 @@
 
 	interface Props {
 		diff: StageDiffPayload;
+		selectedLineIds?: string[];
+		onLinePress?: (input: { lineId: string; filePath: string; shiftKey: boolean }) => void;
 	}
 
 	interface FileNavItem {
@@ -13,7 +15,10 @@
 		deletions: number;
 	}
 
-	let { diff }: Props = $props();
+	let { diff, selectedLineIds = [], onLinePress }: Props = $props();
+	let collapsedOverridesByAnchorId = $state<Record<string, boolean>>({});
+	let activeFileAnchorId = $state<string | null>(null);
+	const selectedLineIdSet = $derived(new Set(selectedLineIds));
 
 	function toAnchorId(path: string, index: number): string {
 		const normalized = path
@@ -27,8 +32,26 @@
 	}
 
 	function scrollToFile(anchorId: string): void {
+		collapsedOverridesByAnchorId[anchorId] = false;
+		activeFileAnchorId = anchorId;
 		const target = document.getElementById(anchorId);
 		target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
+
+	function setFileCollapsed(anchorId: string, nextCollapsed: boolean): void {
+		collapsedOverridesByAnchorId[anchorId] = nextCollapsed;
+	}
+
+	function expandAllFiles(): void {
+		for (const item of fileNavItems) {
+			collapsedOverridesByAnchorId[item.anchorId] = false;
+		}
+	}
+
+	function collapseAllFiles(): void {
+		for (const item of fileNavItems) {
+			collapsedOverridesByAnchorId[item.anchorId] = true;
+		}
 	}
 
 	const fileNavItems = $derived(
@@ -39,14 +62,40 @@
 			deletions: file.deletions
 		}))
 	);
+
+	const defaultCollapsedByAnchorId = $derived.by(() => {
+		const defaults: Record<string, boolean> = {};
+		for (let index = 0; index < fileNavItems.length; index += 1) {
+			defaults[fileNavItems[index].anchorId] = index >= 3;
+		}
+
+		return defaults;
+	});
+
+	const collapsedByAnchorId = $derived({
+		...defaultCollapsedByAnchorId,
+		...collapsedOverridesByAnchorId
+	});
+
+	const resolvedActiveFileAnchorId = $derived(activeFileAnchorId ?? fileNavItems[0]?.anchorId ?? null);
 </script>
 
 <section class="stage-diff-structured-view" aria-label="Structured stage diff">
 	<nav class="stage-diff-file-nav" aria-label="Diff files">
-		<p class="stage-diff-file-nav-label">Files</p>
+		<div class="stage-diff-file-nav-header">
+			<p class="stage-diff-file-nav-label">Files</p>
+			<div class="stage-diff-file-nav-actions">
+				<button type="button" onclick={expandAllFiles}>Expand all</button>
+				<button type="button" onclick={collapseAllFiles}>Collapse all</button>
+			</div>
+		</div>
 		<div class="stage-diff-file-nav-list">
 			{#each fileNavItems as item (item.anchorId)}
-				<button type="button" class="stage-diff-file-nav-item" onclick={() => scrollToFile(item.anchorId)}>
+				<button
+					type="button"
+					class={`stage-diff-file-nav-item ${resolvedActiveFileAnchorId === item.anchorId ? 'is-active' : ''}`}
+					onclick={() => scrollToFile(item.anchorId)}
+				>
 					<span class="stage-diff-file-nav-path">{item.path}</span>
 					<span class="stage-diff-file-nav-meta">+{item.additions} -{item.deletions}</span>
 				</button>
@@ -56,7 +105,15 @@
 
 	<div class="stage-diff-file-list">
 		{#each diff.files as file, index (`${file.path}:${index}`)}
-			<StageDiffFileView file={file} anchorId={fileNavItems[index]?.anchorId ?? toAnchorId(file.path, index)} />
+			<StageDiffFileView
+				file={file}
+				anchorId={fileNavItems[index]?.anchorId ?? toAnchorId(file.path, index)}
+				collapsed={collapsedByAnchorId[fileNavItems[index]?.anchorId ?? toAnchorId(file.path, index)] ?? false}
+				selectedLineIds={selectedLineIdSet}
+				{onLinePress}
+				onToggleCollapsed={(nextCollapsed) =>
+					setFileCollapsed(fileNavItems[index]?.anchorId ?? toAnchorId(file.path, index), nextCollapsed)}
+			/>
 		{/each}
 	</div>
 </section>
@@ -74,6 +131,35 @@
 		border: 1px solid var(--stacked-border-soft);
 		border-radius: 12px;
 		background: color-mix(in oklab, var(--stacked-bg-soft) 88%, transparent);
+	}
+
+	.stage-diff-file-nav-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+	}
+
+	.stage-diff-file-nav-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+	}
+
+	.stage-diff-file-nav-actions button {
+		padding: 0.2rem 0.4rem;
+		border-radius: 7px;
+		border: 1px solid color-mix(in oklab, var(--stacked-border-soft) 88%, transparent);
+		background: color-mix(in oklab, var(--stacked-surface-elevated) 84%, transparent);
+		font-size: 0.7rem;
+		line-height: 1.2;
+		color: var(--stacked-text-muted);
+		cursor: pointer;
+	}
+
+	.stage-diff-file-nav-actions button:hover {
+		color: var(--stacked-text);
+		border-color: color-mix(in oklab, var(--stacked-accent) 35%, var(--stacked-border-soft));
 	}
 
 	.stage-diff-file-nav-label {
@@ -108,6 +194,11 @@
 	.stage-diff-file-nav-item:hover {
 		border-color: color-mix(in oklab, var(--stacked-accent) 40%, var(--stacked-border-soft));
 		transform: translateY(-1px);
+	}
+
+	.stage-diff-file-nav-item.is-active {
+		border-color: color-mix(in oklab, var(--stacked-accent) 55%, var(--stacked-border-soft));
+		box-shadow: 0 0 0 1px color-mix(in oklab, var(--stacked-accent) 35%, transparent);
 	}
 
 	.stage-diff-file-nav-path {
