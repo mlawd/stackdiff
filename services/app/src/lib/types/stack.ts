@@ -6,6 +6,86 @@ export type StackStatus = 'created' | 'planned' | 'started' | 'complete';
 
 export type FeatureStageStatus = 'not-started' | 'in-progress' | 'review-ready' | 'done';
 
+export type MergeCommitType = 'feat' | 'fix' | 'chore';
+
+export type StackMergeCheckStatus = 'pending' | 'passed' | 'failed' | 'skipped' | 'unknown';
+
+export type StackMergeCheckSource = 'git' | 'gh' | 'stacked';
+
+export interface StackMergeCheckResult {
+	id: string;
+	name: string;
+	status: StackMergeCheckStatus;
+	source: StackMergeCheckSource;
+	details?: string;
+	url?: string;
+}
+
+export interface StackMergeChecksSummary {
+	total: number;
+	passed: number;
+	failed: number;
+	pending: number;
+	skipped: number;
+	unknown: number;
+	checks: StackMergeCheckResult[];
+	evaluatedAt: string;
+}
+
+export type StackMergeReadinessBlockerCode =
+	| 'NO_STAGES'
+	| 'STAGE_NOT_DONE'
+	| 'WORKING_TREE_DIRTY'
+	| 'CHECKS_FAILED'
+	| 'CHECKS_PENDING'
+	| 'PULL_REQUEST_NOT_READY'
+	| 'REPOSITORY_ERROR'
+	| 'UNKNOWN';
+
+export interface StackMergeReadinessBlocker {
+	code: StackMergeReadinessBlockerCode;
+	message: string;
+	stageId?: string;
+	branchName?: string;
+}
+
+export interface StackMergeReadiness {
+	isReady: boolean;
+	blockers: StackMergeReadinessBlocker[];
+	checksSummary: StackMergeChecksSummary;
+	evaluatedAt: string;
+}
+
+export type StackMergeResultStatus = 'merged' | 'blocked' | 'failed';
+
+export interface StackMergeBranchDetail {
+	stageId: string;
+	stageTitle: string;
+	branchName: string;
+	commitMessages: string[];
+	commitCount: number;
+}
+
+export interface StackMergeResult {
+	status: StackMergeResultStatus;
+	stackId: string;
+	commitType: MergeCommitType;
+	commitMessage: string;
+	mergedAt?: string;
+	mergeCommitSha?: string;
+	readiness: StackMergeReadiness;
+	branches: StackMergeBranchDetail[];
+	errorMessage?: string;
+}
+
+export interface StackMergeMetadata {
+	lastReadiness?: StackMergeReadiness;
+	lastMergeResult?: StackMergeResult;
+	lastMergedAt?: string;
+	lastMergeCommitSha?: string;
+	defaultCommitType?: MergeCommitType;
+}
+
 export interface FeatureStage {
 	id: string;
 	title: string;
@@ -21,6 +101,7 @@ export interface StackMetadata {
 	type: FeatureType;
 	status: StackStatus;
 	stages?: FeatureStage[];
+	merge?: StackMergeMetadata;
 }
 
 export interface StackUpsertInput {
