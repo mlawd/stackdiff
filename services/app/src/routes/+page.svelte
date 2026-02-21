@@ -1,8 +1,8 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import { Badge } from 'flowbite-svelte';
+  import StackStatusBadge from '$lib/components/stack/StackStatusBadge.svelte';
+  import StackTypeBadge from '$lib/components/stack/StackTypeBadge.svelte';
 
-  import type { StackStatus, StackViewModel } from '$lib/types/stack';
   import type { PageData } from './$types';
 
   interface UiMessage {
@@ -10,50 +10,12 @@
     text: string;
   }
 
-  type BadgeColor = 'gray' | 'yellow' | 'green' | 'red' | 'purple';
-
   let { data }: { data: PageData } = $props();
-  let initialized = false;
-  let stacks = $state<StackViewModel[]>([]);
-  let loadedAt = $state('');
-  let message = $state<UiMessage | null>(null);
-
-  const typeLabel = {
-    feature: 'Feature',
-    bugfix: 'Bugfix',
-    chore: 'Chore',
-  } as const;
-
-  const typeColor: Record<StackViewModel['type'], BadgeColor> = {
-    feature: 'purple',
-    bugfix: 'red',
-    chore: 'gray',
-  };
-
-  const statusLabel: Record<StackStatus, string> = {
-    created: 'Created',
-    planned: 'Planned',
-    started: 'Started',
-    complete: 'Complete',
-  };
-
-  const statusColor: Record<StackStatus, BadgeColor> = {
-    created: 'gray',
-    planned: 'yellow',
-    started: 'purple',
-    complete: 'green',
-  };
-
-  $effect(() => {
-    if (initialized) {
-      return;
-    }
-
-    stacks = [...data.stacks];
-    loadedAt = data.loadedAt;
-    message = data.error ? { kind: 'error', text: data.error } : null;
-    initialized = true;
-  });
+  let stacks = $derived(data.stacks);
+  let loadedAt = $derived(data.loadedAt);
+  let message = $derived<UiMessage | null>(
+    data.error ? { kind: 'error', text: data.error } : null,
+  );
 </script>
 
 <main class="stacked-shell mx-auto w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-6">
@@ -112,12 +74,8 @@
               <p class="text-xs stacked-subtle">Open</p>
             </div>
             <div class="mt-3 flex flex-wrap items-center gap-2">
-              <Badge rounded color={typeColor[stack.type]}
-                >{typeLabel[stack.type]}</Badge
-              >
-              <Badge rounded color={statusColor[stack.status]}
-                >{statusLabel[stack.status]}</Badge
-              >
+              <StackTypeBadge type={stack.type} />
+              <StackStatusBadge status={stack.status} />
             </div>
           </a>
         {/each}

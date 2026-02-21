@@ -1,23 +1,7 @@
 <script lang="ts">
-  import { Badge } from 'flowbite-svelte';
-
-  import type { StackStatus, StackViewModel } from '$lib/types/stack';
-  import { statusLabel, typeLabel } from '../behavior';
-
-  type BadgeColor = 'gray' | 'yellow' | 'green' | 'red' | 'purple';
-
-  const typeColor: Record<StackViewModel['type'], BadgeColor> = {
-    feature: 'purple',
-    bugfix: 'red',
-    chore: 'gray',
-  };
-
-  const statusColor: Record<StackStatus, BadgeColor> = {
-    created: 'gray',
-    planned: 'yellow',
-    started: 'purple',
-    complete: 'green',
-  };
+  import StackStatusBadge from '$lib/components/stack/StackStatusBadge.svelte';
+  import StackTypeBadge from '$lib/components/stack/StackTypeBadge.svelte';
+  import type { StackViewModel } from '$lib/types/stack';
 
   let {
     stack,
@@ -47,10 +31,8 @@
       {stack.name}
     </h1>
     <div class="flex flex-wrap items-center gap-2">
-      <Badge rounded color={typeColor[stack.type]}>{typeLabel[stack.type]}</Badge>
-      <Badge rounded color={statusColor[stack.status]}
-        >{statusLabel[stack.status]}</Badge
-      >
+      <StackTypeBadge type={stack.type} />
+      <StackStatusBadge status={stack.status} />
     </div>
   </div>
   <p class="mt-2 text-sm stacked-subtle">

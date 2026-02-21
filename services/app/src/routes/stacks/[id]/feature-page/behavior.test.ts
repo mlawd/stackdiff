@@ -2,12 +2,21 @@ import { describe, expect, it } from 'vitest';
 
 import {
   canStartFeature,
+  formatStartSuccessMessage,
+  formatSyncSuccessMessage,
+  implementationStageColor,
   implementationStageLabel,
+  shouldInvalidateFromRuntimeUpdates,
+  stageIdsForRuntimePolling,
   startButtonLabel,
   stagePullRequest,
   stageStatus,
 } from './behavior';
-import type { ImplementationStageRuntime } from './contracts';
+import type {
+  ImplementationStageRuntime,
+  StartResponse,
+  SyncStackResponse,
+} from './contracts';
 
 describe('feature page behavior contracts', () => {
   it('maps stage statuses to labels', () => {
@@ -15,6 +24,11 @@ describe('feature page behavior contracts', () => {
     expect(implementationStageLabel('in-progress')).toBe('In progress');
     expect(implementationStageLabel('review-ready')).toBe('Review ready');
     expect(implementationStageLabel('done')).toBe('Done');
+
+    expect(implementationStageColor('not-started')).toBe('gray');
+    expect(implementationStageColor('in-progress')).toBe('yellow');
+    expect(implementationStageColor('review-ready')).toBe('purple');
+    expect(implementationStageColor('done')).toBe('green');
   });
 
   it('resolves runtime stage status and pull request with fallback values', () => {
@@ -111,5 +125,127 @@ describe('feature page behavior contracts', () => {
         startPending: false,
       }),
     ).toBe('Start feature');
+  });
+
+  it('selects in-progress and missing-pr review-ready stages for polling', () => {
+    const stages = [
+      { id: 's-1', title: 'Stage 1', status: 'in-progress' },
+      {
+        id: 's-2',
+        title: 'Stage 2',
+        status: 'review-ready',
+      },
+      {
+        id: 's-3',
+        title: 'Stage 3',
+        status: 'review-ready',
+        pullRequest: {
+          number: 33,
+          title: 'Review ready stage',
+          state: 'OPEN',
+          isDraft: false,
+          url: 'https://example.com/33',
+          updatedAt: '2026-02-20T00:00:00.000Z',
+        },
+      },
+      { id: 's-4', title: 'Stage 4', status: 'done' },
+    ] as const;
+
+    expect(
+      stageIdsForRuntimePolling({
+        stages: [...stages],
+        implementationRuntimeByStageId: {},
+      }),
+    ).toEqual(['s-1', 's-2']);
+  });
+
+  it('invalidates when runtime promotes stage or attaches pull request', () => {
+    const stages = [
+      { id: 's-1', title: 'Stage 1', status: 'in-progress' },
+      { id: 's-2', title: 'Stage 2', status: 'review-ready' },
+    ] as const;
+
+    expect(
+      shouldInvalidateFromRuntimeUpdates({
+        stages: [...stages],
+        updates: [
+          [
+            's-1',
+            {
+              stageStatus: 'review-ready',
+              runtimeState: 'idle',
+              todoCompleted: 4,
+              todoTotal: 4,
+            },
+          ],
+        ],
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldInvalidateFromRuntimeUpdates({
+        stages: [...stages],
+        updates: [
+          [
+            's-2',
+            {
+              stageStatus: 'review-ready',
+              runtimeState: 'idle',
+              todoCompleted: 4,
+              todoTotal: 4,
+              pullRequest: {
+                number: 44,
+                title: 'Stage PR',
+                state: 'OPEN',
+                isDraft: false,
+                url: 'https://example.com/44',
+                updatedAt: '2026-02-20T00:00:00.000Z',
+              },
+            },
+          ],
+        ],
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldInvalidateFromRuntimeUpdates({
+        stages: [...stages],
+        updates: [
+          [
+            's-2',
+            {
+              stageStatus: 'review-ready',
+              runtimeState: 'idle',
+              todoCompleted: 4,
+              todoTotal: 4,
+            },
+          ],
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it('formats start and sync success messages', () => {
+    const startResponse: StartResponse = {
+      stageNumber: 2,
+      stageTitle: 'Implement auth',
+      startedNow: true,
+      reusedWorktree: true,
+      reusedSession: false,
+    };
+    const syncResponse: SyncStackResponse = {
+      result: {
+        totalStages: 3,
+        rebasedStages: 2,
+        skippedStages: 1,
+      },
+    };
+
+    expect(formatStartSuccessMessage(startResponse)).toBe(
+      'Started stage 2: Implement auth. Reused existing worktree. Created implementation session.',
+    );
+    expect(formatSyncSuccessMessage(syncResponse)).toBe(
+      'Stack sync complete. Rebases: 2. Skipped: 1.',
+    );
   });
 });

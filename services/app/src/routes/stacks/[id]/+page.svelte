@@ -9,18 +9,19 @@
   let { data }: { data: PageData } = $props();
   type FeaturePageTabKey = 'plan' | 'stack';
 
-  let initializedForStackId = '';
+  let activeTabForStackId = '';
   let activeTab = $state<FeaturePageTabKey>(
     // svelte-ignore state_referenced_locally
     data.stack.status === 'created' ? 'plan' : 'stack',
   );
 
   $effect(() => {
-    if (initializedForStackId === data.stack.id) {
+    if (activeTabForStackId === data.stack.id) {
       return;
     }
 
-    initializedForStackId = data.stack.id;
+    activeTabForStackId = data.stack.id;
+    activeTab = data.stack.status === 'created' ? 'plan' : 'stack';
   });
 </script>
 

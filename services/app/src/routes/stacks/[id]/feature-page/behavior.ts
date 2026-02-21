@@ -1,22 +1,12 @@
 import type {
   FeatureStage,
   FeatureStageStatus,
-  StackStatus,
 } from '../../../../lib/types/stack';
-import type { ImplementationStageRuntime } from './contracts';
-
-export const typeLabel = {
-  feature: 'Feature',
-  bugfix: 'Bugfix',
-  chore: 'Chore',
-} as const;
-
-export const statusLabel: Record<StackStatus, string> = {
-  created: 'Created',
-  planned: 'Planned',
-  started: 'Started',
-  complete: 'Complete',
-};
+import type {
+  ImplementationStageRuntime,
+  StartResponse,
+  SyncStackResponse,
+} from './contracts';
 
 export function implementationStageLabel(status: FeatureStageStatus): string {
   if (status === 'done') {
@@ -48,6 +38,24 @@ export function stagePullRequest(
   fallback: ImplementationStageRuntime['pullRequest'],
 ): ImplementationStageRuntime['pullRequest'] {
   return implementationRuntimeByStageId[stageId]?.pullRequest ?? fallback;
+}
+
+export function implementationStageColor(
+  status: FeatureStageStatus,
+): 'gray' | 'yellow' | 'green' | 'purple' {
+  if (status === 'done') {
+    return 'green';
+  }
+
+  if (status === 'review-ready') {
+    return 'purple';
+  }
+
+  if (status === 'in-progress') {
+    return 'yellow';
+  }
+
+  return 'gray';
 }
 
 function hasInProgressStage(
@@ -101,4 +109,78 @@ export function startButtonLabel(input: {
   }
 
   return 'Next stage';
+}
+
+export function stageIdsForRuntimePolling(input: {
+  stages: FeatureStage[];
+  implementationRuntimeByStageId: Record<string, ImplementationStageRuntime>;
+}): string[] {
+  return input.stages
+    .filter((stage) => {
+      const currentStatus = stageStatus(
+        input.implementationRuntimeByStageId,
+        stage.id,
+        stage.status,
+      );
+      const currentPullRequest = stagePullRequest(
+        input.implementationRuntimeByStageId,
+        stage.id,
+        stage.pullRequest,
+      );
+      return (
+        currentStatus === 'in-progress' ||
+        (currentStatus === 'review-ready' && !currentPullRequest?.number)
+      );
+    })
+    .map((stage) => stage.id);
+}
+
+export function shouldInvalidateFromRuntimeUpdates(input: {
+  stages: FeatureStage[];
+  updates: ReadonlyArray<readonly [string, ImplementationStageRuntime]>;
+}): boolean {
+  for (const [stageId, runtime] of input.updates) {
+    const stageEntry = input.stages.find((stage) => stage.id === stageId);
+    if (!stageEntry) {
+      continue;
+    }
+
+    if (
+      stageEntry.status === 'in-progress' &&
+      runtime.stageStatus !== 'in-progress'
+    ) {
+      return true;
+    }
+
+    if (runtime.pullRequest && !stageEntry.pullRequest?.number) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function formatStartSuccessMessage(response: StartResponse): string {
+  const titledStage = response.stageTitle?.trim();
+  const stageLabel = response.stageNumber
+    ? titledStage
+      ? `stage ${response.stageNumber}: ${titledStage}`
+      : `stage ${response.stageNumber}`
+    : 'next stage';
+  const mode = response.startedNow
+    ? `Started ${stageLabel}.`
+    : `${stageLabel} is already running.`;
+  const worktreeState = response.reusedWorktree
+    ? 'Reused existing worktree.'
+    : 'Created worktree.';
+  const sessionState = response.reusedSession
+    ? 'Reused implementation session.'
+    : 'Created implementation session.';
+  return `${mode} ${worktreeState} ${sessionState}`;
+}
+
+export function formatSyncSuccessMessage(response: SyncStackResponse): string {
+  const rebased = response.result?.rebasedStages ?? 0;
+  const skipped = response.result?.skippedStages ?? 0;
+  return `Stack sync complete. Rebases: ${rebased}. Skipped: ${skipped}.`;
 }

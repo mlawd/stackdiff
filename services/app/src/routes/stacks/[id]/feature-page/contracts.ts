@@ -12,6 +12,18 @@ export interface StartResponse {
   error?: string;
 }
 
+export interface SyncStackResponse {
+  result?: {
+    totalStages: number;
+    rebasedStages: number;
+    skippedStages: number;
+  };
+  error?: {
+    code?: string;
+    message?: string;
+  };
+}
+
 export interface ImplementationStatusResponse {
   stageStatus?: FeatureStageStatus;
   runtimeState?: 'idle' | 'busy' | 'retry' | 'missing';
@@ -27,4 +39,10 @@ export interface ImplementationStageRuntime {
   todoCompleted: number;
   todoTotal: number;
   pullRequest?: StackPullRequest;
+}
+
+export interface FeatureActionState {
+  pending: boolean;
+  error: string | null;
+  success: string | null;
 }
