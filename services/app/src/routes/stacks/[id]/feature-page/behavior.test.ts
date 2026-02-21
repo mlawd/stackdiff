@@ -2,9 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   canStartFeature,
-  hasInProgressStage,
-  hasRemainingNotStartedStage,
-  implementationStageClass,
   implementationStageLabel,
   startButtonLabel,
   stagePullRequest,
@@ -13,22 +10,11 @@ import {
 import type { ImplementationStageRuntime } from './contracts';
 
 describe('feature page behavior contracts', () => {
-  it('maps stage statuses to legacy labels and class names', () => {
+  it('maps stage statuses to labels', () => {
     expect(implementationStageLabel('not-started')).toBe('Not started');
     expect(implementationStageLabel('in-progress')).toBe('In progress');
     expect(implementationStageLabel('review-ready')).toBe('Review ready');
     expect(implementationStageLabel('done')).toBe('Done');
-
-    expect(implementationStageClass('not-started')).toBe('stacked-chip');
-    expect(implementationStageClass('in-progress')).toBe(
-      'stacked-chip stacked-chip-warning',
-    );
-    expect(implementationStageClass('review-ready')).toBe(
-      'stacked-chip stacked-chip-review',
-    );
-    expect(implementationStageClass('done')).toBe(
-      'stacked-chip stacked-chip-success',
-    );
   });
 
   it('resolves runtime stage status and pull request with fallback values', () => {
@@ -67,8 +53,6 @@ describe('feature page behavior contracts', () => {
       { id: 's-2', title: 'Stage 2', status: 'done' },
     ] as const;
 
-    expect(hasRemainingNotStartedStage([...stages], {})).toBe(true);
-    expect(hasInProgressStage([...stages], {})).toBe(false);
     expect(
       canStartFeature({
         stages: [...stages],

@@ -157,8 +157,14 @@
         <Button href={resolve('/')} size="sm" color="alternative">
           Cancel
         </Button>
-        <Button type="submit" size="sm" color="primary" disabled={submitting}>
-          {submitting ? 'Creating...' : 'Create Feature'}
+        <Button
+          type="submit"
+          size="sm"
+          color="primary"
+          disabled={submitting}
+          loading={submitting}
+        >
+          Create Feature
         </Button>
       </div>
     </form>

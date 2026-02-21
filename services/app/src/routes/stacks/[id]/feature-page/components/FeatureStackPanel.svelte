@@ -71,14 +71,6 @@
     return hasOutOfSyncStages() && !syncPending && !startPending;
   }
 
-  function syncStackButtonLabel(): string {
-    if (syncPending) {
-      return 'Syncing...';
-    }
-
-    return 'Sync Stack';
-  }
-
   function canStartFeature(): boolean {
     return (
       canStartFeatureWithRuntime({
@@ -409,8 +401,9 @@
           color="alternative"
           onclick={syncStack}
           disabled={!canSyncStack()}
+          loading={syncPending}
         >
-          {syncStackButtonLabel()}
+          Sync Stack
         </Button>
         <Button
           type="button"
@@ -418,6 +411,7 @@
           color="primary"
           onclick={startFeature}
           disabled={!canStartFeature()}
+          loading={startPending}
         >
           {startButtonLabel()}
         </Button>

@@ -11,41 +11,12 @@ export const typeLabel = {
   chore: 'Chore',
 } as const;
 
-export const typeClass = {
-  feature: 'stacked-chip stacked-chip-review',
-  bugfix: 'stacked-chip stacked-chip-danger',
-  chore: 'stacked-chip',
-} as const;
-
 export const statusLabel: Record<StackStatus, string> = {
   created: 'Created',
   planned: 'Planned',
   started: 'Started',
   complete: 'Complete',
 };
-
-export const statusClass: Record<StackStatus, string> = {
-  created: 'stacked-chip',
-  planned: 'stacked-chip stacked-chip-warning',
-  started: 'stacked-chip stacked-chip-review',
-  complete: 'stacked-chip stacked-chip-success',
-};
-
-export function implementationStageClass(status: FeatureStageStatus): string {
-  if (status === 'done') {
-    return 'stacked-chip stacked-chip-success';
-  }
-
-  if (status === 'review-ready') {
-    return 'stacked-chip stacked-chip-review';
-  }
-
-  if (status === 'in-progress') {
-    return 'stacked-chip stacked-chip-warning';
-  }
-
-  return 'stacked-chip';
-}
 
 export function implementationStageLabel(status: FeatureStageStatus): string {
   if (status === 'done') {
@@ -79,7 +50,7 @@ export function stagePullRequest(
   return implementationRuntimeByStageId[stageId]?.pullRequest ?? fallback;
 }
 
-export function hasInProgressStage(
+function hasInProgressStage(
   stages: FeatureStage[],
   implementationRuntimeByStageId: Record<string, ImplementationStageRuntime>,
 ): boolean {
@@ -90,7 +61,7 @@ export function hasInProgressStage(
   );
 }
 
-export function hasRemainingNotStartedStage(
+function hasRemainingNotStartedStage(
   stages: FeatureStage[],
   implementationRuntimeByStageId: Record<string, ImplementationStageRuntime>,
 ): boolean {

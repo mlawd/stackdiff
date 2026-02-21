@@ -1,8 +1,6 @@
 import type {
-  FeatureStage,
   FeatureStageStatus,
   StackPullRequest,
-  StackViewModel,
 } from '../../../../lib/types/stack';
 
 export interface StartResponse {
@@ -29,20 +27,4 @@ export interface ImplementationStageRuntime {
   todoCompleted: number;
   todoTotal: number;
   pullRequest?: StackPullRequest;
-}
-
-export interface FeatureStackTabContract {
-  stack: StackViewModel;
-  startPending: boolean;
-  startError: string | null;
-  startSuccess: string | null;
-  implementationRuntimeByStageId: Record<string, ImplementationStageRuntime>;
-}
-
-export interface ImplementationStageRowContract {
-  stage: FeatureStage;
-  currentStageStatus: FeatureStageStatus;
-  currentStagePullRequest?: StackPullRequest;
-  stageWorking: boolean;
-  stageRuntime?: ImplementationStageRuntime;
 }
