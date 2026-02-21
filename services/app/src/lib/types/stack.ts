@@ -132,7 +132,6 @@ export interface StackViewModel extends StackMetadata {
   workingTreeDirty: boolean;
   gitError?: string;
   ghError?: string;
-  pullRequest?: StackPullRequest;
   stageSyncById?: Record<string, StageSyncMetadata>;
 }
 

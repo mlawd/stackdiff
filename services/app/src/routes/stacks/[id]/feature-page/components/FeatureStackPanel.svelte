@@ -26,7 +26,6 @@
   import type { StackViewModel } from '$lib/types/stack';
   import FeatureActionAlerts from './FeatureActionAlerts.svelte';
   import ImplementationStageList from './ImplementationStageList.svelte';
-  import StackPullRequestCard from './StackPullRequestCard.svelte';
 
   let { stack }: { stack: StackViewModel } = $props();
 
@@ -249,9 +248,5 @@
       stageSyncById={stack.stageSyncById}
       {implementationRuntimeByStageId}
     />
-  </div>
-
-  <div>
-    <StackPullRequestCard pullRequest={stack.pullRequest} />
   </div>
 </div>

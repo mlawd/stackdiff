@@ -1,40 +1,11 @@
 import type {
   StackMetadata,
-  StackPullRequest,
   StackSyncState,
   StackViewModel,
 } from '$lib/types/stack';
 
 import { runCommand } from '$lib/server/command';
 import { getRuntimeRepositoryPath } from '$lib/server/stack-store';
-
-interface GitHubPullRequestPayload {
-  number: number;
-  title: string;
-  state: 'OPEN' | 'CLOSED' | 'MERGED';
-  isDraft: boolean;
-  url: string;
-  updatedAt: string;
-  comments?: unknown[];
-}
-
-function toPullRequest(
-  payload: GitHubPullRequestPayload | undefined,
-): StackPullRequest | undefined {
-  if (!payload) {
-    return undefined;
-  }
-
-  return {
-    number: payload.number,
-    title: payload.title,
-    state: payload.state,
-    isDraft: payload.isDraft,
-    url: payload.url,
-    updatedAt: payload.updatedAt,
-    commentCount: Array.isArray(payload.comments) ? payload.comments.length : 0,
-  };
-}
 
 interface RuntimeStatus {
   repositoryAbsolutePath: string;
@@ -43,7 +14,6 @@ interface RuntimeStatus {
   workingTreeDirty: boolean;
   gitError?: string;
   ghError?: string;
-  pullRequest?: StackPullRequest;
 }
 
 function applyRuntimeStatus(
@@ -58,7 +28,6 @@ function applyRuntimeStatus(
     workingTreeDirty: runtime.workingTreeDirty,
     gitError: runtime.gitError,
     ghError: runtime.ghError,
-    pullRequest: runtime.pullRequest,
   };
 }
 
@@ -102,7 +71,6 @@ async function getRuntimeStatus(): Promise<RuntimeStatus> {
     : 'unknown';
 
   let ghError: string | undefined;
-  let pullRequest: StackPullRequest | undefined;
 
   const ghAuth = await runCommand(
     'gh',
@@ -111,36 +79,6 @@ async function getRuntimeStatus(): Promise<RuntimeStatus> {
   );
   if (!ghAuth.ok) {
     ghError = ghAuth.stderr || ghAuth.error;
-  } else {
-    const prLookup = await runCommand(
-      'gh',
-      [
-        'pr',
-        'list',
-        '--head',
-        activeBranch,
-        '--state',
-        'all',
-        '--limit',
-        '1',
-        '--json',
-        'number,title,state,isDraft,url,updatedAt,comments',
-      ],
-      repositoryAbsolutePath,
-    );
-
-    if (prLookup.ok) {
-      try {
-        const parsed = JSON.parse(
-          prLookup.stdout || '[]',
-        ) as GitHubPullRequestPayload[];
-        pullRequest = toPullRequest(parsed[0]);
-      } catch {
-        ghError = 'Unable to parse gh pr list response';
-      }
-    } else {
-      ghError = prLookup.stderr || prLookup.error;
-    }
   }
 
   return {
@@ -149,7 +87,6 @@ async function getRuntimeStatus(): Promise<RuntimeStatus> {
     syncState,
     workingTreeDirty,
     ghError,
-    pullRequest,
   };
 }
 
