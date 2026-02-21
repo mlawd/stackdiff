@@ -14,7 +14,7 @@ import {
   resolveDefaultBaseBranch,
   resolveWorktreeAbsolutePath,
 } from '$lib/server/worktree-service';
-import type { FeatureStageStatus, StackPullRequest } from '$lib/types/stack';
+import type { FeatureStage, FeatureStageStatus, StackPullRequest } from '$lib/types/stack';
 
 export interface ImplementationStageStatusSummary {
   stageStatus: FeatureStageStatus;
@@ -22,6 +22,20 @@ export interface ImplementationStageStatusSummary {
   todoCompleted: number;
   todoTotal: number;
   pullRequest?: StackPullRequest;
+}
+
+interface StageStatusContext {
+  stackId: string;
+  stageId: string;
+  stageIndex: number;
+  stageStatus: FeatureStageStatus;
+  pullRequest?: StackPullRequest;
+  branchName?: string;
+  worktreeAbsolutePath?: string;
+  baseBranch?: string;
+  runtimeState: 'idle' | 'busy' | 'retry' | 'missing';
+  todoCompleted: number;
+  todoTotal: number;
 }
 
 function summarizeTodos(todos: Array<{ status: string }>): {
@@ -72,7 +86,7 @@ async function branchHasCommitsAheadOfBase(
 async function resolveStageBaseBranch(
   repositoryRoot: string,
   stackId: string,
-  stages: Array<{ id: string }>,
+  stages: FeatureStage[],
   stageIndex: number,
 ): Promise<string> {
   if (stageIndex === 0) {
@@ -95,24 +109,23 @@ async function resolveStageBaseBranch(
   return previousSession.branchName;
 }
 
-export async function getImplementationStageStatusSummary(
+async function loadStageStatusContext(
   stackId: string,
   stageId: string,
-): Promise<ImplementationStageStatusSummary> {
+): Promise<StageStatusContext> {
   const stack = await getStackById(stackId);
   if (!stack) {
-    throw new Error('Feature not found.');
+    throw new Error('Stack not found.');
   }
 
-  const stage = (stack.stages ?? []).find((item) => item.id === stageId);
-  if (!stage) {
+  const stages = stack.stages ?? [];
+  const stageIndex = stages.findIndex((item) => item.id === stageId);
+  if (stageIndex === -1) {
     throw new Error('Stage not found.');
   }
 
-  const stageIndex = (stack.stages ?? []).findIndex(
-    (item) => item.id === stageId,
-  );
-  if (stageIndex === -1) {
+  const stage = stages[stageIndex];
+  if (!stage) {
     throw new Error('Stage not found.');
   }
 
@@ -122,11 +135,14 @@ export async function getImplementationStageStatusSummary(
   );
   if (!implementationSession?.opencodeSessionId) {
     return {
+      stackId,
+      stageId,
+      stageIndex,
       stageStatus: stage.status,
+      pullRequest: stage.pullRequest,
       runtimeState: 'missing',
       todoCompleted: 0,
       todoTotal: 0,
-      pullRequest: stage.pullRequest,
     };
   }
 
@@ -138,7 +154,7 @@ export async function getImplementationStageStatusSummary(
   const baseBranch = await resolveStageBaseBranch(
     repositoryRoot,
     stackId,
-    stack.stages ?? [],
+    stages,
     stageIndex,
   );
 
@@ -156,67 +172,108 @@ export async function getImplementationStageStatusSummary(
   );
   const todoSummary = summarizeTodos(todos);
 
-  let stageStatus = stage.status;
-  let stagePullRequest = stage.pullRequest;
-  let prStack = stack;
-  let prStage = stage;
+  return {
+    stackId,
+    stageId,
+    stageIndex,
+    stageStatus: stage.status,
+    pullRequest: stage.pullRequest,
+    branchName: implementationSession.branchName,
+    worktreeAbsolutePath,
+    baseBranch,
+    runtimeState,
+    todoCompleted: todoSummary.completed,
+    todoTotal: todoSummary.total,
+  };
+}
+
+function toSummary(
+  context: StageStatusContext,
+): ImplementationStageStatusSummary {
+  return {
+    stageStatus: context.stageStatus,
+    runtimeState: context.runtimeState,
+    todoCompleted: context.todoCompleted,
+    todoTotal: context.todoTotal,
+    pullRequest: context.pullRequest,
+  };
+}
+
+export async function getImplementationStageStatusSummary(
+  stackId: string,
+  stageId: string,
+): Promise<ImplementationStageStatusSummary> {
+  const context = await loadStageStatusContext(stackId, stageId);
+  return toSummary(context);
+}
+
+export async function reconcileImplementationStageStatus(
+  stackId: string,
+  stageId: string,
+): Promise<ImplementationStageStatusSummary> {
+  const context = await loadStageStatusContext(stackId, stageId);
+
   if (
-    stageStatus === 'in-progress' &&
-    runtimeState !== 'busy' &&
-    runtimeState !== 'retry'
+    context.stageStatus === 'in-progress' &&
+    context.runtimeState !== 'busy' &&
+    context.runtimeState !== 'retry' &&
+    context.worktreeAbsolutePath &&
+    context.baseBranch
   ) {
     const [clean, ahead] = await Promise.all([
-      isWorktreeClean(worktreeAbsolutePath),
-      branchHasCommitsAheadOfBase(worktreeAbsolutePath, baseBranch),
+      isWorktreeClean(context.worktreeAbsolutePath),
+      branchHasCommitsAheadOfBase(context.worktreeAbsolutePath, context.baseBranch),
     ]);
 
     if (clean && ahead) {
       const updatedStack = await setStackStageStatus(
-        stackId,
-        stageId,
+        context.stackId,
+        context.stageId,
         'review-ready',
       );
       const updatedStage = (updatedStack.stages ?? []).find(
-        (item) => item.id === stageId,
+        (item) => item.id === context.stageId,
       );
       if (updatedStage) {
-        stageStatus = updatedStage.status;
-        stagePullRequest = updatedStage.pullRequest;
-        prStack = updatedStack;
-        prStage = updatedStage;
+        context.stageStatus = updatedStage.status;
+        context.pullRequest = updatedStage.pullRequest;
       }
     }
   }
 
-  if (stageStatus === 'review-ready' && !stagePullRequest?.number) {
-    try {
-      const pullRequest = await ensureStagePullRequest({
-        repositoryRoot,
-        stack: prStack,
-        stage: prStage,
-        stageIndex,
-        branchName: implementationSession.branchName,
-      });
-      if (pullRequest) {
-        stagePullRequest = pullRequest;
+  if (
+    context.stageStatus === 'review-ready' &&
+    !context.pullRequest?.number &&
+    context.branchName
+  ) {
+    const repositoryRoot = await getRuntimeRepositoryPath();
+    const stack = await getStackById(context.stackId);
+    const stage = (stack?.stages ?? []).find((item) => item.id === stageId);
+
+    if (stack && stage) {
+      try {
+        const pullRequest = await ensureStagePullRequest({
+          repositoryRoot,
+          stack,
+          stage,
+          stageIndex: context.stageIndex,
+          branchName: context.branchName,
+        });
+        if (pullRequest) {
+          context.pullRequest = pullRequest;
+        }
+      } catch (error) {
+        console.error(
+          '[implementation-status] Failed to ensure stage pull request',
+          {
+            stackId: context.stackId,
+            stageId: context.stageId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
       }
-    } catch (error) {
-      console.error(
-        '[implementation-status] Failed to ensure stage pull request',
-        {
-          stackId,
-          stageId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-      );
     }
   }
 
-  return {
-    stageStatus,
-    runtimeState,
-    todoCompleted: todoSummary.completed,
-    todoTotal: todoSummary.total,
-    pullRequest: stagePullRequest,
-  };
+  return toSummary(context);
 }

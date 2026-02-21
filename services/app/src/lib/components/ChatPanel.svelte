@@ -22,7 +22,16 @@
 
   interface SaveResponseBody extends Record<string, unknown> {
     messages?: PlanningMessage[];
-    error?: string;
+  }
+
+  interface ApiErrorEnvelope {
+    error?: {
+      message?: string;
+    };
+  }
+
+  interface ApiSuccessEnvelope<T> {
+    data?: T;
   }
 
   interface QuestionAnswerSummaryItem {
@@ -659,8 +668,8 @@
       });
 
       if (!response.ok) {
-        const body = (await response.json()) as { error?: string };
-        throw new Error(body.error ?? 'Unable to send message.');
+        const body = (await response.json()) as ApiErrorEnvelope;
+        throw new Error(body.error?.message ?? 'Unable to send message.');
       }
 
       if (!response.body) {
@@ -900,22 +909,31 @@
       const response = await fetch(saveUrl, {
         method: 'POST',
       });
-      const body = (await response.json()) as SaveResponseBody;
+      const body = (await response.json()) as
+        | ApiSuccessEnvelope<SaveResponseBody>
+        | ApiErrorEnvelope;
 
       if (!response.ok) {
-        throw new Error(body.error ?? 'Unable to save.');
+        throw new Error(
+          (body as ApiErrorEnvelope).error?.message ?? 'Unable to save.',
+        );
       }
 
-      if (body.messages && body.messages.length > 0) {
-        messages = body.messages;
+      const payload = (body as ApiSuccessEnvelope<SaveResponseBody>).data;
+      if (!payload) {
+        throw new Error('Unable to save.');
+      }
+
+      if (payload.messages && payload.messages.length > 0) {
+        messages = payload.messages;
       }
 
       if (onSaveResponse) {
-        onSaveResponse(body);
+        onSaveResponse(payload);
       }
 
       if (formatSaveSuccess) {
-        const saveSuccessMessage = formatSaveSuccess(body);
+        const saveSuccessMessage = formatSaveSuccess(payload);
         if (saveSuccessMessage) {
           successMessage = saveSuccessMessage;
         }

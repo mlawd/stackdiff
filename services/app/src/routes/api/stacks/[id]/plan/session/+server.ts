@@ -1,23 +1,23 @@
-import { json } from '@sveltejs/kit';
+import type { RequestHandler } from '@sveltejs/kit';
 
+import { notFound } from '$lib/server/api-errors';
+import { fail, ok } from '$lib/server/api-response';
+import { requireStackId } from '$lib/server/api-validators';
 import { loadExistingPlanningSession } from '$lib/server/planning-service';
 import { getStackById } from '$lib/server/stack-store';
 
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Unknown request failure';
-}
-
-export async function POST({ params }) {
+export const POST: RequestHandler = async ({ params }) => {
   try {
-    const stack = await getStackById(params.id);
+    const stackId = requireStackId(params.id);
+    const stack = await getStackById(stackId);
     if (!stack) {
-      return json({ error: 'Feature not found.' }, { status: 404 });
+      throw notFound('Stack not found.');
     }
 
     const { session, messages, awaitingResponse } =
-      await loadExistingPlanningSession(params.id);
-    return json({ session, messages, awaitingResponse });
+      await loadExistingPlanningSession(stackId);
+    return ok({ session, messages, awaitingResponse });
   } catch (error) {
-    return json({ error: toErrorMessage(error) }, { status: 400 });
+    return fail(error);
   }
-}
+};

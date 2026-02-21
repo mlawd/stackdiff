@@ -3,34 +3,41 @@ import type {
   StackPullRequest,
 } from '../../../../lib/types/stack';
 
+export interface ApiErrorObject {
+  code: string;
+  message: string;
+}
+
+export interface ApiSuccessEnvelope<T> {
+  data: T;
+}
+
+export interface ApiErrorEnvelope {
+  error: ApiErrorObject;
+}
+
 export interface StartResponse {
-  stageNumber?: number;
-  stageTitle?: string;
-  reusedWorktree?: boolean;
-  reusedSession?: boolean;
-  startedNow?: boolean;
-  error?: string;
+  stageNumber: number;
+  stageTitle: string;
+  reusedWorktree: boolean;
+  reusedSession: boolean;
+  startedNow: boolean;
 }
 
 export interface SyncStackResponse {
-  result?: {
+  result: {
     totalStages: number;
     rebasedStages: number;
     skippedStages: number;
   };
-  error?: {
-    code?: string;
-    message?: string;
-  };
 }
 
 export interface ImplementationStatusResponse {
-  stageStatus?: FeatureStageStatus;
-  runtimeState?: 'idle' | 'busy' | 'retry' | 'missing';
-  todoCompleted?: number;
-  todoTotal?: number;
+  stageStatus: FeatureStageStatus;
+  runtimeState: 'idle' | 'busy' | 'retry' | 'missing';
+  todoCompleted: number;
+  todoTotal: number;
   pullRequest?: StackPullRequest;
-  error?: string;
 }
 
 export interface ImplementationStageRuntime {

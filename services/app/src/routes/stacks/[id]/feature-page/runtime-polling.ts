@@ -38,10 +38,10 @@ export async function fetchRuntimeUpdateEntries(input: {
         return [
           stageId,
           {
-            stageStatus: payload.stageStatus ?? fallbackStatus,
-            runtimeState: payload.runtimeState ?? 'missing',
-            todoCompleted: payload.todoCompleted ?? 0,
-            todoTotal: payload.todoTotal ?? 0,
+            stageStatus: payload.stageStatus || fallbackStatus,
+            runtimeState: payload.runtimeState,
+            todoCompleted: payload.todoCompleted,
+            todoTotal: payload.todoTotal,
             pullRequest: payload.pullRequest,
           } satisfies ImplementationStageRuntime,
         ] as const;

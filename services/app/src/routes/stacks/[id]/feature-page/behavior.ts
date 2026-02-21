@@ -180,7 +180,7 @@ export function formatStartSuccessMessage(response: StartResponse): string {
 }
 
 export function formatSyncSuccessMessage(response: SyncStackResponse): string {
-  const rebased = response.result?.rebasedStages ?? 0;
-  const skipped = response.result?.skippedStages ?? 0;
+  const rebased = response.result.rebasedStages;
+  const skipped = response.result.skippedStages;
   return `Stack sync complete. Rebases: ${rebased}. Skipped: ${skipped}.`;
 }

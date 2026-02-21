@@ -1,67 +1,50 @@
-import { json } from '@sveltejs/kit';
+import type { RequestHandler } from '@sveltejs/kit';
 
+import { notFound } from '$lib/server/api-errors';
+import { fail, failInternal, mapDataOrThrow, ok } from '$lib/server/api-response';
+import { parseStackUpsertInput, requireStackId } from '$lib/server/api-validators';
 import { enrichStackStatus } from '$lib/server/stack-status';
 import {
   deleteStack,
   getStackById,
   updateStack,
 } from '$lib/server/stack-store';
-import type { StackUpsertInput } from '$lib/types/stack';
 
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Unknown request failure';
-}
-
-function parseUpsertInput(body: unknown): StackUpsertInput {
-  if (typeof body !== 'object' || body === null) {
-    throw new Error('Invalid request body.');
-  }
-
-  const candidate = body as Partial<StackUpsertInput>;
-
-  return {
-    name: String(candidate.name ?? ''),
-    notes: candidate.notes ? String(candidate.notes) : undefined,
-    type: String(candidate.type ?? 'feature') as StackUpsertInput['type'],
-  };
-}
-
-export async function PATCH({ params, request }) {
+export const PATCH: RequestHandler = async ({ params, request }) => {
   try {
+    const stackId = requireStackId(params.id);
     const body = (await request.json()) as unknown;
-    const input = parseUpsertInput(body);
-    const updated = await updateStack(params.id, input);
+    const input = parseStackUpsertInput(body);
+    const updated = await updateStack(stackId, input);
     const enriched = await enrichStackStatus(updated);
 
-    return json({ stack: enriched });
+    return ok({ stack: enriched });
   } catch (error) {
-    const message = toErrorMessage(error);
-    const status = message === 'Feature not found.' ? 404 : 400;
-    return json({ error: message }, { status });
+    return fail(error);
   }
-}
+};
 
-export async function DELETE({ params }) {
+export const DELETE: RequestHandler = async ({ params }) => {
   try {
-    await deleteStack(params.id);
-    return json({ ok: true });
+    const stackId = requireStackId(params.id);
+    await deleteStack(stackId);
+    return ok({ ok: true });
   } catch (error) {
-    const message = toErrorMessage(error);
-    const status = message === 'Feature not found.' ? 404 : 400;
-    return json({ error: message }, { status });
+    return fail(error);
   }
-}
+};
 
-export async function GET({ params }) {
+export const GET: RequestHandler = async ({ params }) => {
   try {
-    const stack = await getStackById(params.id);
-    if (!stack) {
-      return json({ error: 'Feature not found.' }, { status: 404 });
-    }
+    const stackId = requireStackId(params.id);
+    const stack = mapDataOrThrow(
+      await getStackById(stackId),
+      notFound('Stack not found.'),
+    );
 
     const enriched = await enrichStackStatus(stack);
-    return json({ stack: enriched });
+    return ok({ stack: enriched });
   } catch (error) {
-    return json({ error: toErrorMessage(error) }, { status: 500 });
+    return failInternal(error);
   }
-}
+};

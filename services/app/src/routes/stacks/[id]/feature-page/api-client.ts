@@ -1,37 +1,41 @@
 import type {
+  ApiErrorEnvelope,
+  ApiSuccessEnvelope,
   ImplementationStatusResponse,
   StartResponse,
   SyncStackResponse,
 } from './contracts';
 
-function messageFromUnknown(value: unknown): string | undefined {
-  if (!value || typeof value !== 'object') {
-    return undefined;
+function messageFromUnknown(value: unknown, fallbackError: string): string {
+  if (typeof value !== 'object' || value === null || !('error' in value)) {
+    return fallbackError;
   }
 
-  if ('error' in value && typeof value.error === 'string') {
-    return value.error;
+  const error = (value as ApiErrorEnvelope).error;
+  if (!error || typeof error.message !== 'string' || !error.message.trim()) {
+    return fallbackError;
   }
 
-  if ('error' in value && value.error && typeof value.error === 'object') {
-    const nestedError = value.error as { message?: unknown };
-    if (typeof nestedError.message === 'string') {
-      return nestedError.message;
-    }
-  }
-
-  return undefined;
+  return error.message;
 }
 
-async function requestJson<T>(input: RequestInfo | URL, init: RequestInit, fallbackError: string): Promise<T> {
+async function requestJson<T>(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  fallbackError: string,
+): Promise<T> {
   const response = await fetch(input, init);
   const payload: unknown = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(messageFromUnknown(payload) ?? fallbackError);
+    throw new Error(messageFromUnknown(payload, fallbackError));
   }
 
-  return payload as T;
+  if (typeof payload !== 'object' || payload === null || !('data' in payload)) {
+    throw new Error(fallbackError);
+  }
+
+  return (payload as ApiSuccessEnvelope<T>).data;
 }
 
 export function getImplementationStatus(
@@ -39,8 +43,8 @@ export function getImplementationStatus(
   stageId: string,
 ): Promise<ImplementationStatusResponse> {
   return requestJson<ImplementationStatusResponse>(
-    `/api/stacks/${stackId}/stages/${stageId}/implementation/status`,
-    { method: 'GET' },
+    `/api/stacks/${stackId}/stages/${stageId}/implementation/reconcile`,
+    { method: 'POST' },
     'Unable to load implementation status.',
   );
 }

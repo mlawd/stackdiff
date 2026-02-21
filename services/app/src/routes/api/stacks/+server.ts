@@ -1,63 +1,29 @@
-import { json } from '@sveltejs/kit';
+import type { RequestHandler } from '@sveltejs/kit';
 
-import { createAndSeedPlanningSessionForStack } from '$lib/server/planning-service';
-import {
-  createStack,
-  deleteStack,
-  readStacksFromFile,
-} from '$lib/server/stack-store';
+import { fail, failInternal, ok } from '$lib/server/api-response';
+import { parseStackUpsertInput } from '$lib/server/api-validators';
 import { enrichStackStatus } from '$lib/server/stack-status';
-import type { StackUpsertInput } from '$lib/types/stack';
+import { createStackWithPlanningBootstrap } from '$lib/server/stack-create-service';
+import { readStacksFromFile } from '$lib/server/stack-store';
 
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Unknown request failure';
-}
-
-function parseUpsertInput(body: unknown): StackUpsertInput {
-  if (typeof body !== 'object' || body === null) {
-    throw new Error('Invalid request body.');
-  }
-
-  const candidate = body as Partial<StackUpsertInput>;
-
-  return {
-    name: String(candidate.name ?? ''),
-    notes: candidate.notes ? String(candidate.notes) : undefined,
-    type: String(candidate.type ?? 'feature') as StackUpsertInput['type'],
-  };
-}
-
-export async function GET() {
+export const GET: RequestHandler = async () => {
   try {
     const stacks = await readStacksFromFile();
-    return json({ stacks });
+    return ok({ stacks });
   } catch (error) {
-    return json({ error: toErrorMessage(error) }, { status: 500 });
+    return failInternal(error);
   }
-}
+};
 
-export async function POST({ request }) {
+export const POST: RequestHandler = async ({ request }) => {
   try {
     const body = (await request.json()) as unknown;
-    const input = parseUpsertInput(body);
-    const created = await createStack(input);
-
-    try {
-      await createAndSeedPlanningSessionForStack(created);
-    } catch (error) {
-      try {
-        await deleteStack(created.id);
-      } catch {
-        // Keep original bootstrap error.
-      }
-
-      throw error;
-    }
+    const input = parseStackUpsertInput(body);
+    const created = await createStackWithPlanningBootstrap(input);
 
     const enriched = await enrichStackStatus(created);
-
-    return json({ stack: enriched }, { status: 201 });
+    return ok({ stack: enriched }, 201);
   } catch (error) {
-    return json({ error: toErrorMessage(error) }, { status: 400 });
+    return fail(error);
   }
-}
+};

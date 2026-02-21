@@ -1,31 +1,27 @@
-import { json, type RequestHandler } from '@sveltejs/kit';
+import type { RequestHandler } from '@sveltejs/kit';
 
+import { notFound } from '$lib/server/api-errors';
+import { fail, ok } from '$lib/server/api-response';
+import { requireStackId } from '$lib/server/api-validators';
 import {
   getPlanningMessages,
   savePlanFromSession,
 } from '$lib/server/planning-service';
 import { getStackById } from '$lib/server/stack-store';
 
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Unknown request failure';
-}
-
 export const POST: RequestHandler = async ({ params }) => {
   try {
-    const stackId = params.id;
-    if (!stackId) {
-      return json({ error: 'Feature id is required.' }, { status: 400 });
-    }
+    const stackId = requireStackId(params.id);
 
     const stack = await getStackById(stackId);
     if (!stack) {
-      return json({ error: 'Feature not found.' }, { status: 404 });
+      throw notFound('Stack not found.');
     }
 
     const result = await savePlanFromSession(stackId);
     const messages = await getPlanningMessages(stackId);
 
-    return json({
+    return ok({
       session: result.session,
       messages,
       savedPlanPath: result.savedPlanPath,
@@ -33,6 +29,6 @@ export const POST: RequestHandler = async ({ params }) => {
       planMarkdown: result.planMarkdown,
     });
   } catch (error) {
-    return json({ error: toErrorMessage(error) }, { status: 400 });
+    return fail(error);
   }
 };

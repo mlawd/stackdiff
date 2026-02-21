@@ -10,8 +10,13 @@
   } from '$lib/types/stack';
 
   interface ApiStackResponse {
-    stack?: StackViewModel;
-    error?: string;
+    data?: {
+      stack?: StackViewModel;
+    };
+    error?: {
+      code?: string;
+      message?: string;
+    };
   }
 
   const featureTypeOptions: Array<{
@@ -63,11 +68,12 @@
       });
 
       const body = (await response.json()) as ApiStackResponse;
-      if (!response.ok || !body.stack) {
-        throw new Error(body.error ?? 'Unable to create feature.');
+      const stack = body.data?.stack;
+      if (!response.ok || !stack) {
+        throw new Error(body.error?.message ?? 'Unable to create feature.');
       }
 
-      await goto(resolve(`/stacks/${body.stack.id}`));
+      await goto(resolve(`/stacks/${stack.id}`));
     } catch (error) {
       message =
         error instanceof Error ? error.message : 'Unable to create feature.';

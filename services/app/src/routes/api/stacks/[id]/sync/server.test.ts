@@ -2,43 +2,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('$lib/server/stack-sync-service', () => ({
   syncStack: vi.fn(),
-  isStackSyncServiceError: vi.fn(),
 }));
 
-import {
-  isStackSyncServiceError,
-  syncStack,
-} from '$lib/server/stack-sync-service';
+import { syncStack } from '$lib/server/stack-sync-service';
 import { POST } from './+server';
 
 const syncStackMock = vi.mocked(syncStack);
-const isStackSyncServiceErrorMock = vi.mocked(isStackSyncServiceError);
 
 describe('POST /api/stacks/[id]/sync', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    isStackSyncServiceErrorMock.mockImplementation((error: unknown) => {
-      if (typeof error !== 'object' || error === null) {
-        return false;
-      }
-
-      const candidate = error as { code?: unknown; message?: unknown };
-      return (
-        typeof candidate.code === 'string' &&
-        typeof candidate.message === 'string'
-      );
-    });
   });
 
-  it('returns 404 when feature id is missing', async () => {
+  it('returns 400 when stack id is missing', async () => {
     const response = await POST({ params: { id: '' } } as never);
     const body = await response.json();
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(400);
     expect(body).toEqual({
       error: {
-        code: 'not-found',
-        message: 'Feature id is required.',
+        code: 'invalid-input',
+        message: 'Stack id is required.',
       },
     });
   });
@@ -56,7 +40,7 @@ describe('POST /api/stacks/[id]/sync', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.result).toMatchObject({
+    expect(body.data.result).toMatchObject({
       stackId: 'stack-1',
       totalStages: 2,
       rebasedStages: 1,
@@ -83,17 +67,16 @@ describe('POST /api/stacks/[id]/sync', () => {
     });
   });
 
-  it('returns 500 for unknown errors', async () => {
-    isStackSyncServiceErrorMock.mockReturnValue(false);
+  it('returns 400 for unknown errors', async () => {
     syncStackMock.mockRejectedValue(new Error('unexpected failure'));
 
     const response = await POST({ params: { id: 'stack-1' } } as never);
     const body = await response.json();
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
     expect(body).toEqual({
       error: {
-        code: 'command-failed',
+        code: 'invalid-input',
         message: 'unexpected failure',
       },
     });
