@@ -14,7 +14,11 @@ import {
   resolveDefaultBaseBranch,
   resolveWorktreeAbsolutePath,
 } from '$lib/server/worktree-service';
-import type { FeatureStage, FeatureStageStatus, StackPullRequest } from '$lib/types/stack';
+import type {
+  FeatureStage,
+  FeatureStageStatus,
+  StackPullRequest,
+} from '$lib/types/stack';
 
 export interface ImplementationStageStatusSummary {
   stageStatus: FeatureStageStatus;
@@ -222,7 +226,10 @@ export async function reconcileImplementationStageStatus(
   ) {
     const [clean, ahead] = await Promise.all([
       isWorktreeClean(context.worktreeAbsolutePath),
-      branchHasCommitsAheadOfBase(context.worktreeAbsolutePath, context.baseBranch),
+      branchHasCommitsAheadOfBase(
+        context.worktreeAbsolutePath,
+        context.baseBranch,
+      ),
     ]);
 
     if (clean && ahead) {
@@ -241,11 +248,7 @@ export async function reconcileImplementationStageStatus(
     }
   }
 
-  if (
-    context.stageStatus === 'review-ready' &&
-    !context.pullRequest?.number &&
-    context.branchName
-  ) {
+  if (context.stageStatus === 'review-ready' && context.branchName) {
     const repositoryRoot = await getRuntimeRepositoryPath();
     const stack = await getStackById(context.stackId);
     const stage = (stack?.stages ?? []).find((item) => item.id === stageId);

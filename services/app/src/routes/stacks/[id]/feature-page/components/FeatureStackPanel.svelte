@@ -51,15 +51,36 @@
   let reviewSession = $state<ReviewSessionResponse | null>(null);
   let runtimeInvalidating = false;
 
+  const BODY_SCROLL_LOCK_COUNT_ATTRIBUTE = 'data-stacked-scroll-lock-count';
+
   let selectedReviewStage = $derived(
     selectedReviewStageId
-      ? (stack.stages ?? []).find((stage) => stage.id === selectedReviewStageId) ??
-          null
+      ? ((stack.stages ?? []).find(
+          (stage) => stage.id === selectedReviewStageId,
+        ) ?? null)
       : null,
   );
 
+  function portalToBody(node: HTMLElement): { destroy: () => void } {
+    if (typeof document === 'undefined') {
+      return {
+        destroy: () => {},
+      };
+    }
+
+    document.body.appendChild(node);
+
+    return {
+      destroy: () => {
+        node.remove();
+      },
+    };
+  }
+
   function hasOutOfSyncStages(): boolean {
-    return (stack.stages ?? []).some((stage) => stack.stageSyncById?.[stage.id]?.isOutOfSync);
+    return (stack.stages ?? []).some(
+      (stage) => stack.stageSyncById?.[stage.id]?.isOutOfSync,
+    );
   }
 
   function canSyncStack(): boolean {
@@ -149,6 +170,50 @@
       if (timer !== undefined) {
         clearTimeout(timer);
       }
+    };
+  });
+
+  $effect(() => {
+    if (!selectedReviewStageId) {
+      return;
+    }
+
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const body = document.body;
+    const currentCount = Number(
+      body.getAttribute(BODY_SCROLL_LOCK_COUNT_ATTRIBUTE) ?? '0',
+    );
+    const previousOverflow = body.style.overflow;
+    const previousPaddingRight = body.style.paddingRight;
+
+    if (currentCount === 0) {
+      const scrollbarWidth =
+        window.innerWidth - document.documentElement.clientWidth;
+      body.style.overflow = 'hidden';
+      if (scrollbarWidth > 0) {
+        body.style.paddingRight = `${scrollbarWidth}px`;
+      }
+    }
+
+    body.setAttribute(
+      BODY_SCROLL_LOCK_COUNT_ATTRIBUTE,
+      String(currentCount + 1),
+    );
+
+    return () => {
+      const nextCount =
+        Number(body.getAttribute(BODY_SCROLL_LOCK_COUNT_ATTRIBUTE) ?? '1') - 1;
+      if (nextCount <= 0) {
+        body.style.overflow = previousOverflow;
+        body.style.paddingRight = previousPaddingRight;
+        body.removeAttribute(BODY_SCROLL_LOCK_COUNT_ATTRIBUTE);
+        return;
+      }
+
+      body.setAttribute(BODY_SCROLL_LOCK_COUNT_ATTRIBUTE, String(nextCount));
     };
   });
 
@@ -288,45 +353,61 @@
       {implementationRuntimeByStageId}
       onOpenReview={openReviewStage}
     />
+  </div>
+</div>
 
-    {#if selectedReviewStageId}
-      <div class="mt-4 rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] p-3">
-        <div class="mb-3 flex items-center justify-between gap-2">
-          <p class="text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle">
-            Review chat
-          </p>
-          <button
-            type="button"
-            class="text-xs stacked-subtle transition hover:text-[var(--stacked-text)]"
-            onclick={closeReviewStage}
-          >
-            Close
-          </button>
-        </div>
-
+{#if selectedReviewStageId}
+  <div
+    use:portalToBody
+    class="fixed inset-0 z-50 flex h-screen w-screen flex-col bg-[var(--stacked-bg)]"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Review chat"
+  >
+    <div
+      class="flex items-start justify-between gap-3 border-b stacked-divider px-4 py-3 sm:px-6 sm:py-4"
+    >
+      <div>
+        <p
+          class="text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle"
+        >
+          Review chat
+        </p>
         {#if selectedReviewStage}
-          <p class="mb-3 text-sm text-[var(--stacked-text)]">
+          <p class="mt-1 text-sm text-[var(--stacked-text)]">
             {selectedReviewStage.title}
           </p>
         {/if}
-
-        {#if reviewError}
-          <div class="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-            {reviewError}
-          </div>
-        {/if}
-
-        {#if reviewLoading}
-          <p class="text-sm stacked-subtle">Loading review session...</p>
-        {:else if reviewSession && selectedReviewStageId}
-          <ReviewChat
-            stackId={stack.id}
-            stageId={selectedReviewStageId}
-            messages={reviewSession.messages}
-            awaitingResponse={reviewSession.awaitingResponse}
-          />
-        {/if}
       </div>
-    {/if}
+      <button
+        type="button"
+        class="rounded border border-[var(--stacked-border-soft)] px-2.5 py-1 text-xs stacked-subtle transition hover:text-[var(--stacked-text)]"
+        onclick={closeReviewStage}
+      >
+        Close
+      </button>
+    </div>
+
+    <div class="min-h-0 flex-1 px-4 py-3 sm:px-6 sm:py-4">
+      {#if reviewError}
+        <div
+          class="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200"
+        >
+          {reviewError}
+        </div>
+      {/if}
+
+      {#if reviewLoading}
+        <p class="text-sm stacked-subtle">Loading review session...</p>
+      {:else if reviewSession && selectedReviewStageId}
+        <ReviewChat
+          stackId={stack.id}
+          stageId={selectedReviewStageId}
+          messages={reviewSession.messages}
+          awaitingResponse={reviewSession.awaitingResponse}
+          viewportHeightClass="h-full"
+        />
+      {/if}
+    </div>
   </div>
-</div>
+{/if}

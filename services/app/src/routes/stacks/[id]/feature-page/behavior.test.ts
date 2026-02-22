@@ -127,7 +127,7 @@ describe('feature page behavior contracts', () => {
     ).toBe('Start feature');
   });
 
-  it('selects in-progress and missing-pr review-ready stages for polling', () => {
+  it('selects in-progress and all review-ready stages for polling', () => {
     const stages = [
       { id: 's-1', title: 'Stage 1', status: 'in-progress' },
       {
@@ -148,7 +148,20 @@ describe('feature page behavior contracts', () => {
           updatedAt: '2026-02-20T00:00:00.000Z',
         },
       },
-      { id: 's-4', title: 'Stage 4', status: 'done' },
+      {
+        id: 's-4',
+        title: 'Stage 4',
+        status: 'review-ready',
+        pullRequest: {
+          number: 34,
+          title: 'Closed stage PR',
+          state: 'CLOSED',
+          isDraft: false,
+          url: 'https://example.com/34',
+          updatedAt: '2026-02-20T00:00:00.000Z',
+        },
+      },
+      { id: 's-5', title: 'Stage 5', status: 'done' },
     ] as const;
 
     expect(
@@ -156,7 +169,7 @@ describe('feature page behavior contracts', () => {
         stages: [...stages],
         implementationRuntimeByStageId: {},
       }),
-    ).toEqual(['s-1', 's-2']);
+    ).toEqual(['s-1', 's-2', 's-3', 's-4']);
   });
 
   it('invalidates when runtime promotes stage or attaches pull request', () => {

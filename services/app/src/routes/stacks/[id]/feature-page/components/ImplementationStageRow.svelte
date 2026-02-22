@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Badge, Spinner } from 'flowbite-svelte';
   import {
+    AnnotationOutline,
     CodeMergeOutline,
     CodePullRequestOutline,
   } from 'flowbite-svelte-icons';
@@ -111,6 +112,17 @@
             <span>#{currentStagePullRequest.number}</span>
           </Badge>
         </button>
+      {/if}
+      {#if currentStagePullRequest?.number && currentStagePullRequest.commentCount !== undefined}
+        <Badge
+          rounded
+          color="lime"
+          class="inline-flex items-center gap-1"
+          title="Review comments"
+        >
+          <AnnotationOutline class="h-3.5 w-3.5" />
+          <span>{currentStagePullRequest.commentCount}</span>
+        </Badge>
       {/if}
       {#if currentStageStatus === 'in-progress' && runtime}
         <p

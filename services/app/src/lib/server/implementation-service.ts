@@ -191,7 +191,7 @@ export async function ensureImplementationSessionBootstrap(input: {
 
     const opencodeSessionId = await createAndSeedOpencodeSession({
       prompt,
-      agent: 'build',
+      agent: 'plan',
       directory: input.worktreeAbsolutePath,
     });
     session = await setImplementationSessionOpencodeId(

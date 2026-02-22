@@ -122,14 +122,8 @@ export function stageIdsForRuntimePolling(input: {
         stage.id,
         stage.status,
       );
-      const currentPullRequest = stagePullRequest(
-        input.implementationRuntimeByStageId,
-        stage.id,
-        stage.pullRequest,
-      );
       return (
-        currentStatus === 'in-progress' ||
-        (currentStatus === 'review-ready' && !currentPullRequest?.number)
+        currentStatus === 'in-progress' || currentStatus === 'review-ready'
       );
     })
     .map((stage) => stage.id);

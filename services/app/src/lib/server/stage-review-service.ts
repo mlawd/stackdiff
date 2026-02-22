@@ -57,25 +57,75 @@ function formatSeedPrompt(input: {
     `Pull request: #${input.pullRequestNumber} ${input.pullRequestTitle}`,
     `Pull request URL: ${input.pullRequestUrl}`,
     '',
-    'Use the PR comments below as the current review signal. Prioritize concrete fixes and implementation sequencing.',
+    'Use the unresolved PR thread discussions below as the current review signal. Prioritize concrete fixes and implementation sequencing.',
   ];
 
   if (input.comments.length === 0) {
-    lines.push('', 'No PR comments were found yet. Ask for reviewer intent or propose a self-review checklist.');
+    lines.push(
+      '',
+      'No PR comments were found yet. Ask for reviewer intent or propose a self-review checklist.',
+    );
     return lines.join('\n');
   }
 
-  lines.push('', 'PR comments:');
-  input.comments.forEach((comment, index) => {
-    const author = comment.author || 'unknown';
-    const source = comment.source === 'review' ? 'review' : 'comment';
-    const createdAt = comment.createdAt ? ` at ${comment.createdAt}` : '';
-    lines.push(`${index + 1}. [${source}] ${author}${createdAt}`);
-    lines.push(`   ${comment.body}`);
-    if (comment.url) {
-      lines.push(`   URL: ${comment.url}`);
-    }
-  });
+  const issueComments = input.comments.filter(
+    (comment) => comment.source === 'comment',
+  );
+  const threadComments = input.comments.filter(
+    (comment) => comment.source === 'thread',
+  );
+
+  if (issueComments.length > 0) {
+    lines.push('', 'Issue comments:');
+    issueComments.forEach((comment, index) => {
+      const author = comment.author || 'unknown';
+      const createdAt = comment.createdAt ? ` at ${comment.createdAt}` : '';
+      lines.push(`${index + 1}. [comment] ${author}${createdAt}`);
+      lines.push(`   ${comment.body}`);
+      if (comment.url) {
+        lines.push(`   URL: ${comment.url}`);
+      }
+    });
+  }
+
+  if (threadComments.length > 0) {
+    lines.push('', 'Unresolved review threads:');
+
+    const groupedThreads = new Map<string, typeof threadComments>();
+    threadComments.forEach((comment, index) => {
+      const key = comment.threadId || `thread-${index}`;
+      const existing = groupedThreads.get(key);
+      if (existing) {
+        existing.push(comment);
+        return;
+      }
+
+      groupedThreads.set(key, [comment]);
+    });
+
+    Array.from(groupedThreads.values()).forEach((thread, threadIndex) => {
+      const ordered = [...thread].sort((left, right) => {
+        const leftTime = left.createdAt ? Date.parse(left.createdAt) : 0;
+        const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
+        return leftTime - rightTime;
+      });
+
+      const openedAt = ordered[0]?.createdAt
+        ? ` opened at ${ordered[0].createdAt}`
+        : '';
+      lines.push(`${threadIndex + 1}. [thread]${openedAt}`);
+
+      ordered.forEach((comment, commentIndex) => {
+        const author = comment.author || 'unknown';
+        const createdAt = comment.createdAt ? ` at ${comment.createdAt}` : '';
+        lines.push(`   ${commentIndex + 1}) ${author}${createdAt}`);
+        lines.push(`      ${comment.body}`);
+        if (comment.url) {
+          lines.push(`      URL: ${comment.url}`);
+        }
+      });
+    });
+  }
 
   return lines.join('\n');
 }
@@ -137,7 +187,7 @@ async function requireReviewContext(
     });
     const opencodeSessionId = await createAndSeedOpencodeSession({
       prompt,
-      agent: 'build',
+      agent: 'plan',
       system: REVIEW_SYSTEM_PROMPT,
       directory: worktreeAbsolutePath,
     });
@@ -196,7 +246,10 @@ export async function getExistingStageReviewSession(input: {
   session: StackReviewSession;
   worktreeAbsolutePath: string;
 }> {
-  const existing = await getReviewSessionByStackAndStage(input.stackId, input.stageId);
+  const existing = await getReviewSessionByStackAndStage(
+    input.stackId,
+    input.stageId,
+  );
   if (!existing?.opencodeSessionId) {
     const loaded = await requireReviewContext(input.stackId, input.stageId);
     return {

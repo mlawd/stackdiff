@@ -78,6 +78,7 @@ async function createReviewStream(input: {
   sessionId: string;
   worktreeAbsolutePath: string;
   content?: string;
+  agent: 'plan' | 'build';
   questionReply?: {
     requestId: string;
     answers: string[][];
@@ -111,7 +112,7 @@ async function createReviewStream(input: {
                 {
                   system: REVIEW_SYSTEM_PROMPT,
                   directory: input.worktreeAbsolutePath,
-                  agent: 'build',
+                  agent: input.agent,
                 },
               );
 
@@ -217,6 +218,7 @@ export async function handleStageReviewMessageStreamRequest(input: {
     sessionId: session.opencodeSessionId,
     worktreeAbsolutePath,
     content: parsedBody.content ?? '',
+    agent: parsedBody.agent,
     questionReply: parsedBody.questionReply,
     watch: parsedBody.watch,
   });

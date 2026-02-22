@@ -20,8 +20,25 @@ interface GitHubPullRequestPayload {
   comments?: unknown[];
 }
 
+interface PullRequestThreadsResponse {
+  data?: {
+    resource?: {
+      reviewThreads?: {
+        nodes?: Array<{
+          isResolved?: unknown;
+        }>;
+        pageInfo?: {
+          hasNextPage?: unknown;
+          endCursor?: unknown;
+        };
+      };
+    };
+  };
+}
+
 function toStackPullRequest(
   payload: GitHubPullRequestPayload | undefined,
+  commentCount: number,
 ): StackPullRequest | undefined {
   if (!payload) {
     return undefined;
@@ -34,8 +51,100 @@ function toStackPullRequest(
     isDraft: payload.isDraft,
     url: payload.url,
     updatedAt: payload.updatedAt,
-    commentCount: Array.isArray(payload.comments) ? payload.comments.length : 0,
+    commentCount,
   };
+}
+
+function unresolvedThreadCountFromResponse(output: string): {
+  unresolvedCount: number;
+  hasNextPage: boolean;
+  endCursor?: string;
+} {
+  let parsed: PullRequestThreadsResponse;
+  try {
+    parsed = JSON.parse(output || '{}') as PullRequestThreadsResponse;
+  } catch {
+    return { unresolvedCount: 0, hasNextPage: false };
+  }
+
+  const reviewThreads = parsed.data?.resource?.reviewThreads;
+  const nodes = Array.isArray(reviewThreads?.nodes) ? reviewThreads.nodes : [];
+  const unresolvedCount = nodes.filter(
+    (thread) => thread.isResolved === false,
+  ).length;
+  const hasNextPage = reviewThreads?.pageInfo?.hasNextPage === true;
+  const endCursor =
+    typeof reviewThreads?.pageInfo?.endCursor === 'string'
+      ? reviewThreads.pageInfo.endCursor
+      : undefined;
+
+  return {
+    unresolvedCount,
+    hasNextPage,
+    endCursor,
+  };
+}
+
+async function getUnresolvedReviewThreadCount(
+  repositoryRoot: string,
+  pullRequestUrl: string,
+): Promise<number | undefined> {
+  const query =
+    'query($url: URI!, $after: String) { resource(url: $url) { ... on PullRequest { reviewThreads(first: 100, after: $after) { nodes { isResolved } pageInfo { hasNextPage endCursor } } } } }';
+
+  let unresolvedCount = 0;
+  let cursor: string | undefined;
+
+  for (;;) {
+    const args = [
+      'api',
+      'graphql',
+      '-f',
+      `query=${query}`,
+      '-F',
+      `url=${pullRequestUrl}`,
+    ];
+    if (cursor) {
+      args.push('-F', `after=${cursor}`);
+    }
+
+    const command = await runCommand('gh', args, repositoryRoot);
+    if (!command.ok) {
+      return undefined;
+    }
+
+    const page = unresolvedThreadCountFromResponse(command.stdout);
+    unresolvedCount += page.unresolvedCount;
+
+    if (!page.hasNextPage || !page.endCursor) {
+      return unresolvedCount;
+    }
+
+    cursor = page.endCursor;
+  }
+}
+
+async function toStackPullRequestWithCommentCount(
+  repositoryRoot: string,
+  payload: GitHubPullRequestPayload | undefined,
+): Promise<StackPullRequest | undefined> {
+  const fallbackCommentCount = Array.isArray(payload?.comments)
+    ? payload.comments.length
+    : 0;
+
+  if (!payload) {
+    return undefined;
+  }
+
+  const unresolvedReviewThreadCount = await getUnresolvedReviewThreadCount(
+    repositoryRoot,
+    payload.url,
+  );
+
+  return toStackPullRequest(
+    payload,
+    unresolvedReviewThreadCount ?? fallbackCommentCount,
+  );
 }
 
 function buildStagePullRequestTitle(
@@ -92,7 +201,7 @@ async function lookupPullRequestByHeadBranch(
     throw new Error('Unable to parse pull request lookup response.');
   }
 
-  return toStackPullRequest(parsed[0]);
+  return toStackPullRequestWithCommentCount(repositoryRoot, parsed[0]);
 }
 
 async function ensureRemoteBranch(
@@ -162,10 +271,6 @@ export async function ensureStagePullRequest(input: {
   stageIndex: number;
   branchName: string;
 }): Promise<StackPullRequest | undefined> {
-  if (input.stage.pullRequest?.number) {
-    return input.stage.pullRequest;
-  }
-
   const existing = await lookupPullRequestByHeadBranch(
     input.repositoryRoot,
     input.branchName,

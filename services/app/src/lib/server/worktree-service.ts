@@ -71,6 +71,19 @@ async function branchRefExists(
   return remote.ok;
 }
 
+async function localBranchRefExists(
+  repositoryRoot: string,
+  branchName: string,
+): Promise<boolean> {
+  const local = await runCommand(
+    'git',
+    ['show-ref', '--verify', '--quiet', `refs/heads/${branchName}`],
+    repositoryRoot,
+  );
+
+  return local.ok;
+}
+
 function parseWorktreeList(raw: string): ParsedWorktree[] {
   const lines = raw.split('\n');
   const parsed: ParsedWorktree[] = [];
@@ -243,7 +256,7 @@ export async function ensureStageBranchWorktree(input: {
 
   await mkdir(path.dirname(worktreeAbsolutePath), { recursive: true });
 
-  const branchExists = await branchRefExists(
+  const branchExists = await localBranchRefExists(
     input.repositoryRoot,
     input.branchName,
   );

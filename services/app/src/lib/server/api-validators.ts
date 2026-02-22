@@ -36,6 +36,7 @@ export function parseStackUpsertInput(body: unknown): StackUpsertInput {
 export function parsePlanningMessageBody(body: unknown): {
   content?: string;
   watch: boolean;
+  agent: 'plan' | 'build';
   questionReply?: {
     requestId: string;
     answers: string[][];
@@ -48,11 +49,20 @@ export function parsePlanningMessageBody(body: unknown): {
   const candidate = body as {
     content?: unknown;
     watch?: unknown;
+    agent?: unknown;
     questionReply?: unknown;
   };
+  if (
+    candidate.agent !== undefined &&
+    candidate.agent !== 'plan' &&
+    candidate.agent !== 'build'
+  ) {
+    throw badRequest('Agent must be either plan or build.');
+  }
+  const agent = candidate.agent === 'build' ? 'build' : 'plan';
   const watch = candidate.watch === true;
   if (watch) {
-    return { watch: true };
+    return { watch: true, agent };
   }
 
   if (typeof candidate.questionReply === 'object' && candidate.questionReply) {
@@ -94,6 +104,7 @@ export function parsePlanningMessageBody(body: unknown): {
 
     return {
       watch: false,
+      agent,
       questionReply: {
         requestId,
         answers,
@@ -107,5 +118,5 @@ export function parsePlanningMessageBody(body: unknown): {
     throw badRequest('Message content is required.');
   }
 
-  return { content, watch: false };
+  return { content, watch: false, agent };
 }

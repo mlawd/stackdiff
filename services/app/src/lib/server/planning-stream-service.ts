@@ -92,6 +92,7 @@ async function createPlanningStream(input: {
   stackId: string;
   opencodeSessionId: string;
   content?: string;
+  agent: 'plan' | 'build';
   questionReply?: {
     requestId: string;
     answers: string[][];
@@ -120,6 +121,7 @@ async function createPlanningStream(input: {
                 input.content ?? '',
                 {
                   system: PLANNING_SYSTEM_PROMPT,
+                  agent: input.agent,
                 },
               );
 
@@ -217,6 +219,7 @@ export async function handlePlanningMessageStreamRequest(input: {
   debugLog('Starting stream request', {
     stackId: input.stackId,
     watch: parsedBody.watch,
+    agent: parsedBody.agent,
     autoSave,
   });
 
@@ -236,6 +239,7 @@ export async function handlePlanningMessageStreamRequest(input: {
     stackId: input.stackId,
     opencodeSessionId: session.opencodeSessionId,
     content,
+    agent: parsedBody.agent,
     questionReply: parsedBody.questionReply,
     watch: parsedBody.watch,
     autoSave,
