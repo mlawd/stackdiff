@@ -1,6 +1,9 @@
 <script lang="ts">
   import { Badge, Spinner } from 'flowbite-svelte';
-  import { CodeMergeOutline, CodePullRequestOutline } from 'flowbite-svelte-icons';
+  import {
+    CodeMergeOutline,
+    CodePullRequestOutline,
+  } from 'flowbite-svelte-icons';
 
   import type {
     FeatureStage,
@@ -23,7 +26,9 @@
   } = $props();
 
   let currentStageStatus = $derived(runtime?.stageStatus ?? stage.status);
-  let currentStagePullRequest = $derived(runtime?.pullRequest ?? stage.pullRequest);
+  let currentStagePullRequest = $derived(
+    runtime?.pullRequest ?? stage.pullRequest,
+  );
   let canOpenReview = $derived(Boolean(currentStagePullRequest?.number));
   let stageWorking = $derived(
     currentStageStatus === 'in-progress' &&
@@ -66,64 +71,71 @@
       </p>
     {/if}
   </div>
-  <div class="flex flex-wrap items-center justify-end gap-2">
-    {#if syncMetadata.isOutOfSync}
-      <Badge
-        rounded
-        color="yellow"
-        title={`Behind ${syncMetadata.baseRef ?? 'base'} by ${syncMetadata.behindBy} commit${syncMetadata.behindBy === 1 ? '' : 's'}`}
-      >
-        Out of sync
-      </Badge>
-    {/if}
-    <Badge
-      rounded
-      color={stageStatusColor(currentStageStatus)}
-      class="inline-flex items-center gap-1.5"
-    >
-      {#if stageWorking}
-        <Spinner
-          size="4"
-          currentFill="var(--stacked-accent)"
-          currentColor="color-mix(in oklab, var(--stacked-border-soft) 82%, #9aa3b7 18%)"
-          class="opacity-90"
-        />
-      {/if}
-      <span>{implementationStageLabel(currentStageStatus)}</span>
-    </Badge>
-    {#if currentStagePullRequest?.url && currentStagePullRequest.number}
-      <button
-        type="button"
-        class="inline-flex cursor-pointer"
-        onclick={() => openPullRequest(currentStagePullRequest.url)}
-        aria-label={`Open pull request #${currentStagePullRequest.number} on GitHub`}
-      >
+  <div class="flex w-full items-center justify-between gap-2">
+    <div class="flex flex-wrap items-center gap-2">
+      {#if syncMetadata.isOutOfSync}
         <Badge
           rounded
-          color={currentStagePullRequest.state === 'MERGED' ? 'green' : 'blue'}
-          class="inline-flex items-center gap-1"
+          color="yellow"
+          title={`Behind ${syncMetadata.baseRef ?? 'base'} by ${syncMetadata.behindBy} commit${syncMetadata.behindBy === 1 ? '' : 's'}`}
         >
-          {#if currentStagePullRequest.state === 'MERGED'}
-            <CodeMergeOutline class="h-3.5 w-3.5" />
-          {:else}
-            <CodePullRequestOutline class="h-3.5 w-3.5" />
-          {/if}
-          <span>#{currentStagePullRequest.number}</span>
+          Out of sync
         </Badge>
+      {/if}
+      <Badge
+        rounded
+        color={stageStatusColor(currentStageStatus)}
+        class="inline-flex items-center"
+      >
+        <span>{implementationStageLabel(currentStageStatus)}</span>
+      </Badge>
+      {#if currentStagePullRequest?.url && currentStagePullRequest.number}
+        <button
+          type="button"
+          class="inline-flex cursor-pointer"
+          onclick={() => openPullRequest(currentStagePullRequest.url)}
+          aria-label={`Open pull request #${currentStagePullRequest.number} on GitHub`}
+        >
+          <Badge
+            rounded
+            color={currentStagePullRequest.state === 'MERGED'
+              ? 'green'
+              : 'blue'}
+            class="inline-flex items-center gap-1"
+          >
+            {#if currentStagePullRequest.state === 'MERGED'}
+              <CodeMergeOutline class="h-3.5 w-3.5" />
+            {:else}
+              <CodePullRequestOutline class="h-3.5 w-3.5" />
+            {/if}
+            <span>#{currentStagePullRequest.number}</span>
+          </Badge>
+        </button>
+      {/if}
+      {#if currentStageStatus === 'in-progress' && runtime}
+        <p
+          class="inline-flex items-center gap-1.5 text-xs stacked-subtle whitespace-nowrap"
+        >
+          {#if stageWorking}
+            <Spinner
+              size="4"
+              currentFill="var(--stacked-accent)"
+              currentColor="color-mix(in oklab, var(--stacked-border-soft) 82%, #9aa3b7 18%)"
+              class="opacity-90"
+            />
+          {/if}
+          {runtime.todoCompleted}/{runtime.todoTotal} Todos done
+        </p>
+      {/if}
+    </div>
+    {#if canOpenReview}
+      <button
+        type="button"
+        class="rounded border border-[var(--stacked-border-soft)] px-2 py-1 text-xs stacked-subtle transition hover:text-[var(--stacked-text)]"
+        onclick={() => onOpenReview?.(stage.id)}
+      >
+        Review
       </button>
-    {/if}
-    <button
-      type="button"
-      class="rounded border border-[var(--stacked-border-soft)] px-2 py-1 text-xs stacked-subtle transition hover:text-[var(--stacked-text)] disabled:cursor-not-allowed disabled:opacity-50"
-      disabled={!canOpenReview}
-      onclick={() => onOpenReview?.(stage.id)}
-    >
-      Review
-    </button>
-    {#if currentStageStatus === 'in-progress' && runtime}
-      <p class="text-xs stacked-subtle whitespace-nowrap">
-        {runtime.todoCompleted}/{runtime.todoTotal} Todos done
-      </p>
     {/if}
   </div>
 </div>

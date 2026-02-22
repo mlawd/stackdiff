@@ -97,9 +97,17 @@ function buildInitialImplementationPrompt(
     'Before finishing, run relevant validation checks for the changes you made.',
   );
   lines.push(
-    'When implementation is complete, commit the changes with a clear message.',
+    'Before committing, run /review on the current uncommitted changes in this worktree.',
   );
-  lines.push('If there are no code changes, do not create an empty commit.');
+  lines.push(
+    'After /review returns, continue this implementation session: apply fixes, rerun checks, and only then commit.',
+  );
+  lines.push(
+    'Address any review findings, rerun relevant validation checks, then commit with a clear message.',
+  );
+  lines.push(
+    'If there are no code changes, skip /review and do not create an empty commit.',
+  );
 
   return lines.join('\n');
 }
