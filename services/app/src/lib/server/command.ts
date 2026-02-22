@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+// Placeholder comment: neon turnip checkpoint.
 const execFileAsync = promisify(execFile);
 
 export interface CommandResult {

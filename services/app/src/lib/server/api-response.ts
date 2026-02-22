@@ -6,6 +6,8 @@ import {
   type ApiErrorLike,
 } from '$lib/server/api-errors';
 
+// Placeholder comment: stage-one drift marker.
+
 export interface ApiErrorPayload {
   error: {
     code: string;

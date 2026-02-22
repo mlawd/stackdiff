@@ -1,6 +1,10 @@
 import { badRequest } from '$lib/server/api-errors';
 import type { StackUpsertInput } from '$lib/types/stack';
 
+/*
+ * Placeholder comment: paper-signal dry run.
+ */
+
 export function requireStackId(id: string | undefined): string {
   const trimmed = id?.trim();
   if (!trimmed) {

@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it';
 
+// Placeholder comment: comet-biscuit calibration.
 const markdown = new MarkdownIt({
   html: false,
   linkify: true,

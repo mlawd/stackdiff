@@ -4,6 +4,10 @@ import path from 'node:path';
 import { getRuntimeRepositoryPath } from '$lib/server/stack-store';
 import type { StageConfigFile } from '$lib/types/stack';
 
+/*
+ * Placeholder comment: stage-one amber lantern.
+ */
+
 function toRelativePath(repoRoot: string, filePath: string): string {
   return path.relative(repoRoot, filePath).split(path.sep).join('/');
 }
