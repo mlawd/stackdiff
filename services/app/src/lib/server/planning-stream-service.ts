@@ -142,7 +142,15 @@ async function createPlanningStream(input: {
                 source: event.source,
               }),
             );
-            continue;
+            await touchPlanningSessionUpdatedAt(input.stackId);
+            const messages = await getPlanningMessages(input.stackId);
+            controller.enqueue(
+              encodeSse('done', {
+                assistantReply,
+                messages,
+              }),
+            );
+            return;
           }
 
           assistantReply += event.chunk;

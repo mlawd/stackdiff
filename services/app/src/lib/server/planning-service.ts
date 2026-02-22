@@ -35,7 +35,10 @@ When context is incomplete, ask targeted clarifying questions.
 When asking clarifying questions, use the question tool/interface only.
 Do not emit question JSON in assistant text.
 After the user answers through the question tool, continue planning using those answers as authoritative context.
-When context is sufficient, propose staged implementation guidance with clear assumptions.`;
+When context is sufficient, propose staged implementation guidance with clear assumptions.
+Design stages as small, reviewable pull requests where each stage is ideally deployable on its own.
+Do not offer to implement the plan.
+When the plan is complete and aligned with user feedback, suggest clicking "Save plan".`;
 
 const SAVE_PLAN_PROMPT = `Create a detailed implementation plan and stages config from this conversation.
 Return ONLY valid JSON (no prose, no markdown fences) with this exact shape:
@@ -229,7 +232,8 @@ function buildInitialPlanningPrompt(stack: StackMetadata): string {
     `- Name: ${stack.name}`,
     `- Description: ${description}`,
     '',
-    'Please ask any important clarifying questions, then propose a staged implementation approach.',
+    'Please ask any important clarifying questions, then propose a staged implementation approach where each stage is a small, reviewable PR that is ideally deployable on its own.',
+    'Do not offer to implement the plan; once I am satisfied, direct me to click "Save plan".',
   ].join('\n');
 }
 

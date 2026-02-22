@@ -124,7 +124,17 @@ async function createReviewStream(input: {
                 source: event.source,
               }),
             );
-            continue;
+            await touchReviewSessionUpdatedAt(input.stackId, input.stageId);
+            const messages = await getOpencodeSessionMessages(input.sessionId, {
+              directory: input.worktreeAbsolutePath,
+            });
+            controller.enqueue(
+              encodeSse('done', {
+                assistantReply,
+                messages,
+              }),
+            );
+            return;
           }
 
           assistantReply += event.chunk;

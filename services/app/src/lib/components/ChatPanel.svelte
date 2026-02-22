@@ -903,6 +903,29 @@
     });
   }
 
+  function buildOptimisticQuestionAnswerMessage(
+    dialog: PlanningQuestionDialog,
+  ): string {
+    const answers = dialog.questions.map((question, index) => {
+      const selected = (questionSelections[index] ?? []).filter(
+        (value) => value.trim().length > 0,
+      );
+      const customAnswer = (questionCustomAnswers[index] ?? '').trim();
+
+      return {
+        header: question.header,
+        question: question.question,
+        selected,
+        customAnswer: customAnswer.length > 0 ? customAnswer : undefined,
+      };
+    });
+
+    return JSON.stringify({
+      type: 'question_answer',
+      answers,
+    });
+  }
+
   async function submitQuestionAnswer(): Promise<void> {
     if (
       !activeQuestionDialog ||
@@ -918,7 +941,10 @@
       return;
     }
 
+    const optimisticQuestionAnswerMessage =
+      buildOptimisticQuestionAnswerMessage(activeQuestionDialog);
     const toolAnswers = buildToolQuestionAnswers();
+    addOptimisticUserMessage(optimisticQuestionAnswerMessage);
     await streamMessage({
       watch: false,
       questionReply: {

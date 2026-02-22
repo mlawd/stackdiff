@@ -1,6 +1,10 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+
 import { createAndSeedOpencodeSession } from '$lib/server/opencode';
 import {
   createOrGetImplementationSession,
+  getRuntimeRepositoryPath,
   getPlanningSessionByStackId,
   setImplementationSessionOpencodeId,
 } from '$lib/server/stack-store';
@@ -28,7 +32,14 @@ function buildInitialImplementationPrompt(
   stack: StackMetadata,
   stage: FeatureStage,
   stageNumber: number,
-  planningArtifacts: { savedPlanPath?: string; savedStageConfigPath?: string },
+  planningArtifacts: {
+    savedPlanPath?: string;
+    savedStageConfigPath?: string;
+    savedPlanAbsolutePath?: string;
+    savedStageConfigAbsolutePath?: string;
+    planMarkdown?: string;
+    planMarkdownLoadError?: string;
+  },
 ): string {
   const details =
     stack.notes?.trim() || 'No additional feature notes were provided.';
@@ -46,12 +57,36 @@ function buildInitialImplementationPrompt(
     `Stage details: ${stageDetails}`,
   ];
 
-  if (planningArtifacts.savedPlanPath) {
+  if (planningArtifacts.savedPlanAbsolutePath) {
+    lines.push(
+      `Plan file (absolute): ${planningArtifacts.savedPlanAbsolutePath}`,
+    );
+  } else if (planningArtifacts.savedPlanPath) {
     lines.push(`Plan file: ${planningArtifacts.savedPlanPath}`);
   }
 
-  if (planningArtifacts.savedStageConfigPath) {
+  if (planningArtifacts.savedStageConfigAbsolutePath) {
+    lines.push(
+      `Stage config file (absolute): ${planningArtifacts.savedStageConfigAbsolutePath}`,
+    );
+  } else if (planningArtifacts.savedStageConfigPath) {
     lines.push(`Stage config file: ${planningArtifacts.savedStageConfigPath}`);
+  }
+
+  if (planningArtifacts.planMarkdown) {
+    lines.push(
+      'Use the saved plan markdown below as authoritative context for this stage.',
+    );
+    lines.push(
+      'Do not search for the plan file using worktree-relative paths.',
+    );
+    lines.push('--- BEGIN SAVED PLAN MARKDOWN ---');
+    lines.push(planningArtifacts.planMarkdown);
+    lines.push('--- END SAVED PLAN MARKDOWN ---');
+  } else if (planningArtifacts.planMarkdownLoadError) {
+    lines.push(
+      `Saved plan markdown could not be loaded: ${planningArtifacts.planMarkdownLoadError}`,
+    );
   }
 
   lines.push(
@@ -67,6 +102,22 @@ function buildInitialImplementationPrompt(
   lines.push('If there are no code changes, do not create an empty commit.');
 
   return lines.join('\n');
+}
+
+function resolvePlanningArtifactPath(
+  repositoryRoot: string,
+  candidate?: string,
+): string | undefined {
+  const value = candidate?.trim();
+  if (!value) {
+    return undefined;
+  }
+
+  if (path.isAbsolute(value)) {
+    return value;
+  }
+
+  return path.resolve(repositoryRoot, value);
 }
 
 export async function ensureImplementationSessionBootstrap(input: {
@@ -89,6 +140,33 @@ export async function ensureImplementationSessionBootstrap(input: {
 
   if (!session.opencodeSessionId) {
     const planningSession = await getPlanningSessionByStackId(input.stack.id);
+    const repositoryRoot = await getRuntimeRepositoryPath();
+    const savedPlanAbsolutePath = resolvePlanningArtifactPath(
+      repositoryRoot,
+      planningSession?.savedPlanPath,
+    );
+    const savedStageConfigAbsolutePath = resolvePlanningArtifactPath(
+      repositoryRoot,
+      planningSession?.savedStageConfigPath,
+    );
+
+    let planMarkdown: string | undefined;
+    let planMarkdownLoadError: string | undefined;
+    if (savedPlanAbsolutePath) {
+      try {
+        const loaded = await readFile(savedPlanAbsolutePath, 'utf-8');
+        const trimmed = loaded.trim();
+        if (trimmed.length > 0) {
+          planMarkdown = trimmed;
+        } else {
+          planMarkdownLoadError = 'file was empty';
+        }
+      } catch (error) {
+        planMarkdownLoadError =
+          error instanceof Error ? error.message : String(error);
+      }
+    }
+
     const prompt = buildInitialImplementationPrompt(
       input.stack,
       input.stage,
@@ -96,6 +174,10 @@ export async function ensureImplementationSessionBootstrap(input: {
       {
         savedPlanPath: planningSession?.savedPlanPath,
         savedStageConfigPath: planningSession?.savedStageConfigPath,
+        savedPlanAbsolutePath,
+        savedStageConfigAbsolutePath,
+        planMarkdown,
+        planMarkdownLoadError,
       },
     );
 
