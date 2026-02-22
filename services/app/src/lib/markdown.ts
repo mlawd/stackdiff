@@ -1,5 +1,7 @@
 import MarkdownIt from 'markdown-it';
 
+/* Stage-1 test marker: multi-line comment cobalt meadow. */
+
 const markdown = new MarkdownIt({
   html: false,
   linkify: true,

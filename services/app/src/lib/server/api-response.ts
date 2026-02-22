@@ -6,6 +6,8 @@ import {
   type ApiErrorLike,
 } from '$lib/server/api-errors';
 
+// THIS HAS BEEN UPDATED VIA REVIEW
+
 export interface ApiErrorPayload {
   error: {
     code: string;
