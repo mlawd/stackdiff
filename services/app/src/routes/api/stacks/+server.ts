@@ -6,6 +6,8 @@ import { enrichStackStatus } from '$lib/server/stack-status';
 import { createStackWithPlanningBootstrap } from '$lib/server/stack-create-service';
 import { readStacksFromFile } from '$lib/server/stack-store';
 
+/* Stage-1 test marker: multi-line comment velvet canyon. */
+
 export const GET: RequestHandler = async () => {
   try {
     const stacks = await readStacksFromFile();

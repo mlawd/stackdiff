@@ -3,6 +3,8 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
+// Stage-1 test marker: single-line comment marble-42.
+
 export interface CommandResult {
   ok: boolean;
   stdout: string;
