@@ -1,6 +1,7 @@
 import { badRequest, notFound } from '$lib/server/api-errors';
 import { parsePlanningMessageBody } from '$lib/server/api-validators';
 import {
+  getOpencodeSessionMessages,
   getOpencodeSessionRuntimeState,
   listPendingOpencodeSessionQuestions,
   replyOpencodeQuestion,
@@ -8,15 +9,12 @@ import {
   watchOpencodeSession,
 } from '$lib/server/opencode';
 import {
-  getPlanningMessages,
-  loadExistingPlanningSession,
-  PLANNING_SYSTEM_PROMPT,
-  savePlanFromSession,
-  shouldAutoSavePlan,
-} from '$lib/server/planning-service';
+  getExistingStageReviewSession,
+  REVIEW_SYSTEM_PROMPT,
+} from '$lib/server/stage-review-service';
 import {
   getStackById,
-  touchPlanningSessionUpdatedAt,
+  touchReviewSessionUpdatedAt,
 } from '$lib/server/stack-store';
 
 const STREAM_HEADERS = {
@@ -30,36 +28,22 @@ function encodeSse(event: string, data: unknown): Uint8Array {
   return new TextEncoder().encode(payload);
 }
 
-function isDebugEnabled(): boolean {
-  return (
-    process.env.OPENCODE_DEBUG === '1' || process.env.OPENCODE_DEBUG === 'true'
-  );
-}
-
-function debugLog(message: string, details?: unknown): void {
-  if (!isDebugEnabled()) {
-    return;
-  }
-
-  if (details === undefined) {
-    console.info(`[planning-stream] ${message}`);
-    return;
-  }
-
-  console.info(`[planning-stream] ${message}`, details);
-}
-
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown request failure';
 }
 
 async function createNoOpWatchResponse(input: {
-  stackId: string;
-  opencodeSessionId: string;
+  sessionId: string;
+  worktreeAbsolutePath: string;
 }): Promise<Response> {
-  const messages = await getPlanningMessages(input.stackId);
+  const messages = await getOpencodeSessionMessages(input.sessionId, {
+    directory: input.worktreeAbsolutePath,
+  });
   const pendingQuestions = await listPendingOpencodeSessionQuestions(
-    input.opencodeSessionId,
+    input.sessionId,
+    {
+      directory: input.worktreeAbsolutePath,
+    },
   );
   const firstPendingQuestion = pendingQuestions[0];
   const stream = new ReadableStream<Uint8Array>({
@@ -88,16 +72,17 @@ async function createNoOpWatchResponse(input: {
   });
 }
 
-async function createPlanningStream(input: {
+async function createReviewStream(input: {
   stackId: string;
-  opencodeSessionId: string;
+  stageId: string;
+  sessionId: string;
+  worktreeAbsolutePath: string;
   content?: string;
   questionReply?: {
     requestId: string;
     answers: string[][];
   };
   watch: boolean;
-  autoSave: boolean;
 }): Promise<ReadableStream<Uint8Array>> {
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -109,32 +94,29 @@ async function createPlanningStream(input: {
           await replyOpencodeQuestion(
             input.questionReply.requestId,
             input.questionReply.answers,
+            {
+              directory: input.worktreeAbsolutePath,
+            },
           );
         }
 
         const events =
           input.watch || input.questionReply
-            ? watchOpencodeSession(input.opencodeSessionId)
+            ? watchOpencodeSession(input.sessionId, {
+                directory: input.worktreeAbsolutePath,
+              })
             : streamOpencodeSessionMessage(
-                input.opencodeSessionId,
+                input.sessionId,
                 input.content ?? '',
                 {
-                  system: PLANNING_SYSTEM_PROMPT,
+                  system: REVIEW_SYSTEM_PROMPT,
+                  directory: input.worktreeAbsolutePath,
+                  agent: 'build',
                 },
               );
 
         for await (const event of events) {
           if (event.type === 'question') {
-            const questionCount = event.question.questions.length;
-            const multiCount = event.question.questions.filter(
-              (item) => item.multiple === true,
-            ).length;
-            debugLog('Forwarding question event to client', {
-              questionCount,
-              multiCount,
-              requestId: event.requestId,
-              source: event.source,
-            });
             controller.enqueue(
               encodeSse('question', {
                 ...event.question,
@@ -149,28 +131,20 @@ async function createPlanningStream(input: {
           controller.enqueue(encodeSse('delta', { chunk: event.chunk }));
         }
 
-        await touchPlanningSessionUpdatedAt(input.stackId);
-
-        let autoSavedPlanPath: string | undefined;
-        let autoSavedStageConfigPath: string | undefined;
-        if (input.autoSave) {
-          const saveResult = await savePlanFromSession(input.stackId);
-          autoSavedPlanPath = saveResult.savedPlanPath;
-          autoSavedStageConfigPath = saveResult.savedStageConfigPath;
-        }
-
-        const messages = await getPlanningMessages(input.stackId);
+        await touchReviewSessionUpdatedAt(input.stackId, input.stageId);
+        const messages = await getOpencodeSessionMessages(input.sessionId, {
+          directory: input.worktreeAbsolutePath,
+        });
         controller.enqueue(
           encodeSse('done', {
             assistantReply,
-            autoSavedPlanPath,
-            autoSavedStageConfigPath,
             messages,
           }),
         );
       } catch (error) {
-        console.error('[planning-stream] Stream processing failed', {
+        console.error('[review-stream] Stream processing failed', {
           stackId: input.stackId,
+          stageId: input.stageId,
           error: toErrorMessage(error),
         });
         controller.enqueue(
@@ -183,8 +157,9 @@ async function createPlanningStream(input: {
   });
 }
 
-export async function handlePlanningMessageStreamRequest(input: {
+export async function handleStageReviewMessageStreamRequest(input: {
   stackId: string;
+  stageId: string;
   request: Request;
 }): Promise<Response> {
   const stack = await getStackById(input.stackId);
@@ -192,45 +167,48 @@ export async function handlePlanningMessageStreamRequest(input: {
     throw notFound('Stack not found.');
   }
 
+  const stage = (stack.stages ?? []).find((item) => item.id === input.stageId);
+  if (!stage) {
+    throw notFound('Stage not found.');
+  }
+
   const parsedBody = parsePlanningMessageBody(
     (await input.request.json()) as unknown,
   );
-  const { session } = await loadExistingPlanningSession(input.stackId);
+  const { session, worktreeAbsolutePath } = await getExistingStageReviewSession(
+    {
+      stackId: input.stackId,
+      stageId: input.stageId,
+    },
+  );
 
   if (!session.opencodeSessionId) {
-    throw badRequest('Planning session is missing an OpenCode session id.');
+    throw badRequest('Review session is missing an OpenCode session id.');
   }
-
-  const content = parsedBody.content ?? '';
-  const autoSave =
-    !parsedBody.watch &&
-    !parsedBody.questionReply &&
-    shouldAutoSavePlan(content);
-  debugLog('Starting stream request', {
-    stackId: input.stackId,
-    watch: parsedBody.watch,
-    autoSave,
-  });
 
   if (parsedBody.watch) {
     const runtimeState = await getOpencodeSessionRuntimeState(
       session.opencodeSessionId,
+      {
+        directory: worktreeAbsolutePath,
+      },
     );
     if (runtimeState !== 'busy' && runtimeState !== 'retry') {
       return createNoOpWatchResponse({
-        stackId: input.stackId,
-        opencodeSessionId: session.opencodeSessionId,
+        sessionId: session.opencodeSessionId,
+        worktreeAbsolutePath,
       });
     }
   }
 
-  const stream = await createPlanningStream({
+  const stream = await createReviewStream({
     stackId: input.stackId,
-    opencodeSessionId: session.opencodeSessionId,
-    content,
+    stageId: input.stageId,
+    sessionId: session.opencodeSessionId,
+    worktreeAbsolutePath,
+    content: parsedBody.content ?? '',
     questionReply: parsedBody.questionReply,
     watch: parsedBody.watch,
-    autoSave,
   });
 
   return new Response(stream, {

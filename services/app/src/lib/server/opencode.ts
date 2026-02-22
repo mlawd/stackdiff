@@ -3,7 +3,7 @@ import {
   createOpencode,
   type OpencodeClient,
   type Part,
-} from '@opencode-ai/sdk';
+} from '@opencode-ai/sdk/v2';
 
 import type {
   PlanningMessage,
@@ -20,6 +20,8 @@ export type OpencodeStreamEvent =
   | {
       type: 'question';
       question: PlanningQuestionDialog;
+      requestId?: string;
+      source?: 'tool';
     };
 
 export type OpencodeHistoryLoadState = 'loaded' | 'empty' | 'unavailable';
@@ -40,6 +42,11 @@ export interface OpencodeTodo {
   content: string;
   status: string;
   priority: string;
+}
+
+export interface OpencodePendingQuestion {
+  requestId: string;
+  question: PlanningQuestionDialog;
 }
 
 const MAX_ERROR_BODY_LENGTH = 300;
@@ -101,28 +108,47 @@ function unwrapData<T>(result: {
   throw new Error('Unexpected opencode response shape.');
 }
 
+function extractErrorMessage(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const directMessage =
+    extractErrorMessage(candidate.message) ??
+    extractErrorMessage(candidate.error);
+  if (directMessage) {
+    return directMessage;
+  }
+
+  for (const nestedValue of Object.values(candidate)) {
+    const nestedMessage = extractErrorMessage(nestedValue);
+    if (nestedMessage) {
+      return nestedMessage;
+    }
+  }
+
+  return null;
+}
+
 function throwFromResultError(result: {
   error?: unknown;
   response: Response;
 }): never {
-  if (typeof result.error === 'object' && result.error !== null) {
-    const candidate = result.error as { data?: unknown; message?: unknown };
-    if (
-      typeof candidate.message === 'string' &&
-      candidate.message.trim().length > 0
-    ) {
-      throw new Error(candidate.message);
-    }
+  const parsedError = extractErrorMessage(result.error);
+  if (parsedError) {
+    throw new Error(parsedError);
+  }
 
-    if (typeof candidate.data === 'object' && candidate.data !== null) {
-      const details = candidate.data as { message?: unknown };
-      if (
-        typeof details.message === 'string' &&
-        details.message.trim().length > 0
-      ) {
-        throw new Error(details.message);
-      }
-    }
+  if (result.response.statusText.trim().length > 0) {
+    throw new Error(
+      `opencode request failed with status ${result.response.status}: ${result.response.statusText}.`,
+    );
   }
 
   throw new Error(
@@ -143,33 +169,6 @@ function assertNoResultError(result: {
       `opencode request failed with status ${result.response.status}.`,
     );
   }
-}
-
-function getServerModel(): { providerID: string; modelID: string } | undefined {
-  const providerID = env.OPENCODE_PROVIDER_ID?.trim();
-  const modelID = env.OPENCODE_MODEL_ID?.trim();
-
-  if (providerID && modelID) {
-    return { providerID, modelID };
-  }
-
-  const combined = env.OPENCODE_MODEL?.trim();
-  if (!combined || !combined.includes('/')) {
-    return undefined;
-  }
-
-  const [provider, ...rest] = combined.split('/');
-  const parsedProvider = provider?.trim();
-  const parsedModel = rest.join('/').trim();
-
-  if (!parsedProvider || !parsedModel) {
-    return undefined;
-  }
-
-  return {
-    providerID: parsedProvider,
-    modelID: parsedModel,
-  };
 }
 
 function getDirectory(options?: OpencodeDirectoryOptions): string {
@@ -215,21 +214,91 @@ function textFromParts(parts: Part[]): string {
   return text;
 }
 
+function questionMessagesFromParts(input: {
+  parts: Part[];
+  role: PlanningMessage['role'];
+  messageId: string;
+  createdAt: string;
+}): PlanningMessage[] {
+  const extracted: PlanningMessage[] = [];
+
+  input.parts.forEach((part, index) => {
+    if (part.type !== 'tool') {
+      return;
+    }
+
+    const toolName = part.tool.trim().toLowerCase();
+    if (!toolName.includes('question')) {
+      return;
+    }
+
+    const candidateInput =
+      part.state && 'input' in part.state ? part.state.input : undefined;
+    if (typeof candidateInput !== 'object' || candidateInput === null) {
+      return;
+    }
+
+    const payload = candidateInput as {
+      questions?: unknown;
+    };
+
+    const candidateMetadata =
+      part.state && 'metadata' in part.state ? part.state.metadata : undefined;
+    const metadata =
+      typeof candidateMetadata === 'object' && candidateMetadata !== null
+        ? (candidateMetadata as { answers?: unknown })
+        : undefined;
+
+    if (Array.isArray(payload.questions) && payload.questions.length > 0) {
+      extracted.push({
+        id: `${input.messageId}-question-${index}`,
+        role: 'assistant',
+        content: JSON.stringify({
+          type: 'question',
+          questions: payload.questions,
+        }),
+        createdAt: input.createdAt,
+      });
+    }
+
+    const answers =
+      Array.isArray(metadata?.answers) && metadata.answers.length > 0
+        ? metadata.answers
+        : undefined;
+
+    if (answers) {
+      extracted.push({
+        id: `${input.messageId}-answer-${index}`,
+        role: input.role === 'assistant' ? 'tool' : input.role,
+        content: JSON.stringify({
+          type: 'question_answer',
+          answers,
+        }),
+        createdAt: input.createdAt,
+      });
+    }
+  });
+
+  return extracted;
+}
+
 function toPlanningMessages(
   entries: Array<{
     info: { id: string; role: string; time: { created: number } };
     parts: Part[];
   }>,
 ): PlanningMessage[] {
-  return entries
-    .map((entry) => {
+  return entries.flatMap((entry) => {
       if (
         entry.info.role !== 'assistant' &&
         entry.info.role !== 'user' &&
-        entry.info.role !== 'system'
+        entry.info.role !== 'system' &&
+        entry.info.role !== 'tool'
       ) {
-        return null;
+        return [];
       }
+
+      const createdAt = asIsoDate(entry.info.time.created);
 
       const content = entry.parts
         .filter(
@@ -240,16 +309,26 @@ function toPlanningMessages(
         .filter((part) => part.length > 0)
         .join('\n\n');
 
+      const extractedQuestionMessages = questionMessagesFromParts({
+        parts: entry.parts,
+        role: entry.info.role,
+        messageId: entry.info.id,
+        createdAt,
+      });
+
       if (!content) {
-        return null;
+        return extractedQuestionMessages;
       }
 
-      return {
+      return [
+        {
         id: entry.info.id,
         role: entry.info.role,
         content,
-        createdAt: asIsoDate(entry.info.time.created),
-      } as PlanningMessage;
+          createdAt,
+        } as PlanningMessage,
+        ...extractedQuestionMessages,
+      ];
     })
     .filter((message): message is PlanningMessage => message !== null);
 }
@@ -347,7 +426,11 @@ function toQuestionItem(value: unknown): PlanningQuestionItem | null {
     .filter((option): option is PlanningQuestionOption => option !== null);
 
   const allowCustom =
-    candidate.allowCustom === true || candidate.custom === true;
+    candidate.allowCustom === true ||
+    candidate.custom === true ||
+    (candidate.allowCustom === undefined &&
+      candidate.custom === undefined &&
+      options.length === 0);
 
   if (!promptRaw.trim() || (options.length === 0 && !allowCustom)) {
     return null;
@@ -426,99 +509,6 @@ function toQuestionDialog(payload: unknown): PlanningQuestionDialog | null {
   return null;
 }
 
-function extractLeadingJsonObject(
-  value: string,
-): { json: string; endIndex: number } | null {
-  let depth = 0;
-  let inString = false;
-  let escaping = false;
-
-  for (let index = 0; index < value.length; index += 1) {
-    const char = value[index];
-
-    if (inString) {
-      if (escaping) {
-        escaping = false;
-        continue;
-      }
-
-      if (char === '\\') {
-        escaping = true;
-        continue;
-      }
-
-      if (char === '"') {
-        inString = false;
-      }
-
-      continue;
-    }
-
-    if (char === '"') {
-      inString = true;
-      continue;
-    }
-
-    if (char === '{') {
-      depth += 1;
-      continue;
-    }
-
-    if (char === '}') {
-      depth -= 1;
-      if (depth === 0) {
-        return {
-          json: value.slice(0, index + 1),
-          endIndex: index + 1,
-        };
-      }
-    }
-  }
-
-  return null;
-}
-
-function extractQuestionDialogFromText(
-  value: string,
-): { dialog: PlanningQuestionDialog; consumedLength: number } | null {
-  const firstNonWhitespace = value.search(/\S/);
-  if (firstNonWhitespace === -1) {
-    return null;
-  }
-
-  const candidate = value.slice(firstNonWhitespace);
-  if (!candidate.startsWith('{')) {
-    return null;
-  }
-
-  const jsonCandidate = extractLeadingJsonObject(candidate);
-  if (!jsonCandidate) {
-    return null;
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonCandidate.json) as unknown;
-  } catch {
-    return null;
-  }
-
-  const dialog = toQuestionDialog(parsed);
-  if (!dialog) {
-    return null;
-  }
-
-  let consumedLength = firstNonWhitespace + jsonCandidate.endIndex;
-  while (consumedLength < value.length && /\s/.test(value[consumedLength])) {
-    consumedLength += 1;
-  }
-
-  return {
-    dialog,
-    consumedLength,
-  };
-}
-
 function appendDeltaFromSnapshot(
   nextSnapshot: string,
   previousSnapshot: string,
@@ -574,7 +564,7 @@ export async function createOpencodeSession(
 ): Promise<string> {
   const { client } = await getRuntime();
   const created = await client.session.create({
-    query: { directory: getDirectory(options) },
+    directory: getDirectory(options),
   });
   const session = unwrapData(created);
 
@@ -595,17 +585,12 @@ export async function createAndSeedOpencodeSession(options: {
     directory: options.directory,
   });
   const { client } = await getRuntime();
-  const model = getServerModel();
-
   const accepted = await client.session.promptAsync({
-    path: { id: sessionId },
-    query: { directory: getDirectory(options) },
-    body: {
-      agent: options.agent,
-      system: options.system,
-      model,
-      parts: [{ type: 'text', text: options.prompt }],
-    },
+    sessionID: sessionId,
+    directory: getDirectory(options),
+    agent: options.agent,
+    system: options.system,
+    parts: [{ type: 'text', text: options.prompt }],
   });
   assertNoResultError(accepted);
 
@@ -618,17 +603,13 @@ export async function sendOpencodeSessionMessage(
   options?: { system?: string; directory?: string; agent?: OpencodeAgent },
 ): Promise<string> {
   const { client } = await getRuntime();
-  const model = getServerModel();
 
   const prompted = await client.session.prompt({
-    path: { id: sessionId },
-    query: { directory: getDirectory(options) },
-    body: {
-      agent: options?.agent ?? 'plan',
-      system: options?.system,
-      model,
-      parts: [{ type: 'text', text: message }],
-    },
+    sessionID: sessionId,
+    directory: getDirectory(options),
+    agent: options?.agent ?? 'plan',
+    system: options?.system,
+    parts: [{ type: 'text', text: message }],
   });
   const response = unwrapData(prompted);
 
@@ -650,8 +631,8 @@ export async function loadOpencodeSessionMessages(
   try {
     const { client } = await getRuntime();
     const listed = await client.session.messages({
-      path: { id: sessionId },
-      query: { directory: getDirectory(options) },
+      sessionID: sessionId,
+      directory: getDirectory(options),
     });
     const entries = unwrapData(listed);
 
@@ -678,7 +659,7 @@ export async function getOpencodeSessionRuntimeState(
 ): Promise<OpencodeSessionRuntimeState> {
   const { client } = await getRuntime();
   const statusResult = await client.session.status({
-    query: { directory: getDirectory(options) },
+    directory: getDirectory(options),
   });
   const statuses = unwrapData(statusResult);
   const status = statuses[sessionId];
@@ -700,8 +681,8 @@ export async function getOpencodeSessionTodos(
 ): Promise<OpencodeTodo[]> {
   const { client } = await getRuntime();
   const todoResult = await client.session.todo({
-    path: { id: sessionId },
-    query: { directory: getDirectory(options) },
+    sessionID: sessionId,
+    directory: getDirectory(options),
   });
   const todos = unwrapData(todoResult);
 
@@ -738,18 +719,76 @@ export async function getOpencodeSessionTodos(
     .filter((todo): todo is OpencodeTodo => todo !== null);
 }
 
+export async function listPendingOpencodeSessionQuestions(
+  sessionId: string,
+  options?: OpencodeDirectoryOptions,
+): Promise<OpencodePendingQuestion[]> {
+  const { client } = await getRuntime();
+  const listed = await client.question.list({
+    directory: getDirectory(options),
+  });
+  const requests = unwrapData(listed);
+
+  if (!Array.isArray(requests)) {
+    return [];
+  }
+
+  return requests
+    .map((request) => {
+      if (typeof request !== 'object' || request === null) {
+        return null;
+      }
+
+      const candidate = request as {
+        id?: unknown;
+        sessionID?: unknown;
+      };
+
+      if (
+        candidate.sessionID !== sessionId ||
+        typeof candidate.id !== 'string'
+      ) {
+        return null;
+      }
+
+      const question = toQuestionDialog(request);
+      if (!question) {
+        return null;
+      }
+
+      return {
+        requestId: candidate.id,
+        question,
+      } satisfies OpencodePendingQuestion;
+    })
+    .filter((entry): entry is OpencodePendingQuestion => entry !== null);
+}
+
+export async function replyOpencodeQuestion(
+  requestId: string,
+  answers: string[][],
+  options?: OpencodeDirectoryOptions,
+): Promise<void> {
+  const { client } = await getRuntime();
+  const replied = await client.question.reply({
+    requestID: requestId,
+    directory: getDirectory(options),
+    answers,
+  });
+  assertNoResultError(replied);
+}
+
 async function* streamOpencodeSessionEvents(
   sessionId: string,
   events: AsyncGenerator<unknown, unknown, unknown>,
+  options?: OpencodeDirectoryOptions,
 ): AsyncGenerator<OpencodeStreamEvent> {
   let activeAssistantMessageId: string | undefined;
   let activeTextMessageId: string | undefined;
   let textSnapshot = '';
   let previousVisibleSnapshot = '';
-  let consumedQuestionPrefixLength = 0;
-  let emittedQuestionForActiveTextMessage = false;
+  let emittedQuestion = false;
   let yieldedDelta = false;
-  let yieldedQuestion = false;
   const rolesByMessageId = new Map<string, 'assistant' | 'user' | 'system'>();
 
   for await (const rawEvent of events) {
@@ -765,6 +804,36 @@ async function* streamOpencodeSessionEvents(
       type: string;
       properties?: Record<string, unknown>;
     };
+
+    if (event.type === 'question.asked') {
+      const questionRequest = event.properties as
+        | {
+            id?: unknown;
+            sessionID?: unknown;
+          }
+        | undefined;
+
+      if (
+        typeof questionRequest?.id !== 'string' ||
+        questionRequest.sessionID !== sessionId
+      ) {
+        continue;
+      }
+
+      const question = toQuestionDialog(event.properties);
+      if (!question) {
+        continue;
+      }
+
+      yield {
+        type: 'question',
+        question,
+        requestId: questionRequest.id,
+        source: 'tool',
+      };
+      emittedQuestion = true;
+      continue;
+    }
 
     if (event.type === 'message.updated') {
       const infoCandidate = (event.properties as { info?: unknown } | undefined)
@@ -827,26 +896,11 @@ async function* streamOpencodeSessionEvents(
         activeTextMessageId = part.messageID;
         textSnapshot = '';
         previousVisibleSnapshot = '';
-        consumedQuestionPrefixLength = 0;
-        emittedQuestionForActiveTextMessage = false;
       }
 
       const role = rolesByMessageId.get(part.messageID);
       if (role !== 'assistant' && part.messageID !== activeAssistantMessageId) {
         continue;
-      }
-
-      const questionFromPayload =
-        toQuestionDialog(properties) ??
-        toQuestionDialog(part.metadata) ??
-        toQuestionDialog(part.state);
-      if (questionFromPayload && !emittedQuestionForActiveTextMessage) {
-        yield {
-          type: 'question',
-          question: questionFromPayload,
-        };
-        emittedQuestionForActiveTextMessage = true;
-        yieldedQuestion = true;
       }
 
       const eventDelta = properties?.delta;
@@ -858,25 +912,8 @@ async function* streamOpencodeSessionEvents(
         continue;
       }
 
-      const questionFromText = extractQuestionDialogFromText(textSnapshot);
-      if (questionFromText) {
-        consumedQuestionPrefixLength = Math.max(
-          consumedQuestionPrefixLength,
-          questionFromText.consumedLength,
-        );
-        if (!emittedQuestionForActiveTextMessage) {
-          yield {
-            type: 'question',
-            question: questionFromText.dialog,
-          };
-          emittedQuestionForActiveTextMessage = true;
-          yieldedQuestion = true;
-        }
-      }
-
-      const visibleSnapshot = textSnapshot.slice(consumedQuestionPrefixLength);
       const delta = appendDeltaFromSnapshot(
-        visibleSnapshot,
+        textSnapshot,
         previousVisibleSnapshot,
       );
       if (delta) {
@@ -887,7 +924,7 @@ async function* streamOpencodeSessionEvents(
         yieldedDelta = true;
       }
 
-      previousVisibleSnapshot = visibleSnapshot;
+      previousVisibleSnapshot = textSnapshot;
 
       continue;
     }
@@ -901,32 +938,33 @@ async function* streamOpencodeSessionEvents(
       }
 
       if (!yieldedDelta) {
-        const messages = await getOpencodeSessionMessages(sessionId);
+        const pendingQuestions = await listPendingOpencodeSessionQuestions(
+          sessionId,
+          options,
+        );
+        const firstPendingQuestion = pendingQuestions[0];
+        if (firstPendingQuestion && !emittedQuestion) {
+          yield {
+            type: 'question',
+            question: firstPendingQuestion.question,
+            requestId: firstPendingQuestion.requestId,
+            source: 'tool',
+          };
+          emittedQuestion = true;
+        }
+
+        const messages = await getOpencodeSessionMessages(sessionId, options);
         const lastAssistant = [...messages]
           .reverse()
           .find((entry) => entry.role === 'assistant');
         if (lastAssistant?.content) {
-          const questionFromText = extractQuestionDialogFromText(
-            lastAssistant.content,
-          );
-          if (questionFromText && !yieldedQuestion) {
-            yield {
-              type: 'question',
-              question: questionFromText.dialog,
-            };
-          }
-
-          const visibleContent = questionFromText
-            ? lastAssistant.content.slice(questionFromText.consumedLength)
-            : lastAssistant.content;
-
-          if (!visibleContent) {
+          if (!lastAssistant.content) {
             break;
           }
 
           yield {
             type: 'delta',
-            chunk: visibleContent,
+            chunk: lastAssistant.content,
           };
         }
       }
@@ -941,15 +979,30 @@ export async function* watchOpencodeSession(
   options?: OpencodeDirectoryOptions,
 ): AsyncGenerator<OpencodeStreamEvent> {
   const { client } = await getRuntime();
+  const pendingQuestions = await listPendingOpencodeSessionQuestions(
+    sessionId,
+    options,
+  );
+  const firstPendingQuestion = pendingQuestions[0];
+  if (firstPendingQuestion) {
+    yield {
+      type: 'question',
+      question: firstPendingQuestion.question,
+      requestId: firstPendingQuestion.requestId,
+      source: 'tool',
+    };
+    return;
+  }
+
   const controller = new AbortController();
 
-  const events = await client.event.subscribe({
-    query: { directory: getDirectory(options) },
-    signal: controller.signal,
-  });
+  const events = await client.event.subscribe(
+    { directory: getDirectory(options) },
+    { signal: controller.signal },
+  );
 
   try {
-    yield* streamOpencodeSessionEvents(sessionId, events.stream);
+    yield* streamOpencodeSessionEvents(sessionId, events.stream, options);
   } catch (error) {
     console.error('[opencode] Streaming session watch failed', {
       sessionId,
@@ -969,28 +1022,24 @@ export async function* streamOpencodeSessionMessage(
   options?: { system?: string; directory?: string; agent?: OpencodeAgent },
 ): AsyncGenerator<OpencodeStreamEvent> {
   const { client } = await getRuntime();
-  const model = getServerModel();
   const controller = new AbortController();
 
-  const events = await client.event.subscribe({
-    query: { directory: getDirectory(options) },
-    signal: controller.signal,
-  });
+  const events = await client.event.subscribe(
+    { directory: getDirectory(options) },
+    { signal: controller.signal },
+  );
 
   const accepted = await client.session.promptAsync({
-    path: { id: sessionId },
-    query: { directory: getDirectory(options) },
-    body: {
-      agent: options?.agent ?? 'plan',
-      system: options?.system,
-      model,
-      parts: [{ type: 'text', text: message }],
-    },
+    sessionID: sessionId,
+    directory: getDirectory(options),
+    agent: options?.agent ?? 'plan',
+    system: options?.system,
+    parts: [{ type: 'text', text: message }],
   });
   assertNoResultError(accepted);
 
   try {
-    yield* streamOpencodeSessionEvents(sessionId, events.stream);
+    yield* streamOpencodeSessionEvents(sessionId, events.stream, options);
   } catch (error) {
     console.error('[opencode] Streaming session message failed', {
       sessionId,

@@ -5,7 +5,6 @@
   import { renderMarkdown } from '$lib/markdown';
   import type {
     PlanningMessage,
-    PlanningQuestionAnswer,
     PlanningQuestionDialog,
     PlanningQuestionItem,
     PlanningQuestionOption,
@@ -14,6 +13,11 @@
   interface StreamDonePayload extends Record<string, unknown> {
     assistantReply: string;
     messages?: PlanningMessage[];
+  }
+
+  interface StreamQuestionPayload extends Record<string, unknown> {
+    requestId?: string;
+    source?: string;
   }
 
   interface StreamErrorPayload {
@@ -34,14 +38,15 @@
     data?: T;
   }
 
-  interface QuestionAnswerSummaryItem {
-    question: string;
-    answer: string;
-  }
-
   interface StageSummaryItem {
     stageName: string;
     stageDescription: string;
+  }
+
+  interface QuestionAnswerItem {
+    question: string;
+    selected: string[];
+    customAnswer?: string;
   }
 
   const SAVE_PLAN_PROMPT_PREFIX =
@@ -87,6 +92,7 @@
   let successMessage = $state<string | null>(null);
   let resumePendingStream = $state(false);
   let activeQuestionDialog = $state<PlanningQuestionDialog | null>(null);
+  let activeQuestionRequestId = $state<string | null>(null);
   let activeQuestionIndex = $state(0);
   let questionSelections = $state<Record<number, string[]>>({});
   let questionCustomAnswers = $state<Record<number, string>>({});
@@ -108,30 +114,6 @@
 
     resumePendingStream = false;
     void streamMessage({ watch: true });
-  });
-
-  $effect(() => {
-    if (!initialized || sending) {
-      return;
-    }
-
-    const pendingQuestion = findPendingQuestionDialog(messages);
-    if (!pendingQuestion) {
-      if (activeQuestionDialog) {
-        activeQuestionDialog = null;
-        activeQuestionIndex = 0;
-        questionSelections = {};
-        questionCustomAnswers = {};
-      }
-      return;
-    }
-
-    if (questionDialogsEqual(activeQuestionDialog, pendingQuestion)) {
-      return;
-    }
-
-    activeQuestionDialog = pendingQuestion;
-    initializeQuestionResponses(pendingQuestion);
   });
 
   $effect(() => {
@@ -240,7 +222,11 @@
       .filter((option): option is PlanningQuestionOption => option !== null);
 
     const allowCustom =
-      candidate.allowCustom === true || candidate.custom === true;
+      candidate.allowCustom === true ||
+      candidate.custom === true ||
+      (candidate.allowCustom === undefined &&
+        candidate.custom === undefined &&
+        options.length === 0);
 
     if (!question || (options.length === 0 && !allowCustom)) {
       return null;
@@ -320,11 +306,11 @@
     }
   }
 
-  function parseQuestionAnswerSummary(
+  function parseQuestionAnswerMessage(
     content: string,
-  ): QuestionAnswerSummaryItem[] | null {
+  ): QuestionAnswerItem[] | null {
     const trimmed = content.trim();
-    if (!trimmed.startsWith('{')) {
+    if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) {
       return null;
     }
 
@@ -335,69 +321,108 @@
       return null;
     }
 
+    const fromArrayAnswers = (answers: unknown): QuestionAnswerItem[] => {
+      if (!Array.isArray(answers)) {
+        return [];
+      }
+
+      return answers
+        .map((answer, index) => {
+          if (Array.isArray(answer)) {
+            const selected = answer
+              .map((value) => (typeof value === 'string' ? value.trim() : ''))
+              .filter((value) => value.length > 0);
+            return selected.length > 0
+              ? {
+                  question: `Question ${index + 1}`,
+                  selected,
+                }
+              : null;
+          }
+
+          if (typeof answer !== 'object' || answer === null) {
+            return null;
+          }
+
+          const candidate = answer as {
+            header?: unknown;
+            question?: unknown;
+            selected?: unknown;
+            customAnswer?: unknown;
+          };
+
+          const question =
+            typeof candidate.question === 'string' &&
+            candidate.question.trim().length > 0
+              ? candidate.question.trim()
+              : typeof candidate.header === 'string' &&
+                  candidate.header.trim().length > 0
+                ? candidate.header.trim()
+                : `Question ${index + 1}`;
+
+          const selected = Array.isArray(candidate.selected)
+            ? candidate.selected
+                .map((value) => (typeof value === 'string' ? value.trim() : ''))
+                .filter((value) => value.length > 0)
+            : [];
+
+          const customAnswer =
+            typeof candidate.customAnswer === 'string' &&
+            candidate.customAnswer.trim().length > 0
+              ? candidate.customAnswer.trim()
+              : undefined;
+
+          if (selected.length === 0 && !customAnswer) {
+            return null;
+          }
+
+          return {
+            question,
+            selected,
+            customAnswer,
+          };
+        })
+        .filter((item): item is QuestionAnswerItem => item !== null);
+    };
+
+    if (Array.isArray(parsed)) {
+      const answers = fromArrayAnswers(parsed);
+      return answers.length > 0 ? answers : null;
+    }
+
     if (typeof parsed !== 'object' || parsed === null) {
       return null;
     }
 
-    const candidate = parsed as {
-      type?: unknown;
-      answers?: unknown;
-    };
-
+    const candidate = parsed as { type?: unknown; answers?: unknown };
     if (
-      candidate.type !== 'question_answer' ||
-      !Array.isArray(candidate.answers)
+      candidate.type === 'question_answer' ||
+      Array.isArray(candidate.answers)
     ) {
-      return null;
+      const answers = fromArrayAnswers(candidate.answers);
+      return answers.length > 0 ? answers : null;
     }
 
-    const summary = candidate.answers
-      .map((entry) => {
-        if (typeof entry !== 'object' || entry === null) {
-          return null;
-        }
+    return null;
+  }
 
-        const answer = entry as {
-          header?: unknown;
-          question?: unknown;
-          selected?: unknown;
-          customAnswer?: unknown;
-        };
+  function findPreviousQuestionDialog(
+    history: PlanningMessage[],
+    beforeIndex: number,
+  ): PlanningQuestionDialog | null {
+    for (let index = beforeIndex - 1; index >= 0; index -= 1) {
+      const message = history[index];
+      if (message.role === 'user') {
+        continue;
+      }
 
-        const question =
-          typeof answer.question === 'string' &&
-          answer.question.trim().length > 0
-            ? answer.question.trim()
-            : typeof answer.header === 'string' &&
-                answer.header.trim().length > 0
-              ? answer.header.trim()
-              : 'Question';
+      const dialog = parseQuestionDialogMessage(message.content);
+      if (dialog) {
+        return dialog;
+      }
+    }
 
-        const selected = Array.isArray(answer.selected)
-          ? answer.selected
-              .map((value) => (typeof value === 'string' ? value.trim() : ''))
-              .filter((value) => value.length > 0)
-          : [];
-
-        const customAnswer =
-          typeof answer.customAnswer === 'string' &&
-          answer.customAnswer.trim().length > 0
-            ? answer.customAnswer.trim()
-            : undefined;
-
-        const parts = [...selected, ...(customAnswer ? [customAnswer] : [])];
-        if (parts.length === 0) {
-          return null;
-        }
-
-        return {
-          question,
-          answer: parts.join(', '),
-        };
-      })
-      .filter((item): item is QuestionAnswerSummaryItem => item !== null);
-
-    return summary.length > 0 ? summary : null;
+    return null;
   }
 
   function parseStageSummary(content: string): StageSummaryItem[] | null {
@@ -469,6 +494,20 @@
     return stages.length > 0 ? stages : null;
   }
 
+  function isJsonObjectOrArray(content: string): boolean {
+    const trimmed = content.trim();
+    if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) {
+      return false;
+    }
+
+    try {
+      JSON.parse(trimmed);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function getDisplayMessageContent(message: PlanningMessage): string {
     if (
       message.role === 'user' &&
@@ -485,50 +524,12 @@
     return getDisplayMessageContent(message) === 'Save plan';
   }
 
-  function findPendingQuestionDialog(
-    history: PlanningMessage[],
-  ): PlanningQuestionDialog | null {
-    for (let index = history.length - 1; index >= 0; index -= 1) {
-      const message = history[index];
-
-      if (message.role === 'user') {
-        return null;
-      }
-
-      if (message.role !== 'assistant') {
-        continue;
-      }
-
-      const question = parseQuestionDialogMessage(message.content);
-      if (question) {
-        return question;
-      }
-    }
-
-    return null;
-  }
-
-  function questionDialogsEqual(
-    left: PlanningQuestionDialog | null,
-    right: PlanningQuestionDialog | null,
-  ): boolean {
-    if (!left || !right) {
-      return left === right;
-    }
-
-    return JSON.stringify(left) === JSON.stringify(right);
-  }
-
   function initializeQuestionResponses(dialog: PlanningQuestionDialog): void {
     const nextSelections: Record<number, string[]> = {};
     const nextCustomAnswers: Record<number, string> = {};
 
     dialog.questions.forEach((item, index) => {
-      if (item.multiple) {
-        nextSelections[index] = [];
-      } else {
-        nextSelections[index] = item.options[0] ? [item.options[0].label] : [];
-      }
+      nextSelections[index] = [];
       nextCustomAnswers[index] = '';
     });
 
@@ -577,7 +578,10 @@
   function applyStreamEvent(eventBlock: string): {
     done?: StreamDonePayload;
     error?: StreamErrorPayload;
-    question?: PlanningQuestionDialog;
+    question?: {
+      dialog: PlanningQuestionDialog;
+      requestId: string | null;
+    };
   } {
     const lines = eventBlock.split('\n');
     const event =
@@ -624,7 +628,18 @@
     if (event === 'question') {
       const question = normalizeQuestionDialog(payload);
       if (question) {
-        return { question };
+        const envelope = payload as StreamQuestionPayload;
+        const requestId =
+          typeof envelope.requestId === 'string' &&
+          envelope.requestId.length > 0
+            ? envelope.requestId
+            : null;
+        return {
+          question: {
+            dialog: question,
+            requestId,
+          },
+        };
       }
     }
 
@@ -642,6 +657,10 @@
   async function streamMessage(options: {
     content?: string;
     watch: boolean;
+    questionReply?: {
+      requestId: string;
+      answers: string[][];
+    };
   }): Promise<boolean> {
     let ok = true;
     sending = true;
@@ -650,6 +669,7 @@
     streamingReply = '';
     assistantThinking = true;
     activeQuestionDialog = null;
+    activeQuestionRequestId = null;
     activeQuestionIndex = 0;
     questionSelections = {};
     questionCustomAnswers = {};
@@ -663,7 +683,11 @@
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(
-          options.watch ? { watch: true } : { content: options.content },
+          options.watch
+            ? { watch: true }
+            : options.questionReply
+              ? { questionReply: options.questionReply }
+              : { content: options.content },
         ),
       });
 
@@ -699,8 +723,10 @@
           }
 
           if (result.question) {
-            activeQuestionDialog = result.question;
-            initializeQuestionResponses(result.question);
+            activeQuestionDialog = result.question.dialog;
+            activeQuestionRequestId = result.question.requestId;
+            initializeQuestionResponses(result.question.dialog);
+            assistantThinking = false;
           }
 
           if (result.done) {
@@ -833,7 +859,9 @@
   }
 
   function canAnswerQuestion(questionIndex: number): boolean {
-    const selected = questionSelections[questionIndex] ?? [];
+    const selected = (questionSelections[questionIndex] ?? []).filter(
+      (value) => value.trim().length > 0,
+    );
     const customAnswer = (questionCustomAnswers[questionIndex] ?? '').trim();
     return selected.length > 0 || customAnswer.length > 0;
   }
@@ -863,21 +891,15 @@
     );
   }
 
-  function buildQuestionAnswers(): PlanningQuestionAnswer[] {
+  function buildToolQuestionAnswers(): string[][] {
     if (!activeQuestionDialog) {
       return [];
     }
 
-    return activeQuestionDialog.questions.map((item, index) => {
+    return activeQuestionDialog.questions.map((_item, index) => {
       const selected = questionSelections[index] ?? [];
       const customAnswer = (questionCustomAnswers[index] ?? '').trim();
-
-      return {
-        header: item.header,
-        question: item.question,
-        selected,
-        customAnswer: customAnswer.length > 0 ? customAnswer : undefined,
-      };
+      return customAnswer.length > 0 ? [...selected, customAnswer] : selected;
     });
   }
 
@@ -891,9 +913,19 @@
       return;
     }
 
-    const answers = buildQuestionAnswers();
-    const content = JSON.stringify({ type: 'question_answer', answers });
-    await streamMessage({ content, watch: false });
+    if (!activeQuestionRequestId) {
+      errorMessage = 'Question reply request id is missing.';
+      return;
+    }
+
+    const toolAnswers = buildToolQuestionAnswers();
+    await streamMessage({
+      watch: false,
+      questionReply: {
+        requestId: activeQuestionRequestId,
+        answers: toolAnswers,
+      },
+    });
   }
 
   async function saveConversation(): Promise<void> {
@@ -980,43 +1012,107 @@
       </div>
     {:else}
       <div class="space-y-3">
-        {#each messages as message (message.id)}
+        {#each messages as message, messageIndex (message.id)}
           {@const messageQuestionDialog =
-            message.role === 'assistant'
+            message.role !== 'user'
               ? parseQuestionDialogMessage(message.content)
               : null}
-          {@const hideMessage =
-            message.role === 'assistant' && messageQuestionDialog !== null}
           {@const messageQuestionAnswers =
-            message.role === 'user'
-              ? parseQuestionAnswerSummary(message.content)
+            message.role !== 'assistant'
+              ? parseQuestionAnswerMessage(message.content)
               : null}
+          {@const answeredQuestionDialog = messageQuestionAnswers
+            ? findPreviousQuestionDialog(messages, messageIndex)
+            : null}
           {@const messageStageSummary =
             message.role === 'assistant'
               ? parseStageSummary(message.content)
               : null}
-          {#if !hideMessage}
+          {@const renderAsUserBubble =
+            message.role === 'user' || Boolean(messageQuestionAnswers)}
+          {@const hideRawToolPayload =
+            (message.role === 'tool' || message.role === 'system') &&
+            !messageQuestionDialog &&
+            !messageQuestionAnswers &&
+            !messageStageSummary &&
+            isJsonObjectOrArray(message.content)}
+          {#if !hideRawToolPayload}
             <div
               class={`stacked-chat-font w-fit max-w-[90%] rounded-2xl border px-4 py-3 text-sm ${
-                message.role === 'user'
+                renderAsUserBubble
                   ? 'ml-auto rounded-br-none border-[var(--stacked-accent)] bg-blue-500/20 text-blue-50'
                   : 'mr-auto rounded-bl-none border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] text-[var(--stacked-text)]'
               }`}
             >
               <p class="mb-1 text-[11px] uppercase tracking-wide opacity-70">
-                {message.role === 'assistant' ? 'agent' : message.role}
+                {renderAsUserBubble
+                  ? 'user'
+                  : message.role === 'assistant'
+                    ? 'agent'
+                    : message.role === 'tool'
+                      ? 'tool'
+                      : message.role}
               </p>
-              {#if messageQuestionAnswers}
-                <div class="space-y-1.5">
-                  {#each messageQuestionAnswers as answer, answerIndex (`${answer.question}-${answer.answer}-${answerIndex}`)}
-                    <p class="leading-snug">
-                      <span
-                        class="stacked-subtle text-xs uppercase tracking-wide"
-                        >{answer.question}</span
+              {#if messageQuestionDialog}
+                <div class="space-y-2">
+                  <p class="stacked-subtle text-xs uppercase tracking-wide">
+                    Questions asked
+                  </p>
+                  {#each messageQuestionDialog.questions as question, questionIndex (`${question.header}-${questionIndex}`)}
+                    <div
+                      class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg)]/40 p-3"
+                    >
+                      <p
+                        class="text-xs font-semibold uppercase tracking-wide opacity-70"
                       >
-                      <span class="mx-1 opacity-70">:</span>
-                      <span class="text-sm">{answer.answer}</span>
-                    </p>
+                        {question.header}
+                      </p>
+                      <p class="mt-1 text-sm">{question.question}</p>
+                      {#if question.options.length > 0}
+                        <ul class="mt-2 space-y-1 text-sm">
+                          {#each question.options as option, optionIndex (`${option.label}-${optionIndex}`)}
+                            <li class="stacked-subtle">
+                              - {option.label}
+                              {#if option.description}
+                                <span class="opacity-80">
+                                  ({option.description})</span
+                                >
+                              {/if}
+                            </li>
+                          {/each}
+                        </ul>
+                      {/if}
+                      {#if question.allowCustom}
+                        <p class="mt-2 text-xs stacked-subtle">
+                          Includes custom answer input.
+                        </p>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {:else if messageQuestionAnswers}
+                <div class="space-y-2">
+                  <p class="stacked-subtle text-xs uppercase tracking-wide">
+                    Answers given
+                  </p>
+                  {#each messageQuestionAnswers as answer, answerIndex (`${answer.question}-${answerIndex}`)}
+                    {@const matchedQuestion =
+                      answeredQuestionDialog?.questions[answerIndex]}
+                    {@const answerValue = [
+                      ...answer.selected,
+                      ...(answer.customAnswer ? [answer.customAnswer] : []),
+                    ].join(', ')}
+                    <div
+                      class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg)]/40 p-3"
+                    >
+                      <p
+                        class="text-xs font-semibold uppercase tracking-wide opacity-70"
+                      >
+                        {matchedQuestion?.header ??
+                          `Question ${answerIndex + 1}`}
+                      </p>
+                      <p class="mt-1 text-sm">{answerValue}</p>
+                    </div>
                   {/each}
                 </div>
               {:else if messageStageSummary}

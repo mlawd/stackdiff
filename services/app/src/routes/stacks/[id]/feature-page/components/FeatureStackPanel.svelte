@@ -12,6 +12,7 @@
   } from '../behavior';
   import {
     getImplementationStatus,
+    loadStageReviewSession,
     startFeatureRequest,
     syncStackRequest,
   } from '../api-client';
@@ -22,8 +23,10 @@
   import type {
     FeatureActionState,
     ImplementationStageRuntime,
+    ReviewSessionResponse,
   } from '../contracts';
   import type { StackViewModel } from '$lib/types/stack';
+  import ReviewChat from '$lib/components/ReviewChat.svelte';
   import FeatureActionAlerts from './FeatureActionAlerts.svelte';
   import ImplementationStageList from './ImplementationStageList.svelte';
 
@@ -42,7 +45,18 @@
   let implementationRuntimeByStageId = $state<
     Record<string, ImplementationStageRuntime>
   >({});
+  let reviewLoading = $state(false);
+  let reviewError = $state<string | null>(null);
+  let selectedReviewStageId = $state<string | null>(null);
+  let reviewSession = $state<ReviewSessionResponse | null>(null);
   let runtimeInvalidating = false;
+
+  let selectedReviewStage = $derived(
+    selectedReviewStageId
+      ? (stack.stages ?? []).find((stage) => stage.id === selectedReviewStageId) ??
+          null
+      : null,
+  );
 
   function hasOutOfSyncStages(): boolean {
     return (stack.stages ?? []).some((stage) => stack.stageSyncById?.[stage.id]?.isOutOfSync);
@@ -202,6 +216,31 @@
       };
     }
   }
+
+  async function openReviewStage(stageId: string): Promise<void> {
+    selectedReviewStageId = stageId;
+    reviewLoading = true;
+    reviewError = null;
+    reviewSession = null;
+
+    try {
+      reviewSession = await loadStageReviewSession(stack.id, stageId);
+    } catch (error) {
+      reviewError =
+        error instanceof Error
+          ? error.message
+          : 'Unable to open review session.';
+    } finally {
+      reviewLoading = false;
+    }
+  }
+
+  function closeReviewStage(): void {
+    selectedReviewStageId = null;
+    reviewSession = null;
+    reviewError = null;
+    reviewLoading = false;
+  }
 </script>
 
 <div class="space-y-4">
@@ -247,6 +286,47 @@
       stages={stack.stages ?? []}
       stageSyncById={stack.stageSyncById}
       {implementationRuntimeByStageId}
+      onOpenReview={openReviewStage}
     />
+
+    {#if selectedReviewStageId}
+      <div class="mt-4 rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] p-3">
+        <div class="mb-3 flex items-center justify-between gap-2">
+          <p class="text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle">
+            Review chat
+          </p>
+          <button
+            type="button"
+            class="text-xs stacked-subtle transition hover:text-[var(--stacked-text)]"
+            onclick={closeReviewStage}
+          >
+            Close
+          </button>
+        </div>
+
+        {#if selectedReviewStage}
+          <p class="mb-3 text-sm text-[var(--stacked-text)]">
+            {selectedReviewStage.title}
+          </p>
+        {/if}
+
+        {#if reviewError}
+          <div class="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            {reviewError}
+          </div>
+        {/if}
+
+        {#if reviewLoading}
+          <p class="text-sm stacked-subtle">Loading review session...</p>
+        {:else if reviewSession && selectedReviewStageId}
+          <ReviewChat
+            stackId={stack.id}
+            stageId={selectedReviewStageId}
+            messages={reviewSession.messages}
+            awaitingResponse={reviewSession.awaitingResponse}
+          />
+        {/if}
+      </div>
+    {/if}
   </div>
 </div>

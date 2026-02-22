@@ -14,14 +14,17 @@
     stage,
     runtime,
     syncMetadata,
+    onOpenReview,
   }: {
     stage: FeatureStage;
     runtime: ImplementationStageRuntime | undefined;
     syncMetadata: StageSyncMetadata;
+    onOpenReview?: (stageId: string) => void;
   } = $props();
 
   let currentStageStatus = $derived(runtime?.stageStatus ?? stage.status);
   let currentStagePullRequest = $derived(runtime?.pullRequest ?? stage.pullRequest);
+  let canOpenReview = $derived(Boolean(currentStagePullRequest?.number));
   let stageWorking = $derived(
     currentStageStatus === 'in-progress' &&
       (runtime?.runtimeState === 'busy' || runtime?.runtimeState === 'retry'),
@@ -109,6 +112,14 @@
         </Badge>
       </button>
     {/if}
+    <button
+      type="button"
+      class="rounded border border-[var(--stacked-border-soft)] px-2 py-1 text-xs stacked-subtle transition hover:text-[var(--stacked-text)] disabled:cursor-not-allowed disabled:opacity-50"
+      disabled={!canOpenReview}
+      onclick={() => onOpenReview?.(stage.id)}
+    >
+      Review
+    </button>
     {#if currentStageStatus === 'in-progress' && runtime}
       <p class="text-xs stacked-subtle whitespace-nowrap">
         {runtime.todoCompleted}/{runtime.todoTotal} Todos done

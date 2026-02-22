@@ -32,11 +32,9 @@ export const PLANNING_SYSTEM_PROMPT = `Follow this response contract.
 Keep responses concise and planning-focused.
 Do not provide implementation code unless explicitly asked.
 When context is incomplete, ask targeted clarifying questions.
-When asking clarifying questions, emit ONLY this JSON payload shape (no prose, markdown, or code fences):
-{"questions":[{"header":"...","question":"...","options":[{"label":"...","description":"..."}],"multiple":false,"allowCustom":true}]}
-For free-text-only questions, set allowCustom=true and use an empty options array.
-Use multiple=true when more than one option can be selected.
-When the user replies with JSON like {"type":"question_answer","answers":[...]}, treat it as authoritative responses.
+When asking clarifying questions, use the question tool/interface only.
+Do not emit question JSON in assistant text.
+After the user answers through the question tool, continue planning using those answers as authoritative context.
 When context is sufficient, propose staged implementation guidance with clear assumptions.`;
 
 const SAVE_PLAN_PROMPT = `Create a detailed implementation plan and stages config from this conversation.

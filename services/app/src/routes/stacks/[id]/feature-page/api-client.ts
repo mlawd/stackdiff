@@ -2,6 +2,7 @@ import type {
   ApiErrorEnvelope,
   ApiSuccessEnvelope,
   ImplementationStatusResponse,
+  ReviewSessionResponse,
   StartResponse,
   SyncStackResponse,
 } from './contracts';
@@ -62,5 +63,16 @@ export function syncStackRequest(stackId: string): Promise<SyncStackResponse> {
     `/api/stacks/${stackId}/sync`,
     { method: 'POST' },
     'Unable to sync stack.',
+  );
+}
+
+export function loadStageReviewSession(
+  stackId: string,
+  stageId: string,
+): Promise<ReviewSessionResponse> {
+  return requestJson<ReviewSessionResponse>(
+    `/api/stacks/${stackId}/stages/${stageId}/review/session`,
+    { method: 'POST' },
+    'Unable to load review session.',
   );
 }

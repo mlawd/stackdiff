@@ -1,0 +1,16 @@
+import type { RequestHandler } from '@sveltejs/kit';
+
+import { fail, ok } from '$lib/server/api-response';
+import { requireStackId, requireStageId } from '$lib/server/api-validators';
+import { loadStageReviewSession } from '$lib/server/stage-review-service';
+
+export const POST: RequestHandler = async ({ params }) => {
+  try {
+    const stackId = requireStackId(params.id);
+    const stageId = requireStageId(params.stageId);
+    const payload = await loadStageReviewSession({ stackId, stageId });
+    return ok(payload);
+  } catch (error) {
+    return fail(error);
+  }
+};

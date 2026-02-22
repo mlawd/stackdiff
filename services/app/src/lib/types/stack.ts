@@ -38,9 +38,10 @@ export interface StackFile {
   stacks: StackMetadata[];
   planningSessions?: StackPlanningSession[];
   implementationSessions?: StackImplementationSession[];
+  reviewSessions?: StackReviewSession[];
 }
 
-export type PlanningRole = 'user' | 'assistant' | 'system';
+export type PlanningRole = 'user' | 'assistant' | 'system' | 'tool';
 
 export interface PlanningMessage {
   id: string;
@@ -90,6 +91,15 @@ export interface StackImplementationSession {
   stageId: string;
   branchName: string;
   worktreePathKey: string;
+  opencodeSessionId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StackReviewSession {
+  id: string;
+  stackId: string;
+  stageId: string;
   opencodeSessionId?: string;
   createdAt: string;
   updatedAt: string;

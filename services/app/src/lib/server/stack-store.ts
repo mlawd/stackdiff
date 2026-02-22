@@ -10,6 +10,7 @@ import type {
   StackFile,
   StackMetadata,
   StackPlanningSession,
+  StackReviewSession,
   StackUpsertInput,
 } from '$lib/types/stack';
 import { runCommand } from '$lib/server/command';
@@ -110,7 +111,10 @@ function isStackFile(value: unknown): value is StackFile {
         file.planningSessions.every(isStackPlanningSession))) &&
     (file.implementationSessions === undefined ||
       (Array.isArray(file.implementationSessions) &&
-        file.implementationSessions.every(isStackImplementationSession)))
+        file.implementationSessions.every(isStackImplementationSession))) &&
+    (file.reviewSessions === undefined ||
+      (Array.isArray(file.reviewSessions) &&
+        file.reviewSessions.every(isStackReviewSession)))
   );
 }
 
@@ -158,6 +162,24 @@ function isStackImplementationSession(
   );
 }
 
+function isStackReviewSession(value: unknown): value is StackReviewSession {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const session = value as Partial<StackReviewSession>;
+
+  return (
+    typeof session.id === 'string' &&
+    typeof session.stackId === 'string' &&
+    typeof session.stageId === 'string' &&
+    (session.opencodeSessionId === undefined ||
+      typeof session.opencodeSessionId === 'string') &&
+    typeof session.createdAt === 'string' &&
+    typeof session.updatedAt === 'string'
+  );
+}
+
 function normalizeStackFile(file: StackFile): StackFile {
   return {
     ...file,
@@ -173,6 +195,7 @@ function normalizeStackFile(file: StackFile): StackFile {
     })),
     planningSessions: file.planningSessions ?? [],
     implementationSessions: file.implementationSessions ?? [],
+    reviewSessions: file.reviewSessions ?? [],
   };
 }
 
@@ -187,7 +210,7 @@ async function readStackFile(): Promise<StackFile> {
 
   if (!isStackFile(parsed)) {
     throw new Error(
-      `Invalid stacks.json shape. Expected version ${STACK_FILE_VERSION} with valid stacks and planningSessions.`,
+      `Invalid stacks.json shape. Expected version ${STACK_FILE_VERSION} with valid stacks and session collections.`,
     );
   }
 
@@ -220,6 +243,10 @@ function createSessionId(): string {
 
 function createImplementationSessionId(): string {
   return `impl-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function createReviewSessionId(): string {
+  return `review-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function normalizeInput(input: StackUpsertInput): StackUpsertInput {
@@ -428,6 +455,87 @@ export async function createOrGetPlanningSession(
 
   return created;
 }
+
+export async function getReviewSessionByStackAndStage(
+  stackId: string,
+  stageId: string,
+): Promise<StackReviewSession | undefined> {
+  const file = await readStackFile();
+  return file.reviewSessions?.find(
+    (session) => session.stackId === stackId && session.stageId === stageId,
+  );
+}
+
+export async function createOrGetReviewSession(
+  stackId: string,
+  stageId: string,
+): Promise<StackReviewSession> {
+  const file = await readStackFile();
+  const existing = file.reviewSessions?.find(
+    (session) => session.stackId === stackId && session.stageId === stageId,
+  );
+
+  if (existing) {
+    return existing;
+  }
+
+  const now = new Date().toISOString();
+  const created: StackReviewSession = {
+    id: createReviewSessionId(),
+    stackId,
+    stageId,
+    opencodeSessionId: undefined,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  file.reviewSessions = [...(file.reviewSessions ?? []), created];
+  await writeStackFile(file);
+
+  return created;
+}
+
+export async function setReviewSessionOpencodeId(
+  stackId: string,
+  stageId: string,
+  opencodeSessionId: string,
+): Promise<StackReviewSession> {
+  const file = await readStackFile();
+  const session = file.reviewSessions?.find(
+    (candidate) =>
+      candidate.stackId === stackId && candidate.stageId === stageId,
+  );
+
+  if (!session) {
+    throw new Error('Review session not found.');
+  }
+
+  session.opencodeSessionId = opencodeSessionId;
+  session.updatedAt = new Date().toISOString();
+  await writeStackFile(file);
+
+  return session;
+}
+
+export async function touchReviewSessionUpdatedAt(
+  stackId: string,
+  stageId: string,
+): Promise<StackReviewSession> {
+  const file = await readStackFile();
+  const session = file.reviewSessions?.find(
+    (candidate) =>
+      candidate.stackId === stackId && candidate.stageId === stageId,
+  );
+
+  if (!session) {
+    throw new Error('Review session not found.');
+  }
+
+  session.updatedAt = new Date().toISOString();
+  await writeStackFile(file);
+
+  return session;
+}
 export async function setPlanningSessionOpencodeId(
   id: string,
   opencodeSessionId: string,
@@ -535,6 +643,9 @@ export async function deleteStack(id: string): Promise<void> {
       (session) => session.stackId !== id,
     ),
     implementationSessions: (file.implementationSessions ?? []).filter(
+      (session) => session.stackId !== id,
+    ),
+    reviewSessions: (file.reviewSessions ?? []).filter(
       (session) => session.stackId !== id,
     ),
   });

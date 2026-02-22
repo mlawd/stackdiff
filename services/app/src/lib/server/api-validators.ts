@@ -36,15 +36,69 @@ export function parseStackUpsertInput(body: unknown): StackUpsertInput {
 export function parsePlanningMessageBody(body: unknown): {
   content?: string;
   watch: boolean;
+  questionReply?: {
+    requestId: string;
+    answers: string[][];
+  };
 } {
   if (typeof body !== 'object' || body === null) {
     throw badRequest('Invalid request body.');
   }
 
-  const candidate = body as { content?: unknown; watch?: unknown };
+  const candidate = body as {
+    content?: unknown;
+    watch?: unknown;
+    questionReply?: unknown;
+  };
   const watch = candidate.watch === true;
   if (watch) {
     return { watch: true };
+  }
+
+  if (typeof candidate.questionReply === 'object' && candidate.questionReply) {
+    const reply = candidate.questionReply as {
+      requestId?: unknown;
+      answers?: unknown;
+    };
+    const requestId =
+      typeof reply.requestId === 'string' ? reply.requestId.trim() : '';
+    if (!requestId) {
+      throw badRequest('Question reply request id is required.');
+    }
+
+    if (!Array.isArray(reply.answers)) {
+      throw badRequest('Question reply answers must be an array.');
+    }
+
+    const answers = reply.answers.map((answerGroup) => {
+      if (!Array.isArray(answerGroup)) {
+        throw badRequest('Each question reply answer must be an array.');
+      }
+
+      const values = answerGroup
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value) => value.length > 0);
+
+      if (values.length === 0) {
+        throw badRequest(
+          'Each question reply answer must include at least one value.',
+        );
+      }
+
+      return values;
+    });
+
+    if (answers.length === 0) {
+      throw badRequest('Question reply answers are required.');
+    }
+
+    return {
+      watch: false,
+      questionReply: {
+        requestId,
+        answers,
+      },
+    };
   }
 
   const content = String(candidate.content ?? '').trim();

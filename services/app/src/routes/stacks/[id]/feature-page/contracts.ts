@@ -1,6 +1,8 @@
 import type {
   FeatureStageStatus,
+  PlanningMessage,
   StackPullRequest,
+  StackReviewSession,
 } from '../../../../lib/types/stack';
 
 export interface ApiErrorObject {
@@ -52,4 +54,10 @@ export interface FeatureActionState {
   pending: boolean;
   error: string | null;
   success: string | null;
+}
+
+export interface ReviewSessionResponse {
+  session: StackReviewSession;
+  messages: PlanningMessage[];
+  awaitingResponse: boolean;
 }
