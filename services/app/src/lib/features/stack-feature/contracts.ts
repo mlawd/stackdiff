@@ -3,7 +3,7 @@ import type {
   PlanningMessage,
   StackPullRequest,
   StackReviewSession,
-} from '../../../../lib/types/stack';
+} from '$lib/types/stack';
 
 export interface ApiErrorObject {
   code: string;

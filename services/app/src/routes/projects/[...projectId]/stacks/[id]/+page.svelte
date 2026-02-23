@@ -2,8 +2,8 @@
   import { lockBodyScroll, portalToBody } from '$lib/client/overlay';
   import PlanningChat from '$lib/components/PlanningChat.svelte';
   import { projectStacksPath } from '$lib/project-paths';
-  import FeaturePageHeader from '../../../../stacks/[id]/feature-page/components/FeaturePageHeader.svelte';
-  import FeatureStackPanel from '../../../../stacks/[id]/feature-page/components/FeatureStackPanel.svelte';
+  import FeaturePageHeader from '$lib/features/stack-feature/components/FeaturePageHeader.svelte';
+  import FeatureStackPanel from '$lib/features/stack-feature/components/FeatureStackPanel.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();

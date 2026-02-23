@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolve } from '$app/paths';
   import StackStatusBadge from '$lib/components/stack/StackStatusBadge.svelte';
   import StackTypeBadge from '$lib/components/stack/StackTypeBadge.svelte';
   import type { StackViewModel } from '$lib/types/stack';
@@ -18,7 +19,7 @@
   class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b stacked-divider pb-3"
 >
   <a
-    href={backHref}
+    href={resolve(backHref)}
     data-sveltekit-reload
     class="stacked-link text-sm font-semibold">Back to features</a
   >

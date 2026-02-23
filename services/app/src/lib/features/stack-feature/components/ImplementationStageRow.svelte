@@ -6,13 +6,12 @@
     CodePullRequestOutline,
   } from 'flowbite-svelte-icons';
 
-  import type {
-    FeatureStage,
-    FeatureStageStatus,
-    StageSyncMetadata,
-  } from '$lib/types/stack';
+  import type { FeatureStage, StageSyncMetadata } from '$lib/types/stack';
   import type { ImplementationStageRuntime } from '../contracts';
-  import { implementationStageLabel } from '../behavior';
+  import {
+    implementationStageColor,
+    implementationStageLabel,
+  } from '../behavior';
 
   let {
     stage,
@@ -38,24 +37,6 @@
 
   function openPullRequest(url: string): void {
     window.open(url, '_blank', 'noopener,noreferrer');
-  }
-
-  function stageStatusColor(
-    status: FeatureStageStatus,
-  ): 'gray' | 'yellow' | 'green' | 'purple' {
-    if (status === 'done') {
-      return 'green';
-    }
-
-    if (status === 'review-ready') {
-      return 'purple';
-    }
-
-    if (status === 'in-progress') {
-      return 'yellow';
-    }
-
-    return 'gray';
   }
 </script>
 
@@ -85,7 +66,7 @@
       {/if}
       <Badge
         rounded
-        color={stageStatusColor(currentStageStatus)}
+        color={implementationStageColor(currentStageStatus)}
         class="inline-flex items-center"
       >
         <span>{implementationStageLabel(currentStageStatus)}</span>
@@ -126,7 +107,7 @@
       {/if}
       {#if currentStageStatus === 'in-progress' && runtime}
         <p
-          class="inline-flex items-center gap-1.5 text-xs stacked-subtle whitespace-nowrap"
+          class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs stacked-subtle"
         >
           {#if stageWorking}
             <Spinner

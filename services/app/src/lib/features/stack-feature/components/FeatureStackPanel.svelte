@@ -1,7 +1,7 @@
 <script lang="ts">
   import { invalidateAll } from '$app/navigation';
-  import { Button } from 'flowbite-svelte';
 
+  import type { StackViewModel } from '$lib/types/stack';
   import {
     canStartFeature as canStartFeatureWithRuntime,
     formatStartSuccessMessage,
@@ -20,16 +20,14 @@
     fetchRuntimeUpdateEntries,
     mergeRuntimeByStageId,
   } from '../runtime-polling';
-  import { lockBodyScroll, portalToBody } from '$lib/client/overlay';
   import type {
     FeatureActionState,
     ImplementationStageRuntime,
     ReviewSessionResponse,
   } from '../contracts';
-  import type { StackViewModel } from '$lib/types/stack';
-  import ReviewChat from '$lib/components/ReviewChat.svelte';
   import FeatureActionAlerts from './FeatureActionAlerts.svelte';
-  import ImplementationStageList from './ImplementationStageList.svelte';
+  import FeatureImplementationSection from './FeatureImplementationSection.svelte';
+  import FeatureReviewDialog from './FeatureReviewDialog.svelte';
 
   let {
     stack,
@@ -59,6 +57,7 @@
   let selectedReviewStageId = $state<string | null>(null);
   let reviewSession = $state<ReviewSessionResponse | null>(null);
   let runtimeInvalidating = false;
+  let reviewRequestToken = 0;
 
   let selectedReviewStage = $derived(
     selectedReviewStageId
@@ -164,14 +163,6 @@
     };
   });
 
-  $effect(() => {
-    if (!selectedReviewStageId) {
-      return;
-    }
-
-    return lockBodyScroll();
-  });
-
   async function startFeature(): Promise<void> {
     if (!canStartFeature()) {
       return;
@@ -238,24 +229,37 @@
   }
 
   async function openReviewStage(stageId: string): Promise<void> {
+    const requestToken = ++reviewRequestToken;
     selectedReviewStageId = stageId;
     reviewLoading = true;
     reviewError = null;
     reviewSession = null;
 
     try {
-      reviewSession = await loadStageReviewSession(stack.id, stageId);
+      const session = await loadStageReviewSession(stack.id, stageId);
+      if (requestToken !== reviewRequestToken) {
+        return;
+      }
+
+      reviewSession = session;
     } catch (error) {
+      if (requestToken !== reviewRequestToken) {
+        return;
+      }
+
       reviewError =
         error instanceof Error
           ? error.message
           : 'Unable to open review session.';
     } finally {
-      reviewLoading = false;
+      if (requestToken === reviewRequestToken) {
+        reviewLoading = false;
+      }
     }
   }
 
   function closeReviewStage(): void {
+    reviewRequestToken += 1;
     selectedReviewStageId = null;
     reviewSession = null;
     reviewError = null;
@@ -271,116 +275,30 @@
     startSuccess={startAction.success}
   />
 
-  {#if hasSavedPlan}
-    <div>
-      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p
-          class="text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle"
-        >
-          Implementation stages
-        </p>
-        <div class="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            color="alternative"
-            onclick={syncStack}
-            disabled={!canSyncStack()}
-            loading={syncAction.pending}
-          >
-            Sync Stack
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            color="primary"
-            onclick={startFeature}
-            disabled={!canStartFeature()}
-            loading={startAction.pending}
-          >
-            {startButtonLabel()}
-          </Button>
-        </div>
-      </div>
-
-      <ImplementationStageList
-        stages={stack.stages ?? []}
-        stageSyncById={stack.stageSyncById}
-        {implementationRuntimeByStageId}
-        onOpenReview={openReviewStage}
-      />
-    </div>
-  {:else}
-    <div
-      class="rounded-xl border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] p-4"
-    >
-      <p class="text-sm stacked-subtle">
-        Save a plan to generate implementation stages.
-      </p>
-      <Button
-        type="button"
-        size="sm"
-        color="primary"
-        class="mt-3"
-        onclick={onOpenPlanningChat}
-      >
-        Open planning chat
-      </Button>
-    </div>
-  {/if}
+  <FeatureImplementationSection
+    {hasSavedPlan}
+    stages={stack.stages ?? []}
+    stageSyncById={stack.stageSyncById}
+    {implementationRuntimeByStageId}
+    {startAction}
+    {syncAction}
+    canStartFeature={canStartFeature()}
+    canSyncStack={canSyncStack()}
+    startButtonLabel={startButtonLabel()}
+    {onOpenPlanningChat}
+    onStartFeature={startFeature}
+    onSyncStack={syncStack}
+    onOpenReview={openReviewStage}
+  />
 </div>
 
-{#if selectedReviewStageId}
-  <div
-    use:portalToBody
-    class="fixed inset-0 z-50 flex h-screen w-screen flex-col bg-[var(--stacked-bg)]"
-    role="dialog"
-    aria-modal="true"
-    aria-label="Review chat"
-  >
-    <div
-      class="flex items-start justify-between gap-3 border-b stacked-divider px-4 py-3 sm:px-6 sm:py-4"
-    >
-      <div>
-        <p
-          class="text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle"
-        >
-          Review chat
-        </p>
-        {#if selectedReviewStage}
-          <p class="mt-1 text-sm text-[var(--stacked-text)]">
-            {selectedReviewStage.title}
-          </p>
-        {/if}
-      </div>
-      <button
-        type="button"
-        class="rounded border border-[var(--stacked-border-soft)] px-2.5 py-1 text-xs stacked-subtle transition hover:text-[var(--stacked-text)]"
-        onclick={closeReviewStage}
-      >
-        Close
-      </button>
-    </div>
-
-    <div class="min-h-0 flex-1 px-4 py-3 sm:px-6 sm:py-4">
-      {#if reviewError}
-        <div
-          class="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200"
-        >
-          {reviewError}
-        </div>
-      {/if}
-
-      {#if reviewLoading}
-        <p class="text-sm stacked-subtle">Loading review session...</p>
-      {:else if reviewSession && selectedReviewStageId}
-        <ReviewChat
-          stackId={stack.id}
-          stageId={selectedReviewStageId}
-          messages={reviewSession.messages}
-          awaitingResponse={reviewSession.awaitingResponse}
-        />
-      {/if}
-    </div>
-  </div>
-{/if}
+<FeatureReviewDialog
+  open={Boolean(selectedReviewStageId)}
+  stackId={stack.id}
+  stageId={selectedReviewStageId}
+  stageTitle={selectedReviewStage?.title ?? null}
+  {reviewLoading}
+  {reviewError}
+  {reviewSession}
+  onClose={closeReviewStage}
+/>

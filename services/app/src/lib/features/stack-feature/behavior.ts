@@ -1,7 +1,5 @@
-import type {
-  FeatureStage,
-  FeatureStageStatus,
-} from '../../../../lib/types/stack';
+import type { FeatureStage, FeatureStageStatus } from '$lib/types/stack';
+
 import type {
   ImplementationStageRuntime,
   StartResponse,
