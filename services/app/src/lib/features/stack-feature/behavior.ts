@@ -152,6 +152,42 @@ export function shouldInvalidateFromRuntimeUpdates(input: {
   return false;
 }
 
+export function stageIdsTransitionedToReviewReady(input: {
+  stages: FeatureStage[];
+  implementationRuntimeByStageId: Record<string, ImplementationStageRuntime>;
+  updates: ReadonlyArray<readonly [string, ImplementationStageRuntime]>;
+}): string[] {
+  const stageById = new Map(input.stages.map((stage) => [stage.id, stage]));
+  const transitionedStageIds: string[] = [];
+
+  for (const [stageId, runtime] of input.updates) {
+    const stageEntry = stageById.get(stageId);
+    if (!stageEntry) {
+      continue;
+    }
+
+    const previousStatus = stageStatus(
+      input.implementationRuntimeByStageId,
+      stageId,
+      stageEntry.status,
+    );
+    const nextStatus = stageStatus(
+      {
+        ...input.implementationRuntimeByStageId,
+        [stageId]: runtime,
+      },
+      stageId,
+      stageEntry.status,
+    );
+
+    if (previousStatus === 'in-progress' && nextStatus === 'review-ready') {
+      transitionedStageIds.push(stageId);
+    }
+  }
+
+  return transitionedStageIds;
+}
+
 export function formatStartSuccessMessage(response: StartResponse): string {
   const titledStage = response.stageTitle?.trim();
   const stageLabel = response.stageNumber

@@ -7,6 +7,7 @@ import {
   implementationStageColor,
   implementationStageLabel,
   shouldInvalidateFromRuntimeUpdates,
+  stageIdsTransitionedToReviewReady,
   stageIdsForRuntimePolling,
   startButtonLabel,
   stagePullRequest,
@@ -260,5 +261,89 @@ describe('feature page behavior contracts', () => {
     expect(formatSyncSuccessMessage(syncResponse)).toBe(
       'Stack sync complete. Rebases: 2. Skipped: 1.',
     );
+  });
+
+  it('detects in-progress to review-ready runtime transitions', () => {
+    const stages = [
+      { id: 's-1', title: 'Stage 1', status: 'in-progress' },
+      { id: 's-2', title: 'Stage 2', status: 'review-ready' },
+      { id: 's-3', title: 'Stage 3', status: 'not-started' },
+    ] as const;
+
+    expect(
+      stageIdsTransitionedToReviewReady({
+        stages: [...stages],
+        implementationRuntimeByStageId: {},
+        updates: [
+          [
+            's-1',
+            {
+              stageStatus: 'review-ready',
+              runtimeState: 'idle',
+              todoCompleted: 4,
+              todoTotal: 4,
+            },
+          ],
+          [
+            's-2',
+            {
+              stageStatus: 'review-ready',
+              runtimeState: 'idle',
+              todoCompleted: 4,
+              todoTotal: 4,
+            },
+          ],
+          [
+            's-3',
+            {
+              stageStatus: 'review-ready',
+              runtimeState: 'idle',
+              todoCompleted: 1,
+              todoTotal: 1,
+            },
+          ],
+          [
+            'missing',
+            {
+              stageStatus: 'review-ready',
+              runtimeState: 'idle',
+              todoCompleted: 1,
+              todoTotal: 1,
+            },
+          ],
+        ],
+      }),
+    ).toEqual(['s-1']);
+  });
+
+  it('uses runtime fallback status when detecting review-ready transitions', () => {
+    const stages = [
+      { id: 's-1', title: 'Stage 1', status: 'not-started' },
+    ] as const;
+
+    expect(
+      stageIdsTransitionedToReviewReady({
+        stages: [...stages],
+        implementationRuntimeByStageId: {
+          's-1': {
+            stageStatus: 'in-progress',
+            runtimeState: 'busy',
+            todoCompleted: 1,
+            todoTotal: 3,
+          },
+        },
+        updates: [
+          [
+            's-1',
+            {
+              stageStatus: 'review-ready',
+              runtimeState: 'idle',
+              todoCompleted: 3,
+              todoTotal: 3,
+            },
+          ],
+        ],
+      }),
+    ).toEqual(['s-1']);
   });
 });

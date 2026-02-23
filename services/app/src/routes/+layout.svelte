@@ -1,7 +1,15 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import { onMount } from 'svelte';
   import { Button } from 'flowbite-svelte';
   import type { Snippet } from 'svelte';
+  import {
+    getNotificationPermissionState,
+    readAppNotificationsEnabled,
+    requestNotificationPermission,
+    writeAppNotificationsEnabled,
+    type NotificationPermissionState,
+  } from '$lib/client/notifications';
   import { projectStacksNewPath, projectStacksPath } from '$lib/project-paths';
 
   import type { LayoutData } from './$types';
@@ -10,6 +18,9 @@
   import favicon from '$lib/assets/favicon.svg';
 
   let { children, data }: { children: Snippet; data: LayoutData } = $props();
+  let notificationPermission =
+    $state<NotificationPermissionState>('unsupported');
+  let appNotificationsEnabled = $state(true);
 
   let createFeatureHref = $derived.by(() => {
     if (!data.selectedProjectId) {
@@ -36,6 +47,55 @@
 
     window.location.assign(resolve(projectStacksPath(projectId)));
   }
+
+  let notificationButtonLabel = $derived.by(() => {
+    if (notificationPermission === 'unsupported') {
+      return 'Notifications unsupported';
+    }
+
+    if (notificationPermission === 'denied') {
+      return 'Notifications blocked';
+    }
+
+    if (notificationPermission === 'default') {
+      return 'Enable notifications';
+    }
+
+    return appNotificationsEnabled ? 'Notifications on' : 'Notifications muted';
+  });
+
+  let notificationButtonDisabled = $derived.by(
+    () =>
+      notificationPermission === 'unsupported' ||
+      notificationPermission === 'denied',
+  );
+
+  async function handleNotificationsClick(): Promise<void> {
+    notificationPermission = getNotificationPermissionState();
+    if (
+      notificationPermission === 'unsupported' ||
+      notificationPermission === 'denied'
+    ) {
+      return;
+    }
+
+    if (notificationPermission === 'default') {
+      notificationPermission = await requestNotificationPermission();
+      if (notificationPermission === 'granted') {
+        appNotificationsEnabled = true;
+        writeAppNotificationsEnabled(true);
+      }
+      return;
+    }
+
+    appNotificationsEnabled = !appNotificationsEnabled;
+    writeAppNotificationsEnabled(appNotificationsEnabled);
+  }
+
+  onMount(() => {
+    notificationPermission = getNotificationPermissionState();
+    appNotificationsEnabled = readAppNotificationsEnabled();
+  });
 </script>
 
 <svelte:head>
@@ -52,6 +112,15 @@
       >stackdiff</a
     >
     <div class="flex items-center gap-3">
+      <Button
+        type="button"
+        size="sm"
+        color="alternative"
+        onclick={handleNotificationsClick}
+        disabled={notificationButtonDisabled}
+      >
+        {notificationButtonLabel}
+      </Button>
       {#if data.projects.length > 0}
         <label class="text-xs font-medium stacked-subtle sm:text-sm">
           <span class="sr-only">Project</span>

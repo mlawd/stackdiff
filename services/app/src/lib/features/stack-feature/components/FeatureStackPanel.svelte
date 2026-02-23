@@ -1,11 +1,15 @@
 <script lang="ts">
   import { invalidateAll } from '$app/navigation';
+  import { onMount } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
 
+  import { readAppNotificationsEnabled } from '$lib/client/notifications';
   import type { StackViewModel } from '$lib/types/stack';
   import {
     canStartFeature as canStartFeatureWithRuntime,
     formatStartSuccessMessage,
     formatSyncSuccessMessage,
+    stageIdsTransitionedToReviewReady,
     shouldInvalidateFromRuntimeUpdates,
     stageIdsForRuntimePolling,
     startButtonLabel as startButtonLabelWithRuntime,
@@ -58,6 +62,44 @@
   let reviewSession = $state<ReviewSessionResponse | null>(null);
   let runtimeInvalidating = false;
   let reviewRequestToken = 0;
+  const notifiedReviewReadyStageIds = new SvelteSet<string>();
+
+  function notifyReviewReadyTransitions(
+    entries: ReadonlyArray<readonly [string, ImplementationStageRuntime]>,
+  ): void {
+    if (typeof Notification === 'undefined') {
+      return;
+    }
+
+    if (Notification.permission !== 'granted') {
+      return;
+    }
+
+    if (!readAppNotificationsEnabled()) {
+      return;
+    }
+
+    const transitionedStageIds = stageIdsTransitionedToReviewReady({
+      stages: stack.stages ?? [],
+      implementationRuntimeByStageId,
+      updates: entries,
+    });
+
+    for (const stageId of transitionedStageIds) {
+      if (notifiedReviewReadyStageIds.has(stageId)) {
+        continue;
+      }
+
+      const stageTitle =
+        (stack.stages ?? []).find((stage) => stage.id === stageId)?.title ??
+        'Stage';
+      notifiedReviewReadyStageIds.add(stageId);
+      new Notification('Review ready', {
+        body: `${stageTitle} is ready for review.`,
+        tag: `review-ready:${stack.id}:${stageId}`,
+      });
+    }
+  }
 
   let selectedReviewStage = $derived(
     selectedReviewStageId
@@ -113,6 +155,8 @@
       fetchStatus: getImplementationStatus,
     });
 
+    notifyReviewReadyTransitions(entries);
+
     implementationRuntimeByStageId = mergeRuntimeByStageId(
       implementationRuntimeByStageId,
       entries,
@@ -132,15 +176,7 @@
     }
   }
 
-  $effect(() => {
-    const stageIds = stageIdsForRuntimePolling({
-      stages: stack.stages ?? [],
-      implementationRuntimeByStageId,
-    });
-    if (stageIds.length === 0) {
-      return;
-    }
-
+  onMount(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
