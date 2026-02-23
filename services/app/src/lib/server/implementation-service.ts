@@ -148,7 +148,9 @@ export async function ensureImplementationSessionBootstrap(input: {
 
   if (!session.opencodeSessionId) {
     const planningSession = await getPlanningSessionByStackId(input.stack.id);
-    const repositoryRoot = await getRuntimeRepositoryPath();
+    const repositoryRoot = await getRuntimeRepositoryPath({
+      stackId: input.stack.id,
+    });
     const savedPlanAbsolutePath = resolvePlanningArtifactPath(
       repositoryRoot,
       planningSession?.savedPlanPath,

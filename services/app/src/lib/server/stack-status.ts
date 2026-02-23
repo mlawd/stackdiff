@@ -31,8 +31,8 @@ function applyRuntimeStatus(
   };
 }
 
-async function getRuntimeStatus(): Promise<RuntimeStatus> {
-  const repositoryAbsolutePath = await getRuntimeRepositoryPath();
+async function getRuntimeStatus(projectId: string): Promise<RuntimeStatus> {
+  const repositoryAbsolutePath = await getRuntimeRepositoryPath({ projectId });
 
   const gitStatus = await runCommand(
     'git',
@@ -93,13 +93,25 @@ async function getRuntimeStatus(): Promise<RuntimeStatus> {
 export async function enrichStacksStatus(
   stacks: StackMetadata[],
 ): Promise<StackViewModel[]> {
-  const runtime = await getRuntimeStatus();
-  return stacks.map((stack) => applyRuntimeStatus(stack, runtime));
+  const runtimeByProjectId = new Map<string, RuntimeStatus>();
+
+  return Promise.all(
+    stacks.map(async (stack) => {
+      const existingRuntime = runtimeByProjectId.get(stack.projectId);
+      if (existingRuntime) {
+        return applyRuntimeStatus(stack, existingRuntime);
+      }
+
+      const runtime = await getRuntimeStatus(stack.projectId);
+      runtimeByProjectId.set(stack.projectId, runtime);
+      return applyRuntimeStatus(stack, runtime);
+    }),
+  );
 }
 
 export async function enrichStackStatus(
   stack: StackMetadata,
 ): Promise<StackViewModel> {
-  const runtime = await getRuntimeStatus();
+  const runtime = await getRuntimeStatus(stack.projectId);
   return applyRuntimeStatus(stack, runtime);
 }

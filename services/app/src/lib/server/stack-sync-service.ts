@@ -221,7 +221,7 @@ async function resolveStageContexts(
 export async function getStageSyncById(
   stack: StackMetadata,
 ): Promise<Record<string, StageSyncMetadata>> {
-  const repositoryRoot = await getRuntimeRepositoryPath();
+  const repositoryRoot = await getRuntimeRepositoryPath({ stackId: stack.id });
   const sessions = await getImplementationSessionsByStackId(stack.id);
   const sessionsByStageId = new Map<string, StackImplementationSession>();
   for (const session of sessions) {
@@ -274,7 +274,7 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
     throw new StackSyncServiceError('not-found', 'Feature not found.');
   }
 
-  const repositoryRoot = await getRuntimeRepositoryPath();
+  const repositoryRoot = await getRuntimeRepositoryPath({ stackId: stack.id });
   const sessions = await getImplementationSessionsByStackId(stack.id);
   const sessionsByStageId = new Map<string, StackImplementationSession>();
   for (const session of sessions) {

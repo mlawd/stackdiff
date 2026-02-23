@@ -8,6 +8,7 @@
     StackUpsertInput,
     StackViewModel,
   } from '$lib/types/stack';
+  import type { PageData } from './$types';
 
   interface ApiStackResponse {
     data?: {
@@ -41,14 +42,19 @@
     },
   ];
 
+  let { data }: { data: PageData } = $props();
+
   let formName = $state('');
   let formNotes = $state('');
   let formType = $state<FeatureType>('feature');
   let submitting = $state(false);
   let message = $state<string | null>(null);
+  let selectedProjectId = $derived(data.selectedProjectId ?? null);
+  let missingProjectSelection = $derived(selectedProjectId === null);
 
   function toPayload(): StackUpsertInput {
     return {
+      projectId: selectedProjectId ?? undefined,
       name: formName,
       notes: formNotes,
       type: formType,
@@ -57,6 +63,12 @@
 
   async function submitFeature(event: SubmitEvent): Promise<void> {
     event.preventDefault();
+
+    if (!selectedProjectId) {
+      message = 'Select a project from the header before creating a feature.';
+      return;
+    }
+
     submitting = true;
     message = null;
 
@@ -103,6 +115,14 @@
         class="mb-5 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200"
       >
         {message}
+      </div>
+    {/if}
+
+    {#if missingProjectSelection}
+      <div
+        class="mb-5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+      >
+        Pick a project in the header, then return here to create a feature.
       </div>
     {/if}
 
@@ -167,7 +187,7 @@
           type="submit"
           size="sm"
           color="primary"
-          disabled={submitting}
+          disabled={submitting || missingProjectSelection}
           loading={submitting}
         >
           Create Feature

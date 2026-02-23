@@ -150,7 +150,7 @@ async function loadStageStatusContext(
     };
   }
 
-  const repositoryRoot = await getRuntimeRepositoryPath();
+  const repositoryRoot = await getRuntimeRepositoryPath({ stackId });
   const worktreeAbsolutePath = resolveWorktreeAbsolutePath(
     repositoryRoot,
     implementationSession.worktreePathKey,
@@ -249,7 +249,9 @@ export async function reconcileImplementationStageStatus(
   }
 
   if (context.stageStatus === 'review-ready' && context.branchName) {
-    const repositoryRoot = await getRuntimeRepositoryPath();
+    const repositoryRoot = await getRuntimeRepositoryPath({
+      stackId: context.stackId,
+    });
     const stack = await getStackById(context.stackId);
     const stage = (stack?.stages ?? []).find((item) => item.id === stageId);
 

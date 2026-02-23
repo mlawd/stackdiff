@@ -44,6 +44,7 @@ describe('stage-pr-service', () => {
     vi.clearAllMocks();
     setStackStagePullRequestMock.mockResolvedValue({
       id: 'stack-1',
+      projectId: 'repo-1',
       name: 'Feature',
       type: 'feature',
       status: 'started',
@@ -120,6 +121,7 @@ describe('stage-pr-service', () => {
       repositoryRoot: '/repo',
       stack: {
         id: 'stack-1',
+        projectId: 'repo-1',
         name: 'Feature',
         type: 'feature',
         status: 'started',
@@ -189,6 +191,7 @@ describe('stage-pr-service', () => {
       repositoryRoot: '/repo',
       stack: {
         id: 'stack-1',
+        projectId: 'repo-1',
         name: 'Feature',
         type: 'feature',
         status: 'started',

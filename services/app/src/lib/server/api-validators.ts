@@ -10,6 +10,15 @@ export function requireStackId(id: string | undefined): string {
   return trimmed;
 }
 
+export function requireProjectId(id: string | undefined): string {
+  const trimmed = id?.trim();
+  if (!trimmed) {
+    throw badRequest('Project id is required.');
+  }
+
+  return trimmed;
+}
+
 export function requireStageId(id: string | undefined): string {
   const trimmed = id?.trim();
   if (!trimmed) {
@@ -27,6 +36,10 @@ export function parseStackUpsertInput(body: unknown): StackUpsertInput {
   const candidate = body as Partial<StackUpsertInput>;
 
   return {
+    projectId:
+      typeof candidate.projectId === 'string'
+        ? candidate.projectId.trim() || undefined
+        : undefined,
     name: String(candidate.name ?? ''),
     notes: candidate.notes ? String(candidate.notes) : undefined,
     type: String(candidate.type ?? 'feature') as StackUpsertInput['type'],

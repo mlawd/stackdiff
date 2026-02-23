@@ -54,6 +54,7 @@ function fail(stderr: string): CommandResult {
 function createStack(): StackMetadata {
   return {
     id: 'stack-1',
+    projectId: 'repo-1',
     name: 'Sync flow',
     type: 'feature',
     status: 'started',

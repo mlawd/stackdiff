@@ -13,10 +13,13 @@ import type {
   StackReviewSession,
   StackUpsertInput,
 } from '$lib/types/stack';
-import { runCommand } from '$lib/server/command';
+import {
+  getDefaultProject,
+  resolveProjectRepositoryRoot,
+} from '$lib/server/project-config';
 
 const STACKS_FILE = new URL('../../../data/stacks.json', import.meta.url);
-const STACK_FILE_VERSION = 2;
+const STACK_FILE_VERSION = 3;
 
 function isFeatureType(value: unknown): value is FeatureType {
   return value === 'feature' || value === 'bugfix' || value === 'chore';
@@ -86,6 +89,7 @@ function isStackMetadata(value: unknown): value is StackMetadata {
 
   return (
     typeof stack.id === 'string' &&
+    (stack.projectId === undefined || typeof stack.projectId === 'string') &&
     typeof stack.name === 'string' &&
     isFeatureType(stack.type) &&
     (stack.status === undefined || isStackStatus(stack.status)) &&
@@ -103,7 +107,7 @@ function isStackFile(value: unknown): value is StackFile {
   const file = value as Partial<StackFile>;
 
   return (
-    file.version === STACK_FILE_VERSION &&
+    (file.version === 2 || file.version === STACK_FILE_VERSION) &&
     Array.isArray(file.stacks) &&
     file.stacks.every(isStackMetadata) &&
     (file.planningSessions === undefined ||
@@ -180,11 +184,19 @@ function isStackReviewSession(value: unknown): value is StackReviewSession {
   );
 }
 
-function normalizeStackFile(file: StackFile): StackFile {
+async function normalizeStackFile(file: StackFile): Promise<StackFile> {
+  const defaultProject = await getDefaultProject();
+
   return {
     ...file,
+    version: STACK_FILE_VERSION,
     stacks: file.stacks.map((stack) => ({
       ...stack,
+      projectId:
+        typeof (stack as { projectId?: unknown }).projectId === 'string' &&
+        (stack as { projectId?: string }).projectId?.trim()
+          ? (stack as { projectId: string }).projectId.trim()
+          : defaultProject.id,
       type: isFeatureType((stack as { type?: unknown }).type)
         ? stack.type
         : 'feature',
@@ -202,6 +214,14 @@ function normalizeStackFile(file: StackFile): StackFile {
 export async function readStacksFromFile(): Promise<StackMetadata[]> {
   const file = await readStackFile();
   return file.stacks;
+}
+
+export async function readStacksByProjectId(
+  projectId: string,
+): Promise<StackMetadata[]> {
+  const trimmed = projectId.trim();
+  const file = await readStackFile();
+  return file.stacks.filter((stack) => stack.projectId === trimmed);
 }
 
 async function readStackFile(): Promise<StackFile> {
@@ -251,6 +271,7 @@ function createReviewSessionId(): string {
 
 function normalizeInput(input: StackUpsertInput): StackUpsertInput {
   return {
+    projectId: input.projectId?.trim() || undefined,
     name: input.name.trim(),
     notes: input.notes?.trim() || undefined,
     type: input.type,
@@ -267,6 +288,16 @@ function validateUpsertInput(input: StackUpsertInput): void {
   }
 }
 
+function validateCreateInput(
+  input: StackUpsertInput,
+): asserts input is StackUpsertInput & { projectId: string } {
+  validateUpsertInput(input);
+
+  if (!input.projectId) {
+    throw new Error('Project id is required.');
+  }
+}
+
 export async function getStackById(
   id: string,
 ): Promise<StackMetadata | undefined> {
@@ -274,33 +305,51 @@ export async function getStackById(
   return file.stacks.find((stack) => stack.id === id);
 }
 
-export async function getRuntimeRepositoryPath(): Promise<string> {
-  const cwd = process.cwd();
-  const repoRootResult = await runCommand(
-    'git',
-    ['rev-parse', '--show-toplevel'],
-    cwd,
-  );
-
-  if (repoRootResult.ok && repoRootResult.stdout) {
-    return repoRootResult.stdout;
+export async function getStackRepositoryPathById(
+  stackId: string,
+): Promise<string> {
+  const stack = await getStackById(stackId);
+  if (!stack) {
+    throw new Error('Stack not found.');
   }
 
-  return cwd;
+  return resolveProjectRepositoryRoot(stack.projectId);
+}
+
+export async function getRuntimeRepositoryPath(input?: {
+  stackId?: string;
+  projectId?: string;
+}): Promise<string> {
+  if (input?.projectId) {
+    return resolveProjectRepositoryRoot(input.projectId);
+  }
+
+  if (input?.stackId) {
+    const stack = await getStackById(input.stackId);
+    if (!stack) {
+      throw new Error('Stack not found.');
+    }
+
+    return resolveProjectRepositoryRoot(stack.projectId);
+  }
+
+  const defaultProject = await getDefaultProject();
+  return resolveProjectRepositoryRoot(defaultProject.id);
 }
 
 export async function createStack(
   input: StackUpsertInput,
 ): Promise<StackMetadata> {
   const normalized = normalizeInput(input);
-  validateUpsertInput(normalized);
+  validateCreateInput(normalized);
 
   const file = await readStackFile();
   const created: StackMetadata = {
+    ...normalized,
     id: createId(normalized.name),
+    projectId: normalized.projectId,
     status: 'created',
     stages: [],
-    ...normalized,
   };
 
   file.stacks.push(created);
@@ -616,10 +665,11 @@ export async function updateStack(
 
   const existing = file.stacks[index];
   const updated: StackMetadata = {
+    ...normalized,
     id,
+    projectId: existing.projectId,
     status: existing.status,
     stages: existing.stages ?? [],
-    ...normalized,
   };
 
   file.stacks[index] = updated;

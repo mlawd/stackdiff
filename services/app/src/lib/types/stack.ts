@@ -20,6 +20,7 @@ export interface FeatureStage {
 
 export interface StackMetadata {
   id: string;
+  projectId: string;
   name: string;
   notes?: string;
   type: FeatureType;
@@ -28,9 +29,40 @@ export interface StackMetadata {
 }
 
 export interface StackUpsertInput {
+  projectId?: string;
   name: string;
   notes?: string;
   type: FeatureType;
+}
+
+export interface StackedProject {
+  id: string;
+  name: string;
+  repositoryPath: string;
+}
+
+export interface StackedProjectConfig {
+  version: number;
+  projects: StackedProject[];
+}
+
+export interface ProjectHealthCheck {
+  key:
+    | 'path-exists'
+    | 'path-is-directory'
+    | 'git-repo'
+    | 'stacked-writable'
+    | 'git-status'
+    | 'gh-auth';
+  ok: boolean;
+  message?: string;
+}
+
+export interface ProjectHealthSummary {
+  projectId: string;
+  ok: boolean;
+  repositoryRoot?: string;
+  checks: ProjectHealthCheck[];
 }
 
 export interface StackFile {

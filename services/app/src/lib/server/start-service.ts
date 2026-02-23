@@ -106,7 +106,7 @@ export async function startFeatureNextStage(
     throw new Error('Feature not found.');
   }
 
-  const repositoryRoot = await getRuntimeRepositoryPath();
+  const repositoryRoot = await getRuntimeRepositoryPath({ stackId: stack.id });
   const stage = await resolveStartPreconditions(stack, repositoryRoot);
   const identity = createStageBranchIdentity({
     featureType: stack.type,

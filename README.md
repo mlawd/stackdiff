@@ -26,3 +26,22 @@ npm run build
 
 Stack hierarchy metadata lives in `services/app/data/stacks.json`.
 At runtime, the app enriches that metadata with live `git` and `gh` status server-side.
+
+## Project configuration
+
+Projects are configured in `~/.config/stacked/config.json`:
+
+```json
+{
+  "version": 1,
+  "projects": [
+    {
+      "id": "stacked",
+      "name": "stacked",
+      "repositoryPath": "/absolute/path/to/repository"
+    }
+  ]
+}
+```
+
+Each stack is associated with a configured `projectId`, and all runtime git/gh/opencode operations use that project's repository path.

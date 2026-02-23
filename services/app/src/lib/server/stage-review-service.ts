@@ -160,7 +160,7 @@ async function requireReviewContext(
     );
   }
 
-  const repositoryRoot = await getRuntimeRepositoryPath();
+  const repositoryRoot = await getRuntimeRepositoryPath({ stackId });
   const worktreeAbsolutePath = resolveWorktreeAbsolutePath(
     repositoryRoot,
     implementationSession.worktreePathKey,
@@ -266,7 +266,9 @@ export async function getExistingStageReviewSession(input: {
     throw new Error('Implementation session not found.');
   }
 
-  const repositoryRoot = await getRuntimeRepositoryPath();
+  const repositoryRoot = await getRuntimeRepositoryPath({
+    stackId: input.stackId,
+  });
   return {
     session: existing,
     worktreeAbsolutePath: resolveWorktreeAbsolutePath(

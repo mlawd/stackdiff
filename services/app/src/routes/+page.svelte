@@ -16,6 +16,9 @@
   let message = $derived<UiMessage | null>(
     data.error ? { kind: 'error', text: data.error } : null,
   );
+  let failedProjectChecks = $derived(
+    (data.selectedProjectHealth?.checks ?? []).filter((check) => !check.ok),
+  );
 </script>
 
 <main class="stacked-shell mx-auto w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-6">
@@ -44,6 +47,26 @@
         }`}
       >
         {message.text}
+      </div>
+    {/if}
+
+    {#if data.selectedProjectHealth && !data.selectedProjectHealth.ok}
+      <div
+        class="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+      >
+        <p class="font-medium">
+          Selected project health checks need attention.
+        </p>
+        {#if data.selectedProjectHealth.repositoryRoot}
+          <p class="mt-1 text-xs text-amber-200/90">
+            Repository: {data.selectedProjectHealth.repositoryRoot}
+          </p>
+        {/if}
+        <ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-100/90">
+          {#each failedProjectChecks as check (check.key)}
+            <li>{check.message ?? `${check.key} check failed.`}</li>
+          {/each}
+        </ul>
       </div>
     {/if}
 

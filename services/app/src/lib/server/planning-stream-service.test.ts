@@ -50,6 +50,7 @@ describe('planning-stream-service', () => {
 
     getStackByIdMock.mockResolvedValue({
       id: 'stack-1',
+      projectId: 'repo-1',
       name: 'Stack',
       type: 'feature',
       status: 'planned',

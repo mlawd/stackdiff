@@ -71,6 +71,7 @@ describe('implementation-service', () => {
     await ensureImplementationSessionBootstrap({
       stack: {
         id: 'stack-1',
+        projectId: 'repo-1',
         name: 'Auth',
         notes: 'Add sign in flow',
         type: 'feature',

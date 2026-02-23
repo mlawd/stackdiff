@@ -12,7 +12,7 @@ export async function writeStackPlanFile(
   stackId: string,
   markdownPlan: string,
 ): Promise<string> {
-  const repositoryRoot = await getRuntimeRepositoryPath();
+  const repositoryRoot = await getRuntimeRepositoryPath({ stackId });
   const directory = path.join(repositoryRoot, '.stacked', 'plans');
   const filePath = path.join(directory, `${stackId}.md`);
 
@@ -26,7 +26,7 @@ export async function writeStackStageConfigFile(
   stackId: string,
   config: StageConfigFile,
 ): Promise<string> {
-  const repositoryRoot = await getRuntimeRepositoryPath();
+  const repositoryRoot = await getRuntimeRepositoryPath({ stackId });
   const directory = path.join(repositoryRoot, '.stacked', 'plans');
   const filePath = path.join(directory, `${stackId}.stages.json`);
 

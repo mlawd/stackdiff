@@ -31,6 +31,7 @@ describe('POST /api/stacks/[id]/start', () => {
     startFeatureNextStageMock.mockResolvedValue({
       stack: {
         id: 'stack-1',
+        projectId: 'repo-1',
         name: 'Auth',
         type: 'feature',
         status: 'started',
