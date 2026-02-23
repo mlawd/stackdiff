@@ -2,14 +2,16 @@ import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
 import { loadExistingPlanningSession } from '$lib/server/planning-service';
+import { normalizeProjectRouteParam } from '$lib/server/project-route';
 import { getStageSyncById } from '$lib/server/stack-sync-service';
 import { enrichStackStatus } from '$lib/server/stack-status';
 import { getStackById } from '$lib/server/stack-store';
 
 export const load: PageServerLoad = async ({ params }) => {
+  const projectId = normalizeProjectRouteParam(params.projectId);
   const stack = await getStackById(params.id);
 
-  if (!stack) {
+  if (!stack || stack.projectId !== projectId) {
     throw error(404, 'Feature not found');
   }
 

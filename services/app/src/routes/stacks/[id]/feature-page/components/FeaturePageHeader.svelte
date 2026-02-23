@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { resolve } from '$app/paths';
   import StackStatusBadge from '$lib/components/stack/StackStatusBadge.svelte';
   import StackTypeBadge from '$lib/components/stack/StackTypeBadge.svelte';
   import type { StackViewModel } from '$lib/types/stack';
@@ -7,17 +6,21 @@
   let {
     stack,
     loadedAt,
+    backHref,
   }: {
     stack: StackViewModel;
     loadedAt: string;
+    backHref: `/projects/${string}/stacks`;
   } = $props();
 </script>
 
 <div
   class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b stacked-divider pb-3"
 >
-  <a href={resolve('/')} class="stacked-link text-sm font-semibold"
-    >Back to features</a
+  <a
+    href={backHref}
+    data-sveltekit-reload
+    class="stacked-link text-sm font-semibold">Back to features</a
   >
   <p class="text-xs stacked-subtle">
     Loaded {new Date(loadedAt).toLocaleString()}

@@ -2,6 +2,7 @@
   import { resolve } from '$app/paths';
   import { Button } from 'flowbite-svelte';
   import type { Snippet } from 'svelte';
+  import { projectStacksNewPath, projectStacksPath } from '$lib/project-paths';
 
   import type { LayoutData } from './$types';
 
@@ -11,25 +12,29 @@
   let { children, data }: { children: Snippet; data: LayoutData } = $props();
 
   let createFeatureHref = $derived.by(() => {
-    const baseHref = resolve('/stacks/new');
     if (!data.selectedProjectId) {
-      return baseHref;
+      return resolve('/');
     }
 
-    const query = new URLSearchParams({ project: data.selectedProjectId });
-    return `${baseHref}?${query.toString()}`;
+    return resolve(projectStacksNewPath(data.selectedProjectId));
+  });
+
+  let pipelineHref = $derived.by(() => {
+    if (!data.selectedProjectId) {
+      return '/' as const;
+    }
+
+    return projectStacksPath(data.selectedProjectId);
   });
 
   function handleProjectChange(event: Event): void {
     const projectId = (event.currentTarget as HTMLSelectElement).value;
-    const baseHref = resolve('/');
     if (!projectId) {
-      window.location.assign(baseHref);
+      window.location.assign(resolve('/'));
       return;
     }
 
-    const query = new URLSearchParams({ project: projectId });
-    window.location.assign(`${baseHref}?${query.toString()}`);
+    window.location.assign(resolve(projectStacksPath(projectId)));
   }
 </script>
 
@@ -42,7 +47,7 @@
 >
   <div class="mx-auto flex w-full max-w-6xl items-center justify-between">
     <a
-      href={resolve('/')}
+      href={resolve(pipelineHref)}
       class="text-sm font-semibold tracking-wide text-[var(--stacked-text)] sm:text-base"
       >stackdiff</a
     >

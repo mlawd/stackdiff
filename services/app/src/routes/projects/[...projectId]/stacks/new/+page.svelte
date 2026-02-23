@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { Button } from 'flowbite-svelte';
+  import { projectStackPath, projectStacksPath } from '$lib/project-paths';
 
   import type {
     FeatureType,
@@ -49,12 +50,12 @@
   let formType = $state<FeatureType>('feature');
   let submitting = $state(false);
   let message = $state<string | null>(null);
-  let selectedProjectId = $derived(data.selectedProjectId ?? null);
-  let missingProjectSelection = $derived(selectedProjectId === null);
+  let selectedProjectId = $derived(data.selectedProjectId);
+  let backToPipelineHref = $derived(projectStacksPath(selectedProjectId));
 
   function toPayload(): StackUpsertInput {
     return {
-      projectId: selectedProjectId ?? undefined,
+      projectId: selectedProjectId,
       name: formName,
       notes: formNotes,
       type: formType,
@@ -63,11 +64,6 @@
 
   async function submitFeature(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-
-    if (!selectedProjectId) {
-      message = 'Select a project from the header before creating a feature.';
-      return;
-    }
 
     submitting = true;
     message = null;
@@ -85,7 +81,7 @@
         throw new Error(body.error?.message ?? 'Unable to create feature.');
       }
 
-      await goto(resolve(`/stacks/${stack.id}`));
+      await goto(resolve(projectStackPath(selectedProjectId, stack.id)));
     } catch (error) {
       message =
         error instanceof Error ? error.message : 'Unable to create feature.';
@@ -98,8 +94,9 @@
 <main class="stacked-shell mx-auto w-full max-w-3xl px-4 py-6 sm:px-8 sm:py-8">
   <section class="stacked-panel stacked-fade-in p-4 sm:p-7">
     <div class="mb-6 border-b stacked-divider pb-4">
-      <a href={resolve('/')} class="stacked-link text-sm font-semibold"
-        >Back to feature pipeline</a
+      <a
+        href={resolve(backToPipelineHref)}
+        class="stacked-link text-sm font-semibold">Back to feature pipeline</a
       >
       <h1 class="mt-2 text-3xl font-semibold tracking-tight">
         Create New Feature
@@ -115,14 +112,6 @@
         class="mb-5 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200"
       >
         {message}
-      </div>
-    {/if}
-
-    {#if missingProjectSelection}
-      <div
-        class="mb-5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
-      >
-        Pick a project in the header, then return here to create a feature.
       </div>
     {/if}
 
@@ -180,14 +169,18 @@
       </label>
 
       <div class="flex flex-wrap items-center justify-end gap-2">
-        <Button href={resolve('/')} size="sm" color="alternative">
+        <Button
+          href={resolve(backToPipelineHref)}
+          size="sm"
+          color="alternative"
+        >
           Cancel
         </Button>
         <Button
           type="submit"
           size="sm"
           color="primary"
-          disabled={submitting || missingProjectSelection}
+          disabled={submitting}
           loading={submitting}
         >
           Create Feature

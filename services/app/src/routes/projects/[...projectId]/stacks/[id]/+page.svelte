@@ -1,8 +1,9 @@
 <script lang="ts">
   import { lockBodyScroll, portalToBody } from '$lib/client/overlay';
-  import FeaturePageHeader from './feature-page/components/FeaturePageHeader.svelte';
-  import FeatureStackPanel from './feature-page/components/FeatureStackPanel.svelte';
   import PlanningChat from '$lib/components/PlanningChat.svelte';
+  import { projectStacksPath } from '$lib/project-paths';
+  import FeaturePageHeader from '../../../../stacks/[id]/feature-page/components/FeaturePageHeader.svelte';
+  import FeatureStackPanel from '../../../../stacks/[id]/feature-page/components/FeatureStackPanel.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -29,7 +30,11 @@
 
 <main class="stacked-shell mx-auto w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-6">
   <div class="stacked-fade-in">
-    <FeaturePageHeader stack={data.stack} loadedAt={data.loadedAt} />
+    <FeaturePageHeader
+      stack={data.stack}
+      loadedAt={data.loadedAt}
+      backHref={projectStacksPath(data.stack.projectId)}
+    />
 
     <FeatureStackPanel
       stack={data.stack}
