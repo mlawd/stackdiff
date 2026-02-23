@@ -1,75 +1,79 @@
 <script lang="ts">
-  import { resolve } from '$app/paths';
-  import { TabItem, Tabs } from 'flowbite-svelte';
+  import { lockBodyScroll, portalToBody } from '$lib/client/overlay';
   import FeaturePageHeader from './feature-page/components/FeaturePageHeader.svelte';
-  import FeaturePlanPanel from './feature-page/components/FeaturePlanPanel.svelte';
   import FeatureStackPanel from './feature-page/components/FeatureStackPanel.svelte';
+  import PlanningChat from '$lib/components/PlanningChat.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
-  type FeaturePageTabKey = 'plan' | 'stack';
+  let hasSavedPlan = $derived(Boolean(data.session.savedPlanPath));
 
-  let activeTabForStackId = '';
-  let activeTab = $state<FeaturePageTabKey>(
-    // svelte-ignore state_referenced_locally
-    data.stack.status === 'created' ? 'plan' : 'stack',
-  );
+  let planningChatOpen = $state(false);
+
+  function openPlanningChat(): void {
+    planningChatOpen = true;
+  }
+
+  function closePlanningChat(): void {
+    planningChatOpen = false;
+  }
 
   $effect(() => {
-    if (activeTabForStackId === data.stack.id) {
+    if (!planningChatOpen) {
       return;
     }
 
-    activeTabForStackId = data.stack.id;
-    activeTab = data.stack.status === 'created' ? 'plan' : 'stack';
+    return lockBodyScroll();
   });
 </script>
 
 <main class="stacked-shell mx-auto w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-6">
   <div class="stacked-fade-in">
-    <FeaturePageHeader
-      stack={data.stack}
-      loadedAt={data.loadedAt}
-      backHref={resolve('/')}
-    />
+    <FeaturePageHeader stack={data.stack} loadedAt={data.loadedAt} />
 
-    <div class="mb-4 feature-page-tabs">
-      <Tabs tabStyle="underline" bind:selected={activeTab}>
-        <TabItem key="plan" title="Plan" open={activeTab === 'plan'}>
-          <FeaturePlanPanel
-            stackId={data.stack.id}
-            session={data.session}
-            messages={data.messages}
-            awaitingResponse={data.awaitingResponse}
-          />
-        </TabItem>
-        <TabItem key="stack" title="Stack" open={activeTab === 'stack'}>
-          <FeatureStackPanel stack={data.stack} />
-        </TabItem>
-      </Tabs>
-    </div>
+    <FeatureStackPanel
+      stack={data.stack}
+      {hasSavedPlan}
+      onOpenPlanningChat={openPlanningChat}
+    />
   </div>
 </main>
 
-<style>
-  :global(.feature-page-tabs ul[role='tablist']) {
-    border-color: var(--stacked-border-soft);
-  }
+<div
+  use:portalToBody
+  class={planningChatOpen
+    ? 'fixed inset-0 z-50 flex h-screen w-screen flex-col bg-[var(--stacked-bg)]'
+    : 'hidden'}
+  role="dialog"
+  aria-modal="true"
+  aria-label="Planning chat"
+>
+  <div
+    class="flex items-start justify-between gap-3 border-b stacked-divider px-4 py-3 sm:px-6 sm:py-4"
+  >
+    <div>
+      <p
+        class="text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle"
+      >
+        Planning chat
+      </p>
+      <p class="mt-1 text-sm text-[var(--stacked-text)]">{data.stack.name}</p>
+    </div>
+    <button
+      type="button"
+      class="rounded border border-[var(--stacked-border-soft)] px-2.5 py-1 text-xs stacked-subtle transition hover:text-[var(--stacked-text)]"
+      onclick={closePlanningChat}
+    >
+      Close
+    </button>
+  </div>
 
-  :global(.feature-page-tabs button[role='tab']) {
-    color: var(--stacked-text-muted);
-  }
-
-  :global(.feature-page-tabs button[role='tab'][aria-selected='true']) {
-    color: var(--stacked-text);
-    border-color: var(--stacked-border-soft);
-  }
-
-  :global(.feature-page-tabs button[role='tab']:hover) {
-    color: var(--stacked-text);
-  }
-
-  :global(.feature-page-tabs [role='tabpanel']) {
-    padding: 1rem;
-  }
-</style>
+  <div class="min-h-0 flex-1 px-4 py-3 sm:px-6 sm:py-4">
+    <PlanningChat
+      stackId={data.stack.id}
+      session={data.session}
+      messages={data.messages}
+      awaitingResponse={data.awaitingResponse}
+    />
+  </div>
+</div>

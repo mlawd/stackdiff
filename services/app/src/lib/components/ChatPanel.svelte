@@ -63,7 +63,6 @@
     inputPlaceholder?: string;
     emptyTitle?: string;
     emptyDescription?: string;
-    viewportHeightClass?: string;
     saveButtonLabel?: string;
     formatDoneSuccess?: (payload: StreamDonePayload) => string | null;
     formatSaveSuccess?: (payload: SaveResponseBody) => string | null;
@@ -80,7 +79,6 @@
     inputPlaceholder = 'Reply to the agent...',
     emptyTitle = 'No messages yet.',
     emptyDescription = 'Start by describing what you want to ship.',
-    viewportHeightClass = 'h-[26rem] sm:h-[35rem]',
     saveButtonLabel = 'Save',
     formatDoneSuccess,
     formatSaveSuccess,
@@ -1042,7 +1040,7 @@
   </div>
 {/if}
 
-<div class={`flex min-h-0 flex-col ${viewportHeightClass}`}>
+<div class="flex h-full min-h-0 flex-col">
   <div class="relative mb-3 min-h-0 flex-1">
     <div
       bind:this={messagesViewport}

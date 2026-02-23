@@ -20,6 +20,7 @@
     fetchRuntimeUpdateEntries,
     mergeRuntimeByStageId,
   } from '../runtime-polling';
+  import { lockBodyScroll, portalToBody } from '$lib/client/overlay';
   import type {
     FeatureActionState,
     ImplementationStageRuntime,
@@ -30,7 +31,15 @@
   import FeatureActionAlerts from './FeatureActionAlerts.svelte';
   import ImplementationStageList from './ImplementationStageList.svelte';
 
-  let { stack }: { stack: StackViewModel } = $props();
+  let {
+    stack,
+    hasSavedPlan,
+    onOpenPlanningChat,
+  }: {
+    stack: StackViewModel;
+    hasSavedPlan: boolean;
+    onOpenPlanningChat: () => void;
+  } = $props();
 
   function createIdleActionState(): FeatureActionState {
     return {
@@ -51,8 +60,6 @@
   let reviewSession = $state<ReviewSessionResponse | null>(null);
   let runtimeInvalidating = false;
 
-  const BODY_SCROLL_LOCK_COUNT_ATTRIBUTE = 'data-stacked-scroll-lock-count';
-
   let selectedReviewStage = $derived(
     selectedReviewStageId
       ? ((stack.stages ?? []).find(
@@ -60,22 +67,6 @@
         ) ?? null)
       : null,
   );
-
-  function portalToBody(node: HTMLElement): { destroy: () => void } {
-    if (typeof document === 'undefined') {
-      return {
-        destroy: () => {},
-      };
-    }
-
-    document.body.appendChild(node);
-
-    return {
-      destroy: () => {
-        node.remove();
-      },
-    };
-  }
 
   function hasOutOfSyncStages(): boolean {
     return (stack.stages ?? []).some(
@@ -178,43 +169,7 @@
       return;
     }
 
-    if (typeof document === 'undefined') {
-      return;
-    }
-
-    const body = document.body;
-    const currentCount = Number(
-      body.getAttribute(BODY_SCROLL_LOCK_COUNT_ATTRIBUTE) ?? '0',
-    );
-    const previousOverflow = body.style.overflow;
-    const previousPaddingRight = body.style.paddingRight;
-
-    if (currentCount === 0) {
-      const scrollbarWidth =
-        window.innerWidth - document.documentElement.clientWidth;
-      body.style.overflow = 'hidden';
-      if (scrollbarWidth > 0) {
-        body.style.paddingRight = `${scrollbarWidth}px`;
-      }
-    }
-
-    body.setAttribute(
-      BODY_SCROLL_LOCK_COUNT_ATTRIBUTE,
-      String(currentCount + 1),
-    );
-
-    return () => {
-      const nextCount =
-        Number(body.getAttribute(BODY_SCROLL_LOCK_COUNT_ATTRIBUTE) ?? '1') - 1;
-      if (nextCount <= 0) {
-        body.style.overflow = previousOverflow;
-        body.style.paddingRight = previousPaddingRight;
-        body.removeAttribute(BODY_SCROLL_LOCK_COUNT_ATTRIBUTE);
-        return;
-      }
-
-      body.setAttribute(BODY_SCROLL_LOCK_COUNT_ATTRIBUTE, String(nextCount));
-    };
+    return lockBodyScroll();
   });
 
   async function startFeature(): Promise<void> {
@@ -316,44 +271,63 @@
     startSuccess={startAction.success}
   />
 
-  <div>
-    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <p
-        class="text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle"
-      >
-        Implementation stages
-      </p>
-      <div class="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          color="alternative"
-          onclick={syncStack}
-          disabled={!canSyncStack()}
-          loading={syncAction.pending}
+  {#if hasSavedPlan}
+    <div>
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p
+          class="text-xs font-semibold uppercase tracking-[0.16em] stacked-subtle"
         >
-          Sync Stack
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          color="primary"
-          onclick={startFeature}
-          disabled={!canStartFeature()}
-          loading={startAction.pending}
-        >
-          {startButtonLabel()}
-        </Button>
+          Implementation stages
+        </p>
+        <div class="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            color="alternative"
+            onclick={syncStack}
+            disabled={!canSyncStack()}
+            loading={syncAction.pending}
+          >
+            Sync Stack
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            color="primary"
+            onclick={startFeature}
+            disabled={!canStartFeature()}
+            loading={startAction.pending}
+          >
+            {startButtonLabel()}
+          </Button>
+        </div>
       </div>
-    </div>
 
-    <ImplementationStageList
-      stages={stack.stages ?? []}
-      stageSyncById={stack.stageSyncById}
-      {implementationRuntimeByStageId}
-      onOpenReview={openReviewStage}
-    />
-  </div>
+      <ImplementationStageList
+        stages={stack.stages ?? []}
+        stageSyncById={stack.stageSyncById}
+        {implementationRuntimeByStageId}
+        onOpenReview={openReviewStage}
+      />
+    </div>
+  {:else}
+    <div
+      class="rounded-xl border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] p-4"
+    >
+      <p class="text-sm stacked-subtle">
+        Save a plan to generate implementation stages.
+      </p>
+      <Button
+        type="button"
+        size="sm"
+        color="primary"
+        class="mt-3"
+        onclick={onOpenPlanningChat}
+      >
+        Open planning chat
+      </Button>
+    </div>
+  {/if}
 </div>
 
 {#if selectedReviewStageId}
@@ -405,7 +379,6 @@
           stageId={selectedReviewStageId}
           messages={reviewSession.messages}
           awaitingResponse={reviewSession.awaitingResponse}
-          viewportHeightClass="h-full"
         />
       {/if}
     </div>
