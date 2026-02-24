@@ -1,4 +1,4 @@
-import { access, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type {
@@ -21,6 +21,25 @@ import {
 
 const STACK_FILE_VERSION = 3;
 const STACKS_PATH_ENV = 'STACKED_STACKS_PATH';
+const EMPTY_STACK_FILE: StackFile = {
+  version: STACK_FILE_VERSION,
+  stacks: [],
+  planningSessions: [],
+  implementationSessions: [],
+  reviewSessions: [],
+};
+
+function getServicesAppRootFromCwd(cwd: string): string {
+  const normalized = path.resolve(cwd);
+  const baseName = path.basename(normalized);
+  const parentBaseName = path.basename(path.dirname(normalized));
+
+  if (baseName === 'app' && parentBaseName === 'services') {
+    return normalized;
+  }
+
+  return path.resolve(normalized, 'services/app');
+}
 
 function getStacksFileCandidates(): string[] {
   const overridePath = process.env[STACKS_PATH_ENV]?.trim();
@@ -29,15 +48,18 @@ function getStacksFileCandidates(): string[] {
   }
 
   const cwd = process.cwd();
+  const servicesAppRoot = getServicesAppRootFromCwd(cwd);
   const candidates = [
     path.resolve(cwd, 'data/stacks.json'),
-    path.resolve(cwd, 'services/app/data/stacks.json'),
+    path.resolve(servicesAppRoot, 'data/stacks.json'),
   ];
 
   return [...new Set(candidates)];
 }
 
-async function resolveStacksFilePath(candidates: string[]): Promise<string> {
+async function findFirstExistingStacksFilePath(
+  candidates: string[],
+): Promise<string | undefined> {
   for (const candidate of candidates) {
     try {
       await access(candidate);
@@ -47,28 +69,56 @@ async function resolveStacksFilePath(candidates: string[]): Promise<string> {
     }
   }
 
-  return candidates[0] as string;
+  return undefined;
 }
 
-function isErrorCode(error: unknown, code: string): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: unknown }).code === code
-  );
-}
-
-function createStacksFileNotFoundError(candidates: string[]): Error {
-  if (process.env[STACKS_PATH_ENV]?.trim()) {
-    return new Error(
-      `Stacks file not found at ${candidates[0]}. Update ${STACKS_PATH_ENV} or create the file.`,
-    );
+function errorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
   }
 
-  return new Error(
-    `Stacks file not found. Looked in: ${candidates.join(', ')}. Create one of these files or set ${STACKS_PATH_ENV}.`,
-  );
+  return 'unknown error';
+}
+
+async function getOrCreateStacksFilePath(
+  candidates: string[],
+): Promise<string> {
+  const existingPath = await findFirstExistingStacksFilePath(candidates);
+  if (existingPath) {
+    return existingPath;
+  }
+
+  const filePath = candidates[0] as string;
+
+  try {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(
+      filePath,
+      `${JSON.stringify(EMPTY_STACK_FILE, null, '\t')}\n`,
+      {
+        encoding: 'utf-8',
+        flag: 'wx',
+      },
+    );
+    return filePath;
+  } catch (error) {
+    const existingAfterWriteRace = await findFirstExistingStacksFilePath([
+      filePath,
+    ]);
+    if (existingAfterWriteRace) {
+      return existingAfterWriteRace;
+    }
+
+    if (process.env[STACKS_PATH_ENV]?.trim()) {
+      throw new Error(
+        `Unable to initialize stacks file at ${filePath}. Update ${STACKS_PATH_ENV} or create the file manually. ${errorMessage(error)}.`,
+      );
+    }
+
+    throw new Error(
+      `Unable to initialize stacks file. Tried: ${candidates.join(', ')}. ${errorMessage(error)}.`,
+    );
+  }
 }
 
 function isFeatureType(value: unknown): value is FeatureType {
@@ -276,18 +326,8 @@ export async function readStacksByProjectId(
 
 async function readStackFile(): Promise<StackFile> {
   const candidates = getStacksFileCandidates();
-  const stacksFilePath = await resolveStacksFilePath(candidates);
-  let raw: string;
-
-  try {
-    raw = await readFile(stacksFilePath, 'utf-8');
-  } catch (error) {
-    if (isErrorCode(error, 'ENOENT')) {
-      throw createStacksFileNotFoundError(candidates);
-    }
-
-    throw error;
-  }
+  const stacksFilePath = await getOrCreateStacksFilePath(candidates);
+  const raw = await readFile(stacksFilePath, 'utf-8');
 
   const parsed = JSON.parse(raw) as unknown;
 
@@ -302,7 +342,7 @@ async function readStackFile(): Promise<StackFile> {
 
 async function writeStackFile(file: StackFile): Promise<void> {
   const candidates = getStacksFileCandidates();
-  const stacksFilePath = await resolveStacksFilePath(candidates);
+  const stacksFilePath = await getOrCreateStacksFilePath(candidates);
 
   await writeFile(
     stacksFilePath,
