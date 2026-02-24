@@ -1,4 +1,5 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 
 import type {
   FeatureStage,
@@ -18,8 +19,57 @@ import {
   resolveProjectRepositoryRoot,
 } from '$lib/server/project-config';
 
-const STACKS_FILE = new URL('../../../data/stacks.json', import.meta.url);
 const STACK_FILE_VERSION = 3;
+const STACKS_PATH_ENV = 'STACKED_STACKS_PATH';
+
+function getStacksFileCandidates(): string[] {
+  const overridePath = process.env[STACKS_PATH_ENV]?.trim();
+  if (overridePath && overridePath.length > 0) {
+    return [path.resolve(process.cwd(), overridePath)];
+  }
+
+  const cwd = process.cwd();
+  const candidates = [
+    path.resolve(cwd, 'data/stacks.json'),
+    path.resolve(cwd, 'services/app/data/stacks.json'),
+  ];
+
+  return [...new Set(candidates)];
+}
+
+async function resolveStacksFilePath(candidates: string[]): Promise<string> {
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      // keep trying additional candidates
+    }
+  }
+
+  return candidates[0] as string;
+}
+
+function isErrorCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === code
+  );
+}
+
+function createStacksFileNotFoundError(candidates: string[]): Error {
+  if (process.env[STACKS_PATH_ENV]?.trim()) {
+    return new Error(
+      `Stacks file not found at ${candidates[0]}. Update ${STACKS_PATH_ENV} or create the file.`,
+    );
+  }
+
+  return new Error(
+    `Stacks file not found. Looked in: ${candidates.join(', ')}. Create one of these files or set ${STACKS_PATH_ENV}.`,
+  );
+}
 
 function isFeatureType(value: unknown): value is FeatureType {
   return value === 'feature' || value === 'bugfix' || value === 'chore';
@@ -225,12 +275,25 @@ export async function readStacksByProjectId(
 }
 
 async function readStackFile(): Promise<StackFile> {
-  const raw = await readFile(STACKS_FILE, 'utf-8');
+  const candidates = getStacksFileCandidates();
+  const stacksFilePath = await resolveStacksFilePath(candidates);
+  let raw: string;
+
+  try {
+    raw = await readFile(stacksFilePath, 'utf-8');
+  } catch (error) {
+    if (isErrorCode(error, 'ENOENT')) {
+      throw createStacksFileNotFoundError(candidates);
+    }
+
+    throw error;
+  }
+
   const parsed = JSON.parse(raw) as unknown;
 
   if (!isStackFile(parsed)) {
     throw new Error(
-      `Invalid stacks.json shape. Expected version ${STACK_FILE_VERSION} with valid stacks and session collections.`,
+      `Invalid stacks.json shape at ${stacksFilePath}. Expected version ${STACK_FILE_VERSION} with valid stacks and session collections.`,
     );
   }
 
@@ -238,8 +301,11 @@ async function readStackFile(): Promise<StackFile> {
 }
 
 async function writeStackFile(file: StackFile): Promise<void> {
+  const candidates = getStacksFileCandidates();
+  const stacksFilePath = await resolveStacksFilePath(candidates);
+
   await writeFile(
-    STACKS_FILE,
+    stacksFilePath,
     `${JSON.stringify(file, null, '\t')}\n`,
     'utf-8',
   );
