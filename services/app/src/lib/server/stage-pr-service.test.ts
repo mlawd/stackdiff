@@ -18,9 +18,11 @@ vi.mock('$lib/server/worktree-service', () => ({
 import { runCommand } from '$lib/server/command';
 import { setStackStagePullRequest } from '$lib/server/stack-store';
 import { ensureStagePullRequest } from '$lib/server/stage-pr-service';
+import { resolveDefaultBaseBranch } from '$lib/server/worktree-service';
 
 const runCommandMock = vi.mocked(runCommand);
 const setStackStagePullRequestMock = vi.mocked(setStackStagePullRequest);
+const resolveDefaultBaseBranchMock = vi.mocked(resolveDefaultBaseBranch);
 
 function ok(stdout: string): CommandResult {
   return {
@@ -42,6 +44,7 @@ function fail(stderr: string): CommandResult {
 describe('stage-pr-service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resolveDefaultBaseBranchMock.mockResolvedValue('main');
     setStackStagePullRequestMock.mockResolvedValue({
       id: 'stack-1',
       projectId: 'repo-1',
@@ -213,5 +216,92 @@ describe('stage-pr-service', () => {
     });
 
     expect(pullRequest?.commentCount).toBe(2);
+  });
+
+  it('uses heading-based PR template when creating pull requests', async () => {
+    let prBody = '';
+    let prTitle = '';
+
+    runCommandMock.mockImplementation(async (_command, args) => {
+      if (args[0] === 'pr' && args[1] === 'list') {
+        if (args.includes('--head') && args.includes('feature/stage-1')) {
+          const isLookupAfterCreate = prBody.length > 0;
+          if (!isLookupAfterCreate) {
+            return ok('[]');
+          }
+
+          return ok(
+            JSON.stringify([
+              {
+                number: 16,
+                title: 'feat: Feature - 1: Stage 1',
+                state: 'OPEN',
+                isDraft: false,
+                url: 'https://github.com/org/repo/pull/16',
+                updatedAt: '2026-02-22T00:00:00.000Z',
+                comments: [],
+              },
+            ]),
+          );
+        }
+      }
+
+      if (args[0] === 'ls-remote' && args[1] === '--heads') {
+        return ok('abc refs/heads/feature/stage-1\n');
+      }
+
+      if (args[0] === 'pr' && args[1] === 'create') {
+        const titleIndex = args.indexOf('--title');
+        if (titleIndex >= 0) {
+          prTitle = args[titleIndex + 1] ?? '';
+        }
+
+        const bodyIndex = args.indexOf('--body');
+        if (bodyIndex >= 0) {
+          prBody = args[bodyIndex + 1] ?? '';
+        }
+
+        return ok('https://github.com/org/repo/pull/16\n');
+      }
+
+      if (args[0] === 'api' && args[1] === 'graphql') {
+        return fail('graphql unavailable');
+      }
+
+      return fail(`unexpected command: ${args.join(' ')}`);
+    });
+
+    await ensureStagePullRequest({
+      repositoryRoot: '/repo',
+      stack: {
+        id: 'stack-1',
+        projectId: 'repo-1',
+        name: 'Feature',
+        type: 'feature',
+        status: 'started',
+        notes: 'Feature description',
+        stages: [
+          {
+            id: 'stage-1',
+            title: 'Stage 1',
+            status: 'in-progress',
+            details: 'Stage description',
+          },
+        ],
+      },
+      stage: {
+        id: 'stage-1',
+        title: 'Stage 1',
+        status: 'in-progress',
+        details: 'Stage description',
+      },
+      stageIndex: 0,
+      branchName: 'feature/stage-1',
+    });
+
+    expect(prBody).toBe(
+      '# Feature\n\nFeature description\n\n# Stage goal\n\nStage description',
+    );
+    expect(prTitle).toBe('feat: Feature - 1: Stage 1');
   });
 });

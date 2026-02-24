@@ -152,7 +152,14 @@ function buildStagePullRequestTitle(
   stageNumber: number,
   stage: FeatureStage,
 ): string {
-  return `${stack.type}: ${stack.name} - ${stageNumber}: ${stage.title}`;
+  const typeLabel =
+    stack.type === 'feature'
+      ? 'feat'
+      : stack.type === 'bugfix'
+        ? 'fix'
+        : stack.type;
+
+  return `${typeLabel}: ${stack.name} - ${stageNumber}: ${stage.title}`;
 }
 
 function buildStagePullRequestBody(
@@ -162,7 +169,7 @@ function buildStagePullRequestBody(
   const featureGoal = stack.notes?.trim() || 'No description provided.';
   const stageGoal = stage.details?.trim() || 'No details provided.';
 
-  return [`Feature goal: ${featureGoal}`, `Stage goal: ${stageGoal}`].join(
+  return ['# Feature', '', featureGoal, '', '# Stage goal', '', stageGoal].join(
     '\n',
   );
 }
