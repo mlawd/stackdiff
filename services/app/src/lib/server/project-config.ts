@@ -7,6 +7,7 @@ import { runCommand } from '$lib/server/command';
 import type { StackedProject, StackedProjectConfig } from '$lib/types/stack';
 
 const CONFIG_VERSION = 1;
+const MODEL_IDENTIFIER_PATTERN = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._:-]*$/i;
 
 function defaultConfigPath(): string {
   return path.join(os.homedir(), '.config', 'stacked', 'config.json');
@@ -64,6 +65,7 @@ function normalizeConfig(raw: unknown): StackedProjectConfig {
 
   const candidate = raw as {
     version?: unknown;
+    defaultModel?: unknown;
     projects?: unknown;
   };
 
@@ -73,6 +75,26 @@ function normalizeConfig(raw: unknown): StackedProjectConfig {
 
   if (!Array.isArray(candidate.projects)) {
     throw badRequest('Config projects must be an array.');
+  }
+
+  let defaultModel: string | undefined;
+  if (candidate.defaultModel !== undefined) {
+    if (typeof candidate.defaultModel !== 'string') {
+      throw badRequest('Config defaultModel must be a string.');
+    }
+
+    const trimmedModel = candidate.defaultModel.trim();
+    if (!trimmedModel) {
+      throw badRequest('Config defaultModel must be a non-empty string.');
+    }
+
+    if (!MODEL_IDENTIFIER_PATTERN.test(trimmedModel)) {
+      throw badRequest(
+        'Config defaultModel must be in provider/model format (for example "anthropic/claude-sonnet-4-6").',
+      );
+    }
+
+    defaultModel = trimmedModel;
   }
 
   const projects = candidate.projects.map((entry, index) =>
@@ -101,6 +123,7 @@ function normalizeConfig(raw: unknown): StackedProjectConfig {
 
   return {
     version: CONFIG_VERSION,
+    defaultModel,
     projects,
   };
 }
@@ -112,7 +135,7 @@ export async function loadProjectConfig(): Promise<StackedProjectConfig> {
     await access(configPath);
   } catch {
     throw notFound(
-      `Project config not found at ${configPath}. Create it with { "version": 1, "projects": [{ "id": "my-repo", "name": "My Repo", "repositoryPath": "/absolute/path/to/repo" }] }`,
+      `Project config not found at ${configPath}. Create it with { "version": 1, "defaultModel": "anthropic/claude-sonnet-4-6", "projects": [{ "id": "my-repo", "name": "My Repo", "repositoryPath": "/absolute/path/to/repo" }] }`,
     );
   }
 

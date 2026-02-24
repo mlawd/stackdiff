@@ -17,6 +17,7 @@ vi.mock('$lib/server/planning-service', () => ({
 }));
 
 vi.mock('$lib/server/stack-store', () => ({
+  getRuntimeRepositoryPath: vi.fn(),
   getStackById: vi.fn(),
   touchPlanningSessionUpdatedAt: vi.fn(),
 }));
@@ -29,6 +30,7 @@ import {
 } from '$lib/server/planning-service';
 import { handlePlanningMessageStreamRequest } from '$lib/server/planning-stream-service';
 import {
+  getRuntimeRepositoryPath,
   getStackById,
   touchPlanningSessionUpdatedAt,
 } from '$lib/server/stack-store';
@@ -39,6 +41,7 @@ const streamOpencodeSessionMessageMock = vi.mocked(
 const getPlanningMessagesMock = vi.mocked(getPlanningMessages);
 const loadExistingPlanningSessionMock = vi.mocked(loadExistingPlanningSession);
 const shouldAutoSavePlanMock = vi.mocked(shouldAutoSavePlan);
+const getRuntimeRepositoryPathMock = vi.mocked(getRuntimeRepositoryPath);
 const getStackByIdMock = vi.mocked(getStackById);
 const touchPlanningSessionUpdatedAtMock = vi.mocked(
   touchPlanningSessionUpdatedAt,
@@ -68,6 +71,7 @@ describe('planning-stream-service', () => {
       awaitingResponse: false,
     });
     shouldAutoSavePlanMock.mockReturnValue(false);
+    getRuntimeRepositoryPathMock.mockResolvedValue('/repo');
     touchPlanningSessionUpdatedAtMock.mockResolvedValue({
       id: 'session-1',
       stackId: 'stack-1',
@@ -137,5 +141,12 @@ describe('planning-stream-service', () => {
 
     expect(touchPlanningSessionUpdatedAtMock).toHaveBeenCalledWith('stack-1');
     expect(getPlanningMessagesMock).toHaveBeenCalledWith('stack-1');
+    expect(streamOpencodeSessionMessageMock).toHaveBeenCalledWith(
+      'opencode-1',
+      'hello',
+      expect.objectContaining({
+        directory: '/repo',
+      }),
+    );
   });
 });

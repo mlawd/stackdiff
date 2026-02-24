@@ -5,6 +5,7 @@ import {
   type Part,
 } from '@opencode-ai/sdk/v2';
 
+import { loadProjectConfig } from '$lib/server/project-config';
 import type {
   PlanningMessage,
   PlanningQuestionDialog,
@@ -288,7 +289,8 @@ function toPlanningMessages(
     parts: Part[];
   }>,
 ): PlanningMessage[] {
-  return entries.flatMap((entry) => {
+  return entries
+    .flatMap((entry) => {
       if (
         entry.info.role !== 'assistant' &&
         entry.info.role !== 'user' &&
@@ -322,9 +324,9 @@ function toPlanningMessages(
 
       return [
         {
-        id: entry.info.id,
-        role: entry.info.role,
-        content,
+          id: entry.info.id,
+          role: entry.info.role,
+          content,
           createdAt,
         } as PlanningMessage,
         ...extractedQuestionMessages,
@@ -531,9 +533,12 @@ function appendDeltaFromSnapshot(
 async function getRuntime(): Promise<OpencodeRuntime> {
   if (!globalThis.__stackedOpencodeRuntime) {
     globalThis.__stackedOpencodeRuntime = (async () => {
+      const projectConfig = await loadProjectConfig();
+      const defaultModel = projectConfig.defaultModel?.trim();
       const started = await createOpencode({
         hostname: env.OPENCODE_SERVER_HOSTNAME?.trim() || '127.0.0.1',
         port: getServerPort(),
+        config: defaultModel ? { model: defaultModel } : undefined,
       });
 
       const runtime: OpencodeRuntime = {

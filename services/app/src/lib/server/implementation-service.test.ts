@@ -90,6 +90,11 @@ describe('implementation-service', () => {
     });
 
     expect(createAndSeedOpencodeSessionMock).toHaveBeenCalledTimes(1);
+    expect(createAndSeedOpencodeSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: 'build',
+      }),
+    );
     const seededPrompt =
       createAndSeedOpencodeSessionMock.mock.calls[0]?.[0]?.prompt;
 

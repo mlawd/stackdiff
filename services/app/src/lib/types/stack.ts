@@ -43,6 +43,7 @@ export interface StackedProject {
 
 export interface StackedProjectConfig {
   version: number;
+  defaultModel?: string;
   projects: StackedProject[];
 }
 

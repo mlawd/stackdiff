@@ -15,6 +15,7 @@ import {
   shouldAutoSavePlan,
 } from '$lib/server/planning-service';
 import {
+  getRuntimeRepositoryPath,
   getStackById,
   touchPlanningSessionUpdatedAt,
 } from '$lib/server/stack-store';
@@ -56,10 +57,14 @@ function toErrorMessage(error: unknown): string {
 async function createNoOpWatchResponse(input: {
   stackId: string;
   opencodeSessionId: string;
+  directory: string;
 }): Promise<Response> {
   const messages = await getPlanningMessages(input.stackId);
   const pendingQuestions = await listPendingOpencodeSessionQuestions(
     input.opencodeSessionId,
+    {
+      directory: input.directory,
+    },
   );
   const firstPendingQuestion = pendingQuestions[0];
   const stream = new ReadableStream<Uint8Array>({
@@ -97,6 +102,7 @@ async function createPlanningStream(input: {
     requestId: string;
     answers: string[][];
   };
+  directory: string;
   watch: boolean;
   autoSave: boolean;
 }): Promise<ReadableStream<Uint8Array>> {
@@ -110,17 +116,23 @@ async function createPlanningStream(input: {
           await replyOpencodeQuestion(
             input.questionReply.requestId,
             input.questionReply.answers,
+            {
+              directory: input.directory,
+            },
           );
         }
 
         const events =
           input.watch || input.questionReply
-            ? watchOpencodeSession(input.opencodeSessionId)
+            ? watchOpencodeSession(input.opencodeSessionId, {
+                directory: input.directory,
+              })
             : streamOpencodeSessionMessage(
                 input.opencodeSessionId,
                 input.content ?? '',
                 {
                   system: PLANNING_SYSTEM_PROMPT,
+                  directory: input.directory,
                   agent: input.agent,
                 },
               );
@@ -206,6 +218,7 @@ export async function handlePlanningMessageStreamRequest(input: {
     (await input.request.json()) as unknown,
   );
   const { session } = await loadExistingPlanningSession(input.stackId);
+  const directory = await getRuntimeRepositoryPath({ stackId: input.stackId });
 
   if (!session.opencodeSessionId) {
     throw badRequest('Planning session is missing an OpenCode session id.');
@@ -226,11 +239,15 @@ export async function handlePlanningMessageStreamRequest(input: {
   if (parsedBody.watch) {
     const runtimeState = await getOpencodeSessionRuntimeState(
       session.opencodeSessionId,
+      {
+        directory,
+      },
     );
     if (runtimeState !== 'busy' && runtimeState !== 'retry') {
       return createNoOpWatchResponse({
         stackId: input.stackId,
         opencodeSessionId: session.opencodeSessionId,
+        directory,
       });
     }
   }
@@ -241,6 +258,7 @@ export async function handlePlanningMessageStreamRequest(input: {
     content,
     agent: parsedBody.agent,
     questionReply: parsedBody.questionReply,
+    directory,
     watch: parsedBody.watch,
     autoSave,
   });

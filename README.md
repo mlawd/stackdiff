@@ -34,6 +34,7 @@ Projects are configured in `~/.config/stacked/config.json`:
 ```json
 {
   "version": 1,
+  "defaultModel": "anthropic/claude-sonnet-4-6",
   "projects": [
     {
       "id": "stacked",
@@ -43,5 +44,15 @@ Projects are configured in `~/.config/stacked/config.json`:
   ]
 }
 ```
+
+`defaultModel` is optional and applies globally to all OpenCode sessions.
+Use `provider/model` format.
+
+Common model IDs:
+
+- `anthropic/claude-opus-4-6`
+- `anthropic/claude-sonnet-4-6`
+- `anthropic/claude-haiku-4-5`
+- `openai/gpt-5.3-codex`
 
 Each stack is associated with a configured `projectId`, and all runtime git/gh/opencode operations use that project's repository path.
