@@ -29,6 +29,19 @@ npm run dev
 npm run dev -- --open
 ```
 
+To run a production-like server locally:
+
+```sh
+# build first
+npm run build
+
+# start preview server on port 4173
+npm run start
+
+# or run both in one command
+npm run serve
+```
+
 ## Building
 
 To create a production version of your app:
@@ -37,6 +50,6 @@ To create a production version of your app:
 npm run build
 ```
 
-You can preview the production build with `npm run preview`.
+You can also preview the production build directly with `npm run preview`.
 
 > To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.

@@ -20,7 +20,12 @@ npm install
 npm run dev
 npm run check
 npm run build
+npm run start
+npm run serve
 ```
+
+- `npm run start` runs the production build with Vite preview on port `4173`.
+- `npm run serve` runs `build` and then `start` in one command.
 
 ## Data model (initial)
 

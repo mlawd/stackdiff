@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "start": "vite preview --port 4173",
+    "serve": "npm run build && npm run start",
     "preview": "vite preview",
     "prepare": "svelte-kit sync || echo ''",
     "test": "vitest run",

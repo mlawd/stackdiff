@@ -8,6 +8,8 @@
   "scripts": {
     "dev": "npm run dev -w @stacked/app",
     "build": "npm run build -w @stacked/app",
+    "start": "npm run start -w @stacked/app",
+    "serve": "npm run serve -w @stacked/app",
     "check": "npm run check -w @stacked/app",
     "prettier": "prettier --write \"**/*.{js,ts,svelte,json,md}\""
   },

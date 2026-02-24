@@ -38,6 +38,20 @@
     return projectStacksPath(data.selectedProjectId);
   });
 
+  let pageTitle = $derived.by(() => {
+    if (!data.selectedProjectId) {
+      return 'stackdiff';
+    }
+
+    const selectedProject = data.projects.find(
+      (project) => project.id === data.selectedProjectId,
+    );
+
+    return selectedProject
+      ? `stackdiff - ${selectedProject.name}`
+      : 'stackdiff';
+  });
+
   function handleProjectChange(event: Event): void {
     const projectId = (event.currentTarget as HTMLSelectElement).value;
     if (!projectId) {
@@ -99,6 +113,7 @@
 </script>
 
 <svelte:head>
+  <title>{pageTitle}</title>
   <link rel="icon" href={favicon} />
 </svelte:head>
 
