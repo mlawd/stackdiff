@@ -17,6 +17,7 @@ export type OpencodeStreamEvent =
   | {
       type: 'delta';
       chunk: string;
+      messageId?: string;
     }
   | {
       type: 'question';
@@ -925,6 +926,7 @@ async function* streamOpencodeSessionEvents(
         yield {
           type: 'delta',
           chunk: delta,
+          messageId: part.messageID,
         };
         yieldedDelta = true;
       }
@@ -970,6 +972,7 @@ async function* streamOpencodeSessionEvents(
           yield {
             type: 'delta',
             chunk: lastAssistant.content,
+            messageId: lastAssistant.id,
           };
         }
       }

@@ -18,34 +18,14 @@
     session: StackPlanningSession;
     messages: PlanningMessage[];
     awaitingResponse: boolean;
+    onPlanSaved?: () => void | Promise<void>;
   }
 
-  let {
-    stackId,
-    session: initialSession,
-    messages,
-    awaitingResponse,
-  }: Props = $props();
-
-  let initialized = false;
-  let session = $state<StackPlanningSession>({
-    id: '',
-    stackId: '',
-    createdAt: '',
-    updatedAt: '',
-  });
-
-  $effect(() => {
-    if (initialized) {
-      return;
-    }
-
-    session = initialSession;
-    initialized = true;
-  });
+  let { stackId, messages, awaitingResponse, onPlanSaved }: Props = $props();
 
   function formatDoneSuccess(payload: StreamDonePayload): string | null {
     if (payload.autoSavedPlanPath && payload.autoSavedStageConfigPath) {
+      void onPlanSaved?.();
       return `Saved plan to ${payload.autoSavedPlanPath} and stage config to ${payload.autoSavedStageConfigPath}.`;
     }
 
@@ -60,10 +40,8 @@
     return 'Saved plan.';
   }
 
-  function handleSaveResponse(payload: SaveResponse): void {
-    if (payload.session) {
-      session = payload.session;
-    }
+  function handleSaveResponse(_payload: SaveResponse): void {
+    void onPlanSaved?.();
   }
 </script>
 

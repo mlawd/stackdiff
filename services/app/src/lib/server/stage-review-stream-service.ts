@@ -139,7 +139,12 @@ async function createReviewStream(input: {
           }
 
           assistantReply += event.chunk;
-          controller.enqueue(encodeSse('delta', { chunk: event.chunk }));
+          controller.enqueue(
+            encodeSse('delta', {
+              chunk: event.chunk,
+              messageId: event.messageId,
+            }),
+          );
         }
 
         await touchReviewSessionUpdatedAt(input.stackId, input.stageId);

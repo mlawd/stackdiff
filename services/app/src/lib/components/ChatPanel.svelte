@@ -21,6 +21,11 @@
     source?: string;
   }
 
+  interface StreamDeltaPayload extends Record<string, unknown> {
+    chunk?: string;
+    messageId?: string;
+  }
+
   interface StreamErrorPayload {
     message?: string;
   }
@@ -50,10 +55,16 @@
     customAnswer?: string;
   }
 
+  interface StreamingAssistantMessage {
+    key: string;
+    content: string;
+  }
+
   type ChatAgent = 'plan' | 'build';
 
   const SAVE_PLAN_PROMPT_PREFIX =
     'Create a detailed implementation plan and stages config from this conversation.';
+  const FALLBACK_STREAM_MESSAGE_KEY = 'streaming-assistant';
 
   interface Props {
     streamUrl: string;
@@ -93,7 +104,7 @@
   let messageInput = $state('');
   let sending = $state(false);
   let saving = $state(false);
-  let streamingReply = $state('');
+  let streamingAssistantMessages = $state<StreamingAssistantMessage[]>([]);
   let assistantThinking = $state(false);
   let errorMessage = $state<string | null>(null);
   let successMessage = $state<string | null>(null);
@@ -130,7 +141,7 @@
 
   $effect(() => {
     messages.length;
-    streamingReply;
+    streamingAssistantMessages;
     assistantThinking;
 
     if (!initialized) {
@@ -587,9 +598,58 @@
     ];
   }
 
+  function appendStreamingChunk(messageId: string, chunk: string): void {
+    if (!chunk) {
+      return;
+    }
+
+    const existingIndex = streamingAssistantMessages.findIndex(
+      (message) => message.key === messageId,
+    );
+
+    if (existingIndex < 0) {
+      streamingAssistantMessages = [
+        ...streamingAssistantMessages,
+        { key: messageId, content: chunk },
+      ];
+      return;
+    }
+
+    const updated = [...streamingAssistantMessages];
+    const existing = updated[existingIndex];
+    updated[existingIndex] = {
+      ...existing,
+      content: `${existing.content}${chunk}`,
+    };
+    streamingAssistantMessages = updated;
+  }
+
+  function appendStreamingAssistantMessagesToHistory(): boolean {
+    const appendedMessages = streamingAssistantMessages
+      .map((message) => message.content.trim())
+      .filter((content) => content.length > 0)
+      .map((content) => ({
+        id: `optimistic-assistant-${crypto.randomUUID()}`,
+        role: 'assistant' as const,
+        content,
+        createdAt: new Date().toISOString(),
+      }));
+
+    if (appendedMessages.length === 0) {
+      return false;
+    }
+
+    messages = [...messages, ...appendedMessages];
+    return true;
+  }
+
   function applyStreamEvent(eventBlock: string): {
     done?: StreamDonePayload;
     error?: StreamErrorPayload;
+    delta?: {
+      messageId: string;
+      chunk: string;
+    };
     question?: {
       dialog: PlanningQuestionDialog;
       requestId: string | null;
@@ -623,16 +683,25 @@
     }
 
     if (event === 'delta') {
+      const deltaPayload =
+        typeof payload === 'object' && payload !== null
+          ? (payload as StreamDeltaPayload)
+          : null;
       const chunk =
-        typeof payload === 'object' &&
-        payload !== null &&
-        'chunk' in payload &&
-        typeof payload.chunk === 'string'
-          ? payload.chunk
-          : '';
+        typeof deltaPayload?.chunk === 'string' ? deltaPayload.chunk : '';
       if (chunk) {
         assistantThinking = false;
-        streamingReply += chunk;
+        const messageId =
+          typeof deltaPayload?.messageId === 'string' &&
+          deltaPayload.messageId.trim().length > 0
+            ? deltaPayload.messageId
+            : FALLBACK_STREAM_MESSAGE_KEY;
+        return {
+          delta: {
+            messageId,
+            chunk,
+          },
+        };
       }
       return {};
     }
@@ -678,7 +747,7 @@
     sending = true;
     errorMessage = null;
     successMessage = null;
-    streamingReply = '';
+    streamingAssistantMessages = [];
     assistantThinking = true;
     activeQuestionDialog = null;
     activeQuestionRequestId = null;
@@ -734,6 +803,10 @@
             throw new Error(result.error.message ?? 'Streaming failed.');
           }
 
+          if (result.delta) {
+            appendStreamingChunk(result.delta.messageId, result.delta.chunk);
+          }
+
           if (result.question) {
             activeQuestionDialog = result.question.dialog;
             activeQuestionRequestId = result.question.requestId;
@@ -745,7 +818,11 @@
             if (result.done.messages && result.done.messages.length > 0) {
               messages = result.done.messages;
             } else {
-              appendAssistantMessage(result.done.assistantReply);
+              const appendedStreamingMessages =
+                appendStreamingAssistantMessagesToHistory();
+              if (!appendedStreamingMessages) {
+                appendAssistantMessage(result.done.assistantReply);
+              }
             }
 
             if (formatDoneSuccess) {
@@ -764,7 +841,7 @@
     } finally {
       sending = false;
       assistantThinking = false;
-      streamingReply = '';
+      streamingAssistantMessages = [];
     }
 
     return ok;
@@ -1085,7 +1162,7 @@
               <div
                 class={`stacked-chat-font w-fit max-w-[90%] rounded-2xl border px-4 py-3 text-sm ${
                   renderAsUserBubble
-                    ? 'ml-auto rounded-br-none border-[var(--stacked-accent)] bg-blue-500/20 text-blue-50'
+                    ? 'mr-auto rounded-bl-none border-[var(--stacked-accent)] bg-blue-500/20 text-blue-50'
                     : 'mr-auto rounded-bl-none border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] text-[var(--stacked-text)]'
                 }`}
               >
@@ -1193,13 +1270,13 @@
           {/each}
 
           {#if sending}
-            <div
-              class="stacked-chat-font mr-auto w-fit max-w-[90%] rounded-2xl rounded-bl-none border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-4 py-3 text-sm text-[var(--stacked-text)]"
-            >
-              <p class="mb-1 text-[11px] uppercase tracking-wide opacity-70">
-                agent
-              </p>
-              {#if assistantThinking && !streamingReply}
+            {#if assistantThinking && streamingAssistantMessages.length === 0}
+              <div
+                class="stacked-chat-font mr-auto w-fit max-w-[90%] rounded-2xl rounded-bl-none border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-4 py-3 text-sm text-[var(--stacked-text)]"
+              >
+                <p class="mb-1 text-[11px] uppercase tracking-wide opacity-70">
+                  agent
+                </p>
                 <div class="stacked-subtle flex items-center gap-2">
                   <Spinner
                     size="4"
@@ -1209,12 +1286,23 @@
                   />
                   <span>Assistant is thinking...</span>
                 </div>
-              {:else}
-                <div class="stacked-markdown">
-                  {@html renderMarkdown(streamingReply)}
+              </div>
+            {:else}
+              {#each streamingAssistantMessages as streamingMessage (streamingMessage.key)}
+                <div
+                  class="stacked-chat-font mr-auto w-fit max-w-[90%] rounded-2xl rounded-bl-none border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-4 py-3 text-sm text-[var(--stacked-text)]"
+                >
+                  <p
+                    class="mb-1 text-[11px] uppercase tracking-wide opacity-70"
+                  >
+                    agent
+                  </p>
+                  <div class="stacked-markdown">
+                    {@html renderMarkdown(streamingMessage.content)}
+                  </div>
                 </div>
-              {/if}
-            </div>
+              {/each}
+            {/if}
           {/if}
         </div>
       {/if}

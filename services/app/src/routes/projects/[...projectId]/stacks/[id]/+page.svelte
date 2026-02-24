@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { invalidateAll } from '$app/navigation';
   import { lockBodyScroll, portalToBody } from '$lib/client/overlay';
   import PlanningChat from '$lib/components/PlanningChat.svelte';
   import { projectStacksPath } from '$lib/project-paths';
@@ -17,6 +18,10 @@
 
   function closePlanningChat(): void {
     planningChatOpen = false;
+  }
+
+  async function handlePlanSaved(): Promise<void> {
+    await invalidateAll();
   }
 
   $effect(() => {
@@ -79,6 +84,7 @@
       session={data.session}
       messages={data.messages}
       awaitingResponse={data.awaitingResponse}
+      onPlanSaved={handlePlanSaved}
     />
   </div>
 </div>
