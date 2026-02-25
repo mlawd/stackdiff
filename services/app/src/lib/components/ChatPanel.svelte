@@ -109,7 +109,6 @@
   let sending = $state(false);
   let saving = $state(false);
   let streamingAssistantMessages = $state<StreamingAssistantMessage[]>([]);
-  let assistantThinking = $state(false);
   let errorMessage = $state<string | null>(null);
   let successMessage = $state<string | null>(null);
   let resumePendingStream = $state(false);
@@ -146,7 +145,6 @@
   $effect(() => {
     messages.length;
     streamingAssistantMessages;
-    assistantThinking;
 
     if (!initialized) {
       return;
@@ -682,7 +680,6 @@
     }
 
     if (event === 'start') {
-      assistantThinking = true;
       return {};
     }
 
@@ -694,7 +691,6 @@
       const chunk =
         typeof deltaPayload?.chunk === 'string' ? deltaPayload.chunk : '';
       if (chunk) {
-        assistantThinking = false;
         const messageId =
           typeof deltaPayload?.messageId === 'string' &&
           deltaPayload.messageId.trim().length > 0
@@ -752,7 +748,6 @@
     errorMessage = null;
     successMessage = null;
     streamingAssistantMessages = [];
-    assistantThinking = true;
     activeQuestionDialog = null;
     activeQuestionRequestId = null;
     activeQuestionIndex = 0;
@@ -815,7 +810,6 @@
             activeQuestionDialog = result.question.dialog;
             activeQuestionRequestId = result.question.requestId;
             initializeQuestionResponses(result.question.dialog);
-            assistantThinking = false;
           }
 
           if (result.done) {
@@ -844,7 +838,6 @@
         error instanceof Error ? error.message : 'Unable to send message.';
     } finally {
       sending = false;
-      assistantThinking = false;
       streamingAssistantMessages = [];
     }
 
@@ -1285,7 +1278,7 @@
           {/each}
 
           {#if sending}
-            {#if assistantThinking && streamingAssistantMessages.length === 0}
+            {#each streamingAssistantMessages as streamingMessage (streamingMessage.key)}
               <div class="stacked-chat-font flex items-start gap-2">
                 <BrainSolid class="mt-0.5 h-8 w-8 shrink-0 opacity-80" />
                 <div
@@ -1296,36 +1289,12 @@
                   >
                     <span>agent</span>
                   </p>
-                  <div class="stacked-subtle flex items-center gap-2">
-                    <Spinner
-                      size="4"
-                      currentFill="var(--stacked-accent)"
-                      currentColor="color-mix(in oklab, var(--stacked-border-soft) 82%, #9aa3b7 18%)"
-                      class="opacity-90"
-                    />
-                    <span>Assistant is thinking...</span>
+                  <div class="stacked-markdown">
+                    {@html renderMarkdown(streamingMessage.content)}
                   </div>
                 </div>
               </div>
-            {:else}
-              {#each streamingAssistantMessages as streamingMessage (streamingMessage.key)}
-                <div class="stacked-chat-font flex items-start gap-2">
-                  <BrainSolid class="mt-0.5 h-8 w-8 shrink-0 opacity-80" />
-                  <div
-                    class="mr-auto w-fit max-w-[90%] rounded-2xl rounded-tl-none border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-4 py-3 text-sm text-[var(--stacked-text)]"
-                  >
-                    <p
-                      class="mb-1 text-[11px] uppercase tracking-wide opacity-70"
-                    >
-                      <span>agent</span>
-                    </p>
-                    <div class="stacked-markdown">
-                      {@html renderMarkdown(streamingMessage.content)}
-                    </div>
-                  </div>
-                </div>
-              {/each}
-            {/if}
+            {/each}
           {/if}
         </div>
       {/if}
@@ -1451,6 +1420,21 @@
       {/if}
     {/if}
   </div>
+
+  {#if sending && !activeQuestionDialog}
+    <div
+      class="stacked-chat-font mb-2 flex items-center gap-2 px-1 text-sm stacked-subtle"
+      aria-live="polite"
+    >
+      <Spinner
+        size="4"
+        currentFill="var(--stacked-accent)"
+        currentColor="color-mix(in oklab, var(--stacked-border-soft) 82%, #9aa3b7 18%)"
+        class="opacity-90"
+      />
+      <span>Assistant is thinking...</span>
+    </div>
+  {/if}
 
   <form
     onsubmit={sendMessage}

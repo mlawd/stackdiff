@@ -31,7 +31,9 @@
   let currentStagePullRequest = $derived(
     runtime?.pullRequest ?? stage.pullRequest,
   );
-  let canOpenReview = $derived(Boolean(currentStagePullRequest?.number));
+  let canOpenReview = $derived(
+    currentStageStatus !== 'done' && Boolean(currentStagePullRequest?.number),
+  );
   let canApprove = $derived(currentStageStatus === 'review' && canOpenReview);
   let stageWorking = $derived(
     currentStageStatus === 'in-progress' &&
