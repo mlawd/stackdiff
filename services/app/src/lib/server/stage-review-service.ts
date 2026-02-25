@@ -156,7 +156,7 @@ async function requireReviewContext(
 
   if (!stage.pullRequest?.number) {
     throw new Error(
-      'Stage pull request is missing. Move the stage to review-ready to create a PR first.',
+      'Stage pull request is missing. Move the stage to review to create a PR first.',
     );
   }
 

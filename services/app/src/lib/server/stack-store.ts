@@ -138,9 +138,35 @@ function isFeatureStageStatus(value: unknown): value is FeatureStageStatus {
   return (
     value === 'not-started' ||
     value === 'in-progress' ||
+    value === 'review' ||
+    value === 'approved' ||
     value === 'review-ready' ||
     value === 'done'
   );
+}
+
+function normalizeFeatureStageStatus(value: unknown): FeatureStageStatus {
+  if (value === 'review-ready') {
+    return 'review';
+  }
+
+  if (value === 'approved') {
+    return 'approved';
+  }
+
+  if (value === 'review') {
+    return 'review';
+  }
+
+  if (value === 'in-progress') {
+    return 'in-progress';
+  }
+
+  if (value === 'done') {
+    return 'done';
+  }
+
+  return 'not-started';
 }
 
 function isStackPullRequest(value: unknown): value is StackPullRequest {
@@ -160,7 +186,13 @@ function isStackPullRequest(value: unknown): value is StackPullRequest {
     typeof pullRequest.url === 'string' &&
     typeof pullRequest.updatedAt === 'string' &&
     (pullRequest.commentCount === undefined ||
-      typeof pullRequest.commentCount === 'number')
+      typeof pullRequest.commentCount === 'number') &&
+    (pullRequest.reviewDecision === undefined ||
+      pullRequest.reviewDecision === 'APPROVED' ||
+      pullRequest.reviewDecision === 'CHANGES_REQUESTED' ||
+      pullRequest.reviewDecision === 'REVIEW_REQUIRED') &&
+    (pullRequest.headRefOid === undefined ||
+      typeof pullRequest.headRefOid === 'string')
   );
 }
 
@@ -176,8 +208,28 @@ function isFeatureStage(value: unknown): value is FeatureStage {
     typeof stage.title === 'string' &&
     (stage.details === undefined || typeof stage.details === 'string') &&
     isFeatureStageStatus(stage.status) &&
+    (stage.approvedCommitSha === undefined ||
+      typeof stage.approvedCommitSha === 'string') &&
     (stage.pullRequest === undefined || isStackPullRequest(stage.pullRequest))
   );
+}
+
+function normalizeFeatureStage(stage: FeatureStage): FeatureStage {
+  const nextStatus = normalizeFeatureStageStatus(stage.status);
+  const approvedCommitSha =
+    typeof stage.approvedCommitSha === 'string' &&
+    stage.approvedCommitSha.trim()
+      ? stage.approvedCommitSha.trim()
+      : undefined;
+
+  return {
+    ...stage,
+    status: nextStatus,
+    approvedCommitSha:
+      nextStatus === 'approved' && approvedCommitSha
+        ? approvedCommitSha
+        : undefined,
+  };
 }
 
 function isStackMetadata(value: unknown): value is StackMetadata {
@@ -303,7 +355,7 @@ async function normalizeStackFile(file: StackFile): Promise<StackFile> {
       status: isStackStatus((stack as { status?: unknown }).status)
         ? stack.status
         : 'created',
-      stages: stack.stages ?? [],
+      stages: (stack.stages ?? []).map((stage) => normalizeFeatureStage(stage)),
     })),
     planningSessions: file.planningSessions ?? [],
     implementationSessions: file.implementationSessions ?? [],
@@ -582,6 +634,23 @@ export async function touchImplementationSessionUpdatedAt(
   await writeStackFile(file);
 
   return session;
+}
+
+export async function removeImplementationSessionByStackAndStage(
+  stackId: string,
+  stageId: string,
+): Promise<void> {
+  const file = await readStackFile();
+  const nextSessions = (file.implementationSessions ?? []).filter(
+    (session) => !(session.stackId === stackId && session.stageId === stageId),
+  );
+
+  if (nextSessions.length === (file.implementationSessions ?? []).length) {
+    return;
+  }
+
+  file.implementationSessions = nextSessions;
+  await writeStackFile(file);
 }
 
 export async function createOrGetPlanningSession(
@@ -883,6 +952,56 @@ export async function setStackStageStatus(
     return {
       ...stage,
       status,
+      approvedCommitSha:
+        status === 'approved' ? stage.approvedCommitSha : undefined,
+    };
+  });
+
+  const next: StackMetadata = {
+    ...stack,
+    stages: nextStages,
+  };
+
+  file.stacks[index] = next;
+  await writeStackFile(file);
+
+  return next;
+}
+
+export async function setStackStageApproved(
+  id: string,
+  stageId: string,
+  approvedCommitSha: string,
+): Promise<StackMetadata> {
+  const file = await readStackFile();
+  const index = file.stacks.findIndex((stack) => stack.id === id);
+
+  if (index === -1) {
+    throw new Error('Feature not found.');
+  }
+
+  const normalizedCommitSha = approvedCommitSha.trim();
+  if (!normalizedCommitSha) {
+    throw new Error('Approved commit SHA is required.');
+  }
+
+  const stack = file.stacks[index];
+  const stages = stack.stages ?? [];
+  const stageIndex = stages.findIndex((stage) => stage.id === stageId);
+
+  if (stageIndex === -1) {
+    throw new Error('Stage not found.');
+  }
+
+  const nextStages = stages.map((stage, indexCandidate) => {
+    if (indexCandidate !== stageIndex) {
+      return stage;
+    }
+
+    return {
+      ...stage,
+      status: 'approved' as const,
+      approvedCommitSha: normalizedCommitSha,
     };
   });
 

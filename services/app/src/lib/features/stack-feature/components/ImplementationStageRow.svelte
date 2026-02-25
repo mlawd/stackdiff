@@ -18,11 +18,13 @@
     runtime,
     syncMetadata,
     onOpenReview,
+    onApproveStage,
   }: {
     stage: FeatureStage;
     runtime: ImplementationStageRuntime | undefined;
     syncMetadata: StageSyncMetadata;
     onOpenReview?: (stageId: string) => void;
+    onApproveStage?: (stageId: string) => void;
   } = $props();
 
   let currentStageStatus = $derived(runtime?.stageStatus ?? stage.status);
@@ -30,6 +32,7 @@
     runtime?.pullRequest ?? stage.pullRequest,
   );
   let canOpenReview = $derived(Boolean(currentStagePullRequest?.number));
+  let canApprove = $derived(currentStageStatus === 'review' && canOpenReview);
   let stageWorking = $derived(
     currentStageStatus === 'in-progress' &&
       (runtime?.runtimeState === 'busy' || runtime?.runtimeState === 'retry'),
@@ -94,7 +97,7 @@
           </Badge>
         </button>
       {/if}
-      {#if currentStagePullRequest?.number && currentStagePullRequest.commentCount !== undefined}
+      {#if currentStagePullRequest?.number && currentStagePullRequest.commentCount !== undefined && currentStagePullRequest.state !== 'MERGED'}
         <Badge
           rounded
           color="lime"
@@ -122,13 +125,24 @@
       {/if}
     </div>
     {#if canOpenReview}
-      <button
-        type="button"
-        class="rounded border border-[var(--stacked-border-soft)] px-2 py-1 text-xs stacked-subtle transition hover:text-[var(--stacked-text)]"
-        onclick={() => onOpenReview?.(stage.id)}
-      >
-        Review
-      </button>
+      <div class="flex items-center gap-2">
+        {#if canApprove}
+          <button
+            type="button"
+            class="rounded border border-lime-500/40 bg-lime-500/10 px-2 py-1 text-xs text-lime-100 transition hover:bg-lime-500/20"
+            onclick={() => onApproveStage?.(stage.id)}
+          >
+            Approve
+          </button>
+        {/if}
+        <button
+          type="button"
+          class="rounded border border-[var(--stacked-border-soft)] px-2 py-1 text-xs stacked-subtle transition hover:text-[var(--stacked-text)]"
+          onclick={() => onOpenReview?.(stage.id)}
+        >
+          Review
+        </button>
+      </div>
     {/if}
   </div>
 </div>

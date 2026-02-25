@@ -33,7 +33,7 @@ describe('POST /api/stacks/[id]/stages/[stageId]/implementation/reconcile', () =
 
   it('returns reconciled status payload on success', async () => {
     reconcileImplementationStageStatusMock.mockResolvedValue({
-      stageStatus: 'review-ready',
+      stageStatus: 'review',
       runtimeState: 'idle',
       todoCompleted: 4,
       todoTotal: 4,
@@ -46,7 +46,7 @@ describe('POST /api/stacks/[id]/stages/[stageId]/implementation/reconcile', () =
 
     expect(response.status).toBe(200);
     expect(body.data).toEqual({
-      stageStatus: 'review-ready',
+      stageStatus: 'review',
       runtimeState: 'idle',
       todoCompleted: 4,
       todoTotal: 4,

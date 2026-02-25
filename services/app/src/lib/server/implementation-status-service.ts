@@ -8,6 +8,7 @@ import {
   getImplementationSessionByStackAndStage,
   getRuntimeRepositoryPath,
   getStackById,
+  setStackStageApproved,
   setStackStageStatus,
 } from '$lib/server/stack-store';
 import {
@@ -25,6 +26,7 @@ export interface ImplementationStageStatusSummary {
   runtimeState: 'idle' | 'busy' | 'retry' | 'missing';
   todoCompleted: number;
   todoTotal: number;
+  approvedCommitSha?: string;
   pullRequest?: StackPullRequest;
 }
 
@@ -33,6 +35,7 @@ interface StageStatusContext {
   stageId: string;
   stageIndex: number;
   stageStatus: FeatureStageStatus;
+  approvedCommitSha?: string;
   pullRequest?: StackPullRequest;
   branchName?: string;
   worktreeAbsolutePath?: string;
@@ -143,6 +146,7 @@ async function loadStageStatusContext(
       stageId,
       stageIndex,
       stageStatus: stage.status,
+      approvedCommitSha: stage.approvedCommitSha,
       pullRequest: stage.pullRequest,
       runtimeState: 'missing',
       todoCompleted: 0,
@@ -181,6 +185,7 @@ async function loadStageStatusContext(
     stageId,
     stageIndex,
     stageStatus: stage.status,
+    approvedCommitSha: stage.approvedCommitSha,
     pullRequest: stage.pullRequest,
     branchName: implementationSession.branchName,
     worktreeAbsolutePath,
@@ -199,8 +204,113 @@ function toSummary(
     runtimeState: context.runtimeState,
     todoCompleted: context.todoCompleted,
     todoTotal: context.todoTotal,
+    approvedCommitSha: context.approvedCommitSha,
     pullRequest: context.pullRequest,
   };
+}
+
+async function refreshPullRequestContext(
+  context: StageStatusContext,
+): Promise<void> {
+  if (!context.branchName) {
+    return;
+  }
+
+  const repositoryRoot = await getRuntimeRepositoryPath({
+    stackId: context.stackId,
+  });
+  const stack = await getStackById(context.stackId);
+  const stage = (stack?.stages ?? []).find(
+    (item) => item.id === context.stageId,
+  );
+
+  if (!stack || !stage) {
+    return;
+  }
+
+  try {
+    const pullRequest = await ensureStagePullRequest({
+      repositoryRoot,
+      stack,
+      stage,
+      stageIndex: context.stageIndex,
+      branchName: context.branchName,
+    });
+    if (pullRequest) {
+      context.pullRequest = pullRequest;
+    }
+  } catch (error) {
+    console.error(
+      '[implementation-status] Failed to ensure stage pull request',
+      {
+        stackId: context.stackId,
+        stageId: context.stageId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
+  }
+}
+
+async function applyApprovalStateTransitions(
+  context: StageStatusContext,
+): Promise<void> {
+  if (context.stageStatus === 'review') {
+    if (
+      context.pullRequest?.reviewDecision === 'APPROVED' &&
+      context.pullRequest.headRefOid
+    ) {
+      const updatedStack = await setStackStageApproved(
+        context.stackId,
+        context.stageId,
+        context.pullRequest.headRefOid,
+      );
+      const updatedStage = (updatedStack.stages ?? []).find(
+        (item) => item.id === context.stageId,
+      );
+      if (updatedStage) {
+        context.stageStatus = updatedStage.status;
+        context.approvedCommitSha = updatedStage.approvedCommitSha;
+      }
+    }
+
+    return;
+  }
+
+  if (context.stageStatus !== 'approved') {
+    return;
+  }
+
+  if (!context.approvedCommitSha) {
+    const updatedStack = await setStackStageStatus(
+      context.stackId,
+      context.stageId,
+      'review',
+    );
+    const updatedStage = (updatedStack.stages ?? []).find(
+      (item) => item.id === context.stageId,
+    );
+    if (updatedStage) {
+      context.stageStatus = updatedStage.status;
+      context.approvedCommitSha = updatedStage.approvedCommitSha;
+    }
+    return;
+  }
+
+  const currentHeadSha = context.pullRequest?.headRefOid;
+  if (!currentHeadSha || currentHeadSha !== context.approvedCommitSha) {
+    const updatedStack = await setStackStageStatus(
+      context.stackId,
+      context.stageId,
+      'review',
+    );
+    const updatedStage = (updatedStack.stages ?? []).find(
+      (item) => item.id === context.stageId,
+    );
+    if (updatedStage) {
+      context.stageStatus = updatedStage.status;
+      context.approvedCommitSha = updatedStage.approvedCommitSha;
+    }
+  }
 }
 
 export async function getImplementationStageStatusSummary(
@@ -236,49 +346,58 @@ export async function reconcileImplementationStageStatus(
       const updatedStack = await setStackStageStatus(
         context.stackId,
         context.stageId,
-        'review-ready',
+        'review',
       );
       const updatedStage = (updatedStack.stages ?? []).find(
         (item) => item.id === context.stageId,
       );
       if (updatedStage) {
         context.stageStatus = updatedStage.status;
+        context.approvedCommitSha = updatedStage.approvedCommitSha;
         context.pullRequest = updatedStage.pullRequest;
       }
     }
   }
 
-  if (context.stageStatus === 'review-ready' && context.branchName) {
-    const repositoryRoot = await getRuntimeRepositoryPath({
-      stackId: context.stackId,
-    });
-    const stack = await getStackById(context.stackId);
-    const stage = (stack?.stages ?? []).find((item) => item.id === stageId);
-
-    if (stack && stage) {
-      try {
-        const pullRequest = await ensureStagePullRequest({
-          repositoryRoot,
-          stack,
-          stage,
-          stageIndex: context.stageIndex,
-          branchName: context.branchName,
-        });
-        if (pullRequest) {
-          context.pullRequest = pullRequest;
-        }
-      } catch (error) {
-        console.error(
-          '[implementation-status] Failed to ensure stage pull request',
-          {
-            stackId: context.stackId,
-            stageId: context.stageId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-        );
-      }
-    }
+  if (
+    (context.stageStatus === 'review' || context.stageStatus === 'approved') &&
+    context.branchName
+  ) {
+    await refreshPullRequestContext(context);
+    await applyApprovalStateTransitions(context);
   }
 
   return toSummary(context);
+}
+
+export async function approveStageForMerge(
+  stackId: string,
+  stageId: string,
+): Promise<ImplementationStageStatusSummary> {
+  const context = await loadStageStatusContext(stackId, stageId);
+  if (!context.branchName) {
+    throw new Error('Stage branch is unavailable. Start this stage first.');
+  }
+
+  await refreshPullRequestContext(context);
+  const headSha = context.pullRequest?.headRefOid;
+  if (!headSha) {
+    throw new Error(
+      'Pull request head commit is unavailable. Ensure the stage has an open PR before approving.',
+    );
+  }
+
+  const updatedStack = await setStackStageApproved(stackId, stageId, headSha);
+  const updatedStage = (updatedStack.stages ?? []).find(
+    (item) => item.id === stageId,
+  );
+
+  return {
+    stageStatus: updatedStage?.status ?? 'approved',
+    runtimeState: context.runtimeState,
+    todoCompleted: context.todoCompleted,
+    todoTotal: context.todoTotal,
+    approvedCommitSha: updatedStage?.approvedCommitSha ?? headSha,
+    pullRequest: context.pullRequest,
+  };
 }

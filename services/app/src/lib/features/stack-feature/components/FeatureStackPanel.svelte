@@ -6,17 +6,21 @@
   import { readAppNotificationsEnabled } from '$lib/client/notifications';
   import type { StackViewModel } from '$lib/types/stack';
   import {
+    canMergeDownStack,
     canStartFeature as canStartFeatureWithRuntime,
+    formatMergeDownSuccessMessage,
     formatStartSuccessMessage,
     formatSyncSuccessMessage,
-    stageIdsTransitionedToReviewReady,
+    stageIdsTransitionedToReview,
     shouldInvalidateFromRuntimeUpdates,
     stageIdsForRuntimePolling,
     startButtonLabel as startButtonLabelWithRuntime,
   } from '../behavior';
   import {
+    approveStageRequest,
     getImplementationStatus,
     loadStageReviewSession,
+    mergeDownStackRequest,
     startFeatureRequest,
     syncStackRequest,
   } from '../api-client';
@@ -53,6 +57,7 @@
 
   let startAction = $state<FeatureActionState>(createIdleActionState());
   let syncAction = $state<FeatureActionState>(createIdleActionState());
+  let mergeDownAction = $state<FeatureActionState>(createIdleActionState());
   let implementationRuntimeByStageId = $state<
     Record<string, ImplementationStageRuntime>
   >({});
@@ -62,9 +67,9 @@
   let reviewSession = $state<ReviewSessionResponse | null>(null);
   let runtimeInvalidating = false;
   let reviewRequestToken = 0;
-  const notifiedReviewReadyStageIds = new SvelteSet<string>();
+  const notifiedReviewStageIds = new SvelteSet<string>();
 
-  function notifyReviewReadyTransitions(
+  function notifyReviewTransitions(
     entries: ReadonlyArray<readonly [string, ImplementationStageRuntime]>,
   ): void {
     if (typeof Notification === 'undefined') {
@@ -79,24 +84,24 @@
       return;
     }
 
-    const transitionedStageIds = stageIdsTransitionedToReviewReady({
+    const transitionedStageIds = stageIdsTransitionedToReview({
       stages: stack.stages ?? [],
       implementationRuntimeByStageId,
       updates: entries,
     });
 
     for (const stageId of transitionedStageIds) {
-      if (notifiedReviewReadyStageIds.has(stageId)) {
+      if (notifiedReviewStageIds.has(stageId)) {
         continue;
       }
 
       const stageTitle =
         (stack.stages ?? []).find((stage) => stage.id === stageId)?.title ??
         'Stage';
-      notifiedReviewReadyStageIds.add(stageId);
-      new Notification('Review ready', {
+      notifiedReviewStageIds.add(stageId);
+      new Notification('Review', {
         body: `${stageTitle} is ready for review.`,
-        tag: `review-ready:${stack.id}:${stageId}`,
+        tag: `review:${stack.id}:${stageId}`,
       });
     }
   }
@@ -116,7 +121,58 @@
   }
 
   function canSyncStack(): boolean {
-    return hasOutOfSyncStages() && !syncAction.pending && !startAction.pending;
+    return (
+      hasOutOfSyncStages() &&
+      !syncAction.pending &&
+      !startAction.pending &&
+      !mergeDownAction.pending
+    );
+  }
+
+  function canMergeDown(): boolean {
+    return (
+      canMergeDownStack({
+        stages: stack.stages ?? [],
+        implementationRuntimeByStageId,
+      }) &&
+      !mergeDownAction.pending &&
+      !syncAction.pending &&
+      !startAction.pending
+    );
+  }
+
+  async function approveStage(stageId: string): Promise<void> {
+    if (mergeDownAction.pending || syncAction.pending || startAction.pending) {
+      return;
+    }
+
+    mergeDownAction = {
+      ...mergeDownAction,
+      error: null,
+      success: null,
+    };
+
+    try {
+      const runtime = await approveStageRequest(stack.id, stageId);
+      implementationRuntimeByStageId = {
+        ...implementationRuntimeByStageId,
+        [stageId]: runtime,
+      };
+      mergeDownAction = {
+        ...mergeDownAction,
+        error: null,
+        success: 'Stage approved for merge.',
+      };
+      await invalidateAll();
+    } catch (error) {
+      mergeDownAction = {
+        ...mergeDownAction,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Unable to approve stage for merge.',
+      };
+    }
   }
 
   function canStartFeature(): boolean {
@@ -125,7 +181,9 @@
         stages: stack.stages ?? [],
         implementationRuntimeByStageId,
         startPending: startAction.pending,
-      }) && !syncAction.pending
+      }) &&
+      !syncAction.pending &&
+      !mergeDownAction.pending
     );
   }
 
@@ -155,7 +213,7 @@
       fetchStatus: getImplementationStatus,
     });
 
-    notifyReviewReadyTransitions(entries);
+    notifyReviewTransitions(entries);
 
     implementationRuntimeByStageId = mergeRuntimeByStageId(
       implementationRuntimeByStageId,
@@ -246,6 +304,10 @@
       ...startAction,
       error: null,
     };
+    mergeDownAction = {
+      ...mergeDownAction,
+      error: null,
+    };
 
     try {
       const response = await syncStackRequest(stack.id);
@@ -259,6 +321,53 @@
       syncAction = {
         pending: false,
         error: error instanceof Error ? error.message : 'Unable to sync stack.',
+        success: null,
+      };
+    }
+  }
+
+  async function mergeDownStack(): Promise<void> {
+    if (!canMergeDown()) {
+      return;
+    }
+
+    const stageCount = (stack.stages ?? []).length;
+    const confirmed = window.confirm(
+      `Merge down ${stageCount} stage PR${stageCount === 1 ? '' : 's'} into the default branch using squash? This updates and merges each PR from bottom to top.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    mergeDownAction = {
+      pending: true,
+      error: null,
+      success: null,
+    };
+    startAction = {
+      ...startAction,
+      error: null,
+    };
+    syncAction = {
+      ...syncAction,
+      error: null,
+    };
+
+    try {
+      const response = await mergeDownStackRequest(stack.id);
+      mergeDownAction = {
+        pending: false,
+        error: null,
+        success: formatMergeDownSuccessMessage(response),
+      };
+      await invalidateAll();
+    } catch (error) {
+      mergeDownAction = {
+        pending: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Unable to merge down stack.',
         success: null,
       };
     }
@@ -307,6 +416,8 @@
   <FeatureActionAlerts
     syncError={syncAction.error}
     syncSuccess={syncAction.success}
+    mergeDownError={mergeDownAction.error}
+    mergeDownSuccess={mergeDownAction.success}
     startError={startAction.error}
     startSuccess={startAction.success}
   />
@@ -318,13 +429,17 @@
     {implementationRuntimeByStageId}
     {startAction}
     {syncAction}
+    {mergeDownAction}
     canStartFeature={canStartFeature()}
     canSyncStack={canSyncStack()}
+    canMergeDown={canMergeDown()}
     startButtonLabel={startButtonLabel()}
     {onOpenPlanningChat}
     onStartFeature={startFeature}
     onSyncStack={syncStack}
+    onMergeDown={mergeDownStack}
     onOpenReview={openReviewStage}
+    onApproveStage={approveStage}
   />
 </div>
 

@@ -9,6 +9,7 @@ import {
   resolveWorktreeAbsolutePath,
 } from '$lib/server/worktree-service';
 import type {
+  FeatureStageStatus,
   StageSyncMetadata,
   StackImplementationSession,
   StackMetadata,
@@ -39,7 +40,10 @@ export interface SyncStackResult {
 interface ResolvedStageContext {
   stageId: string;
   stageTitle: string;
+  stageStatus: FeatureStageStatus;
   branchName?: string;
+  comparisonBranchRef?: string;
+  comparisonBranchTip?: string;
   baseRef?: string;
   session?: StackImplementationSession;
   reasonIfUnavailable?: string;
@@ -124,6 +128,35 @@ async function countBehind(
   return parsed;
 }
 
+async function resolveCommitSha(
+  repositoryRoot: string,
+  ref: string,
+): Promise<string> {
+  const resolved = await runCommand(
+    'git',
+    ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`],
+    repositoryRoot,
+  );
+  if (!resolved.ok || !resolved.stdout.trim()) {
+    throw new StackSyncServiceError(
+      'invalid-state',
+      `Git ref not found: ${ref}`,
+    );
+  }
+
+  return resolved.stdout.trim();
+}
+
+function isMissingRefFailure(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('unknown revision') ||
+    normalized.includes('ambiguous argument') ||
+    normalized.includes('bad revision') ||
+    normalized.includes('not a valid object name')
+  );
+}
+
 function stageUnavailableMetadata(input: {
   branchName?: string;
   baseRef?: string;
@@ -145,10 +178,25 @@ async function resolveStageContexts(
 ): Promise<ResolvedStageContext[]> {
   const stages = stack.stages ?? [];
   const contexts: ResolvedStageContext[] = [];
+  const defaultBaseBranch = await resolveDefaultBaseBranch(repositoryRoot);
+  const defaultBaseRef = await resolveExistingRef(
+    repositoryRoot,
+    defaultBaseBranch,
+  );
 
   for (let index = 0; index < stages.length; index += 1) {
     const stage = stages[index];
     if (!stage) {
+      continue;
+    }
+
+    if (stage.status === 'done') {
+      contexts.push({
+        stageId: stage.id,
+        stageTitle: stage.title,
+        stageStatus: stage.status,
+        reasonIfUnavailable: 'Stage is merged; sync is not required.',
+      });
       continue;
     }
 
@@ -157,6 +205,31 @@ async function resolveStageContexts(
       contexts.push({
         stageId: stage.id,
         stageTitle: stage.title,
+        stageStatus: stage.status,
+        reasonIfUnavailable:
+          'Stage branch is unavailable. Start this stage first.',
+      });
+      continue;
+    }
+
+    let resolvedBranchName: string;
+    let resolvedBranchTip: string;
+    try {
+      resolvedBranchName = await resolveExistingRef(
+        repositoryRoot,
+        session.branchName,
+      );
+      resolvedBranchTip = await resolveCommitSha(
+        repositoryRoot,
+        resolvedBranchName,
+      );
+    } catch {
+      contexts.push({
+        stageId: stage.id,
+        stageTitle: stage.title,
+        stageStatus: stage.status,
+        session,
+        branchName: session.branchName,
         reasonIfUnavailable:
           'Stage branch is unavailable. Start this stage first.',
       });
@@ -164,54 +237,55 @@ async function resolveStageContexts(
     }
 
     if (index === 0) {
-      const defaultBaseBranch = await resolveDefaultBaseBranch(repositoryRoot);
-      const resolvedBaseRef = await resolveExistingRef(
-        repositoryRoot,
-        defaultBaseBranch,
-      );
       contexts.push({
         stageId: stage.id,
         stageTitle: stage.title,
+        stageStatus: stage.status,
         session,
         branchName: session.branchName,
-        baseRef: resolvedBaseRef,
+        comparisonBranchRef: resolvedBranchName,
+        comparisonBranchTip: resolvedBranchTip,
+        baseRef: defaultBaseRef,
       });
       continue;
     }
 
-    const previousStage = stages[index - 1];
-    if (!previousStage) {
-      contexts.push({
-        stageId: stage.id,
-        stageTitle: stage.title,
-        session,
-        branchName: session.branchName,
-        reasonIfUnavailable:
-          'Previous stage branch is unavailable for sync baseline.',
-      });
-      continue;
+    let baseRef = defaultBaseRef;
+    for (
+      let previousIndex = index - 1;
+      previousIndex >= 0;
+      previousIndex -= 1
+    ) {
+      const previousStage = stages[previousIndex];
+      if (!previousStage || previousStage.status === 'done') {
+        continue;
+      }
+
+      const previousSession = sessionsByStageId.get(previousStage.id);
+      if (!previousSession?.branchName) {
+        continue;
+      }
+
+      try {
+        baseRef = await resolveExistingRef(
+          repositoryRoot,
+          previousSession.branchName,
+        );
+        break;
+      } catch {
+        continue;
+      }
     }
 
-    const previousSession = sessionsByStageId.get(previousStage.id);
-    if (!previousSession?.branchName) {
-      contexts.push({
-        stageId: stage.id,
-        stageTitle: stage.title,
-        session,
-        branchName: session.branchName,
-        reasonIfUnavailable:
-          'Previous stage branch is unavailable for sync baseline.',
-      });
-      continue;
-    }
-
-    await resolveExistingRef(repositoryRoot, previousSession.branchName);
     contexts.push({
       stageId: stage.id,
       stageTitle: stage.title,
+      stageStatus: stage.status,
       session,
       branchName: session.branchName,
-      baseRef: previousSession.branchName,
+      comparisonBranchRef: resolvedBranchName,
+      comparisonBranchTip: resolvedBranchTip,
+      baseRef,
     });
   }
 
@@ -248,11 +322,33 @@ export async function getStageSyncById(
         ] as const;
       }
 
-      const behindBy = await countBehind(
-        repositoryRoot,
-        context.branchName,
-        context.baseRef,
-      );
+      let behindBy = 0;
+      try {
+        behindBy = await countBehind(
+          repositoryRoot,
+          context.comparisonBranchRef ?? context.branchName,
+          context.baseRef,
+        );
+      } catch (error) {
+        if (
+          isStackSyncServiceError(error) &&
+          error.code === 'command-failed' &&
+          isMissingRefFailure(error.message)
+        ) {
+          return [
+            context.stageId,
+            stageUnavailableMetadata({
+              branchName: context.branchName,
+              baseRef: context.baseRef,
+              reason:
+                'Stage sync status is unavailable because a comparison branch no longer exists.',
+            }),
+          ] as const;
+        }
+
+        throw error;
+      }
+
       return [
         context.stageId,
         {
@@ -290,7 +386,31 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
   let rebasedStages = 0;
   let skippedStages = 0;
 
-  for (const context of contexts) {
+  function findPreviousStageContext(
+    currentIndex: number,
+  ): ResolvedStageContext | undefined {
+    for (let index = currentIndex - 1; index >= 0; index -= 1) {
+      const candidate = contexts[index];
+      if (!candidate?.session || !candidate.branchName) {
+        continue;
+      }
+
+      return candidate;
+    }
+
+    return undefined;
+  }
+
+  for (
+    let contextIndex = 0;
+    contextIndex < contexts.length;
+    contextIndex += 1
+  ) {
+    const context = contexts[contextIndex];
+    if (!context) {
+      continue;
+    }
+
     if (!context.session || !context.branchName || !context.baseRef) {
       skippedStages += 1;
       stageResults.push({
@@ -306,7 +426,7 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
 
     const behindBy = await countBehind(
       repositoryRoot,
-      context.branchName,
+      context.comparisonBranchRef ?? context.branchName,
       context.baseRef,
     );
     if (behindBy <= 0) {
@@ -326,12 +446,24 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
       repositoryRoot,
       context.session.worktreePathKey,
     );
-    const rebased = await runCommand(
-      'git',
-      ['rebase', context.baseRef],
-      worktreeAbsolutePath,
-      { timeoutMs: 120_000 },
-    );
+
+    const previousContext = findPreviousStageContext(contextIndex);
+    const previousBranchName = previousContext?.branchName;
+    const previousBranchTip = previousContext?.comparisonBranchTip;
+    const rebaseArgs: string[] =
+      previousBranchName && previousBranchTip
+        ? [
+            'rebase',
+            '--onto',
+            previousBranchName,
+            previousBranchTip,
+            context.branchName,
+          ]
+        : ['rebase', context.baseRef];
+
+    const rebased = await runCommand('git', rebaseArgs, worktreeAbsolutePath, {
+      timeoutMs: 120_000,
+    });
 
     if (!rebased.ok) {
       await runCommand('git', ['rebase', '--abort'], worktreeAbsolutePath, {

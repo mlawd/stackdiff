@@ -18,6 +18,8 @@ interface GitHubPullRequestPayload {
   url: string;
   updatedAt: string;
   comments?: unknown[];
+  reviewDecision?: unknown;
+  headRefOid?: unknown;
 }
 
 interface PullRequestThreadsResponse {
@@ -52,6 +54,14 @@ function toStackPullRequest(
     url: payload.url,
     updatedAt: payload.updatedAt,
     commentCount,
+    reviewDecision:
+      payload.reviewDecision === 'APPROVED' ||
+      payload.reviewDecision === 'CHANGES_REQUESTED' ||
+      payload.reviewDecision === 'REVIEW_REQUIRED'
+        ? payload.reviewDecision
+        : undefined,
+    headRefOid:
+      typeof payload.headRefOid === 'string' ? payload.headRefOid : undefined,
   };
 }
 
@@ -190,7 +200,7 @@ async function lookupPullRequestByHeadBranch(
       '--limit',
       '1',
       '--json',
-      'number,title,state,isDraft,url,updatedAt,comments',
+      'number,title,state,isDraft,url,updatedAt,comments,reviewDecision,headRefOid',
     ],
     repositoryRoot,
   );

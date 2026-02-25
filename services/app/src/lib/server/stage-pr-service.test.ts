@@ -132,7 +132,7 @@ describe('stage-pr-service', () => {
           {
             id: 'stage-1',
             title: 'Stage 1',
-            status: 'review-ready',
+            status: 'review',
             pullRequest: {
               number: 14,
               title: 'Stale PR',
@@ -148,7 +148,7 @@ describe('stage-pr-service', () => {
       stage: {
         id: 'stage-1',
         title: 'Stage 1',
-        status: 'review-ready',
+        status: 'review',
       },
       stageIndex: 0,
       branchName: 'feature/stage-1',
@@ -202,14 +202,14 @@ describe('stage-pr-service', () => {
           {
             id: 'stage-1',
             title: 'Stage 1',
-            status: 'review-ready',
+            status: 'review',
           },
         ],
       },
       stage: {
         id: 'stage-1',
         title: 'Stage 1',
-        status: 'review-ready',
+        status: 'review',
       },
       stageIndex: 0,
       branchName: 'feature/stage-1',

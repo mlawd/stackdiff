@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
+import type { StageSyncMetadata } from '$lib/types/stack';
 
 import { loadExistingPlanningSession } from '$lib/server/planning-service';
 import { normalizeProjectRouteParam } from '$lib/server/project-route';
@@ -16,7 +17,15 @@ export const load: PageServerLoad = async ({ params }) => {
   }
 
   const enriched = await enrichStackStatus(stack);
-  const stageSyncById = await getStageSyncById(stack);
+  let stageSyncById: Record<string, StageSyncMetadata> = {};
+  try {
+    stageSyncById = await getStageSyncById(stack);
+  } catch (syncError) {
+    console.error('[stack-page] Failed to load stage sync status', {
+      stackId: stack.id,
+      error: syncError instanceof Error ? syncError.message : String(syncError),
+    });
+  }
   const { session, messages, awaitingResponse } =
     await loadExistingPlanningSession(params.id);
 

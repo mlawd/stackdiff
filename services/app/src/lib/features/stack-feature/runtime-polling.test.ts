@@ -11,7 +11,7 @@ import type { ImplementationStageRuntime } from './contracts';
 describe('runtime polling helpers', () => {
   it('maps API payloads to runtime entries', async () => {
     const fetchStatus = vi.fn(async () => ({
-      stageStatus: 'review-ready' as const,
+      stageStatus: 'review' as const,
       runtimeState: 'idle' as const,
       todoCompleted: 3,
       todoTotal: 4,
@@ -32,10 +32,11 @@ describe('runtime polling helpers', () => {
       [
         's-1',
         {
-          stageStatus: 'review-ready',
+          stageStatus: 'review',
           runtimeState: 'idle',
           todoCompleted: 3,
           todoTotal: 4,
+          approvedCommitSha: undefined,
           pullRequest: undefined,
         },
       ],
@@ -65,6 +66,7 @@ describe('runtime polling helpers', () => {
           runtimeState: 'missing',
           todoCompleted: 0,
           todoTotal: 0,
+          approvedCommitSha: undefined,
           pullRequest: undefined,
         },
       ],
@@ -85,7 +87,7 @@ describe('runtime polling helpers', () => {
       [
         's-1',
         {
-          stageStatus: 'review-ready',
+          stageStatus: 'review',
           runtimeState: 'idle',
           todoCompleted: 4,
           todoTotal: 4,
@@ -104,7 +106,7 @@ describe('runtime polling helpers', () => {
 
     expect(merged).toEqual({
       's-1': {
-        stageStatus: 'review-ready',
+        stageStatus: 'review',
         runtimeState: 'idle',
         todoCompleted: 4,
         todoTotal: 4,

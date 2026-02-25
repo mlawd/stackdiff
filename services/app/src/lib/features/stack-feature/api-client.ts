@@ -2,6 +2,7 @@ import type {
   ApiErrorEnvelope,
   ApiSuccessEnvelope,
   ImplementationStatusResponse,
+  MergeDownStackResponse,
   ReviewSessionResponse,
   StartResponse,
   SyncStackResponse,
@@ -50,6 +51,17 @@ export function getImplementationStatus(
   );
 }
 
+export function approveStageRequest(
+  stackId: string,
+  stageId: string,
+): Promise<ImplementationStatusResponse> {
+  return requestJson<ImplementationStatusResponse>(
+    `/api/stacks/${stackId}/stages/${stageId}/approve`,
+    { method: 'POST' },
+    'Unable to approve stage for merge.',
+  );
+}
+
 export function startFeatureRequest(stackId: string): Promise<StartResponse> {
   return requestJson<StartResponse>(
     `/api/stacks/${stackId}/start`,
@@ -63,6 +75,16 @@ export function syncStackRequest(stackId: string): Promise<SyncStackResponse> {
     `/api/stacks/${stackId}/sync`,
     { method: 'POST' },
     'Unable to sync stack.',
+  );
+}
+
+export function mergeDownStackRequest(
+  stackId: string,
+): Promise<MergeDownStackResponse> {
+  return requestJson<MergeDownStackResponse>(
+    `/api/stacks/${stackId}/merge-down`,
+    { method: 'POST' },
+    'Unable to merge down stack.',
   );
 }
 

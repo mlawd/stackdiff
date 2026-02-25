@@ -42,6 +42,7 @@ export async function fetchRuntimeUpdateEntries(input: {
             runtimeState: payload.runtimeState,
             todoCompleted: payload.todoCompleted,
             todoTotal: payload.todoTotal,
+            approvedCommitSha: payload.approvedCommitSha,
             pullRequest: payload.pullRequest,
           } satisfies ImplementationStageRuntime,
         ] as const;
@@ -53,6 +54,7 @@ export async function fetchRuntimeUpdateEntries(input: {
             runtimeState: 'missing',
             todoCompleted: 0,
             todoTotal: 0,
+            approvedCommitSha: undefined,
             pullRequest: undefined,
           } satisfies ImplementationStageRuntime,
         ] as const;

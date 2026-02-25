@@ -15,13 +15,17 @@
     implementationRuntimeByStageId,
     startAction,
     syncAction,
+    mergeDownAction,
     canStartFeature,
     canSyncStack,
+    canMergeDown,
     startButtonLabel,
     onOpenPlanningChat,
     onStartFeature,
     onSyncStack,
+    onMergeDown,
     onOpenReview,
+    onApproveStage,
   }: {
     hasSavedPlan: boolean;
     stages: FeatureStage[];
@@ -29,13 +33,17 @@
     implementationRuntimeByStageId: Record<string, ImplementationStageRuntime>;
     startAction: FeatureActionState;
     syncAction: FeatureActionState;
+    mergeDownAction: FeatureActionState;
     canStartFeature: boolean;
     canSyncStack: boolean;
+    canMergeDown: boolean;
     startButtonLabel: string;
     onOpenPlanningChat: () => void;
     onStartFeature: () => void;
     onSyncStack: () => void;
+    onMergeDown: () => void;
     onOpenReview: (stageId: string) => void;
+    onApproveStage: (stageId: string) => void;
   } = $props();
 </script>
 
@@ -48,6 +56,16 @@
         Implementation stages
       </p>
       <div class="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          color="alternative"
+          onclick={onMergeDown}
+          disabled={!canMergeDown}
+          loading={mergeDownAction.pending}
+        >
+          Merge Down
+        </Button>
         <Button
           type="button"
           size="sm"
@@ -76,6 +94,7 @@
       {stageSyncById}
       {implementationRuntimeByStageId}
       {onOpenReview}
+      {onApproveStage}
     />
   </div>
 {:else}

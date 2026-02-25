@@ -7,7 +7,8 @@ export type StackStatus = 'created' | 'planned' | 'started' | 'complete';
 export type FeatureStageStatus =
   | 'not-started'
   | 'in-progress'
-  | 'review-ready'
+  | 'review'
+  | 'approved'
   | 'done';
 
 export interface FeatureStage {
@@ -15,6 +16,7 @@ export interface FeatureStage {
   title: string;
   details?: string;
   status: FeatureStageStatus;
+  approvedCommitSha?: string;
   pullRequest?: StackPullRequest;
 }
 
@@ -166,6 +168,8 @@ export interface StackPullRequest {
   url: string;
   updatedAt: string;
   commentCount?: number;
+  reviewDecision?: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED';
+  headRefOid?: string;
 }
 
 export interface StackViewModel extends StackMetadata {

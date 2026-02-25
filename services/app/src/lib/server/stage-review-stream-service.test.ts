@@ -50,7 +50,7 @@ describe('stage-review-stream-service', () => {
       name: 'Stack',
       type: 'feature',
       status: 'started',
-      stages: [{ id: 'stage-1', title: 'Stage 1', status: 'review-ready' }],
+      stages: [{ id: 'stage-1', title: 'Stage 1', status: 'review' }],
     });
     getExistingStageReviewSessionMock.mockResolvedValue({
       session: {

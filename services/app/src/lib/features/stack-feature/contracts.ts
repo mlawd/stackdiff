@@ -34,11 +34,26 @@ export interface SyncStackResponse {
   };
 }
 
+export interface MergeDownStackResponse {
+  result: {
+    stackId: string;
+    defaultBranch: string;
+    mergedStages: number;
+    stages: Array<{
+      stageId: string;
+      stageTitle: string;
+      pullRequestNumber: number;
+      branchName: string;
+    }>;
+  };
+}
+
 export interface ImplementationStatusResponse {
   stageStatus: FeatureStageStatus;
   runtimeState: 'idle' | 'busy' | 'retry' | 'missing';
   todoCompleted: number;
   todoTotal: number;
+  approvedCommitSha?: string;
   pullRequest?: StackPullRequest;
 }
 
@@ -47,6 +62,7 @@ export interface ImplementationStageRuntime {
   runtimeState: 'idle' | 'busy' | 'retry' | 'missing';
   todoCompleted: number;
   todoTotal: number;
+  approvedCommitSha?: string;
   pullRequest?: StackPullRequest;
 }
 

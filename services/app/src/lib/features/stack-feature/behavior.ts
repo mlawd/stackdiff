@@ -2,6 +2,7 @@ import type { FeatureStage, FeatureStageStatus } from '$lib/types/stack';
 
 import type {
   ImplementationStageRuntime,
+  MergeDownStackResponse,
   StartResponse,
   SyncStackResponse,
 } from './contracts';
@@ -11,8 +12,12 @@ export function implementationStageLabel(status: FeatureStageStatus): string {
     return 'Done';
   }
 
-  if (status === 'review-ready') {
-    return 'Review ready';
+  if (status === 'approved') {
+    return 'Approved';
+  }
+
+  if (status === 'review') {
+    return 'Review';
   }
 
   if (status === 'in-progress') {
@@ -40,12 +45,16 @@ export function stagePullRequest(
 
 export function implementationStageColor(
   status: FeatureStageStatus,
-): 'gray' | 'yellow' | 'green' | 'purple' {
+): 'gray' | 'yellow' | 'green' | 'purple' | 'lime' {
   if (status === 'done') {
     return 'green';
   }
 
-  if (status === 'review-ready') {
+  if (status === 'approved') {
+    return 'lime';
+  }
+
+  if (status === 'review') {
     return 'purple';
   }
 
@@ -121,7 +130,9 @@ export function stageIdsForRuntimePolling(input: {
         stage.status,
       );
       return (
-        currentStatus === 'in-progress' || currentStatus === 'review-ready'
+        currentStatus === 'in-progress' ||
+        currentStatus === 'review' ||
+        currentStatus === 'approved'
       );
     })
     .map((stage) => stage.id);
@@ -147,12 +158,16 @@ export function shouldInvalidateFromRuntimeUpdates(input: {
     if (runtime.pullRequest && !stageEntry.pullRequest?.number) {
       return true;
     }
+
+    if (runtime.approvedCommitSha !== stageEntry.approvedCommitSha) {
+      return true;
+    }
   }
 
   return false;
 }
 
-export function stageIdsTransitionedToReviewReady(input: {
+export function stageIdsTransitionedToReview(input: {
   stages: FeatureStage[];
   implementationRuntimeByStageId: Record<string, ImplementationStageRuntime>;
   updates: ReadonlyArray<readonly [string, ImplementationStageRuntime]>;
@@ -180,12 +195,30 @@ export function stageIdsTransitionedToReviewReady(input: {
       stageEntry.status,
     );
 
-    if (previousStatus === 'in-progress' && nextStatus === 'review-ready') {
+    if (previousStatus === 'in-progress' && nextStatus === 'review') {
       transitionedStageIds.push(stageId);
     }
   }
 
   return transitionedStageIds;
+}
+
+export function canMergeDownStack(input: {
+  stages: FeatureStage[];
+  implementationRuntimeByStageId: Record<string, ImplementationStageRuntime>;
+}): boolean {
+  if (input.stages.length === 0) {
+    return false;
+  }
+
+  return input.stages.every((stage) => {
+    const currentStatus = stageStatus(
+      input.implementationRuntimeByStageId,
+      stage.id,
+      stage.status,
+    );
+    return currentStatus === 'approved' || currentStatus === 'done';
+  });
 }
 
 export function formatStartSuccessMessage(response: StartResponse): string {
@@ -211,4 +244,10 @@ export function formatSyncSuccessMessage(response: SyncStackResponse): string {
   const rebased = response.result.rebasedStages;
   const skipped = response.result.skippedStages;
   return `Stack sync complete. Rebases: ${rebased}. Skipped: ${skipped}.`;
+}
+
+export function formatMergeDownSuccessMessage(
+  response: MergeDownStackResponse,
+): string {
+  return `Merged ${response.result.mergedStages} stage PRs into ${response.result.defaultBranch} with squash.`;
 }

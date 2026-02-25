@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   canStartFeature,
+  formatMergeDownSuccessMessage,
   formatStartSuccessMessage,
   formatSyncSuccessMessage,
   implementationStageColor,
   implementationStageLabel,
   shouldInvalidateFromRuntimeUpdates,
-  stageIdsTransitionedToReviewReady,
+  stageIdsTransitionedToReview,
   stageIdsForRuntimePolling,
   startButtonLabel,
   stagePullRequest,
@@ -15,6 +16,7 @@ import {
 } from './behavior';
 import type {
   ImplementationStageRuntime,
+  MergeDownStackResponse,
   StartResponse,
   SyncStackResponse,
 } from './contracts';
@@ -23,19 +25,21 @@ describe('feature page behavior contracts', () => {
   it('maps stage statuses to labels', () => {
     expect(implementationStageLabel('not-started')).toBe('Not started');
     expect(implementationStageLabel('in-progress')).toBe('In progress');
-    expect(implementationStageLabel('review-ready')).toBe('Review ready');
+    expect(implementationStageLabel('review')).toBe('Review');
+    expect(implementationStageLabel('approved')).toBe('Approved');
     expect(implementationStageLabel('done')).toBe('Done');
 
     expect(implementationStageColor('not-started')).toBe('gray');
     expect(implementationStageColor('in-progress')).toBe('yellow');
-    expect(implementationStageColor('review-ready')).toBe('purple');
+    expect(implementationStageColor('review')).toBe('purple');
+    expect(implementationStageColor('approved')).toBe('lime');
     expect(implementationStageColor('done')).toBe('green');
   });
 
   it('resolves runtime stage status and pull request with fallback values', () => {
     const runtimeByStageId: Record<string, ImplementationStageRuntime> = {
       '1': {
-        stageStatus: 'review-ready',
+        stageStatus: 'review',
         runtimeState: 'idle',
         todoCompleted: 5,
         todoTotal: 5,
@@ -50,9 +54,7 @@ describe('feature page behavior contracts', () => {
       },
     };
 
-    expect(stageStatus(runtimeByStageId, '1', 'in-progress')).toBe(
-      'review-ready',
-    );
+    expect(stageStatus(runtimeByStageId, '1', 'in-progress')).toBe('review');
     expect(stageStatus(runtimeByStageId, 'missing', 'in-progress')).toBe(
       'in-progress',
     );
@@ -128,18 +130,18 @@ describe('feature page behavior contracts', () => {
     ).toBe('Start feature');
   });
 
-  it('selects in-progress and all review-ready stages for polling', () => {
+  it('selects in-progress and all review stages for polling', () => {
     const stages = [
       { id: 's-1', title: 'Stage 1', status: 'in-progress' },
       {
         id: 's-2',
         title: 'Stage 2',
-        status: 'review-ready',
+        status: 'review',
       },
       {
         id: 's-3',
         title: 'Stage 3',
-        status: 'review-ready',
+        status: 'review',
         pullRequest: {
           number: 33,
           title: 'Review ready stage',
@@ -152,7 +154,7 @@ describe('feature page behavior contracts', () => {
       {
         id: 's-4',
         title: 'Stage 4',
-        status: 'review-ready',
+        status: 'review',
         pullRequest: {
           number: 34,
           title: 'Closed stage PR',
@@ -176,7 +178,7 @@ describe('feature page behavior contracts', () => {
   it('invalidates when runtime promotes stage or attaches pull request', () => {
     const stages = [
       { id: 's-1', title: 'Stage 1', status: 'in-progress' },
-      { id: 's-2', title: 'Stage 2', status: 'review-ready' },
+      { id: 's-2', title: 'Stage 2', status: 'review' },
     ] as const;
 
     expect(
@@ -186,7 +188,7 @@ describe('feature page behavior contracts', () => {
           [
             's-1',
             {
-              stageStatus: 'review-ready',
+              stageStatus: 'review',
               runtimeState: 'idle',
               todoCompleted: 4,
               todoTotal: 4,
@@ -203,7 +205,7 @@ describe('feature page behavior contracts', () => {
           [
             's-2',
             {
-              stageStatus: 'review-ready',
+              stageStatus: 'review',
               runtimeState: 'idle',
               todoCompleted: 4,
               todoTotal: 4,
@@ -228,7 +230,7 @@ describe('feature page behavior contracts', () => {
           [
             's-2',
             {
-              stageStatus: 'review-ready',
+              stageStatus: 'review',
               runtimeState: 'idle',
               todoCompleted: 4,
               todoTotal: 4,
@@ -254,6 +256,14 @@ describe('feature page behavior contracts', () => {
         skippedStages: 1,
       },
     };
+    const mergeDownResponse: MergeDownStackResponse = {
+      result: {
+        stackId: 'stack-1',
+        defaultBranch: 'main',
+        mergedStages: 3,
+        stages: [],
+      },
+    };
 
     expect(formatStartSuccessMessage(startResponse)).toBe(
       'Started stage 2: Implement auth. Reused existing worktree. Created implementation session.',
@@ -261,24 +271,27 @@ describe('feature page behavior contracts', () => {
     expect(formatSyncSuccessMessage(syncResponse)).toBe(
       'Stack sync complete. Rebases: 2. Skipped: 1.',
     );
+    expect(formatMergeDownSuccessMessage(mergeDownResponse)).toBe(
+      'Merged 3 stage PRs into main with squash.',
+    );
   });
 
-  it('detects in-progress to review-ready runtime transitions', () => {
+  it('detects in-progress to review runtime transitions', () => {
     const stages = [
       { id: 's-1', title: 'Stage 1', status: 'in-progress' },
-      { id: 's-2', title: 'Stage 2', status: 'review-ready' },
+      { id: 's-2', title: 'Stage 2', status: 'review' },
       { id: 's-3', title: 'Stage 3', status: 'not-started' },
     ] as const;
 
     expect(
-      stageIdsTransitionedToReviewReady({
+      stageIdsTransitionedToReview({
         stages: [...stages],
         implementationRuntimeByStageId: {},
         updates: [
           [
             's-1',
             {
-              stageStatus: 'review-ready',
+              stageStatus: 'review',
               runtimeState: 'idle',
               todoCompleted: 4,
               todoTotal: 4,
@@ -287,7 +300,7 @@ describe('feature page behavior contracts', () => {
           [
             's-2',
             {
-              stageStatus: 'review-ready',
+              stageStatus: 'review',
               runtimeState: 'idle',
               todoCompleted: 4,
               todoTotal: 4,
@@ -296,7 +309,7 @@ describe('feature page behavior contracts', () => {
           [
             's-3',
             {
-              stageStatus: 'review-ready',
+              stageStatus: 'review',
               runtimeState: 'idle',
               todoCompleted: 1,
               todoTotal: 1,
@@ -305,7 +318,7 @@ describe('feature page behavior contracts', () => {
           [
             'missing',
             {
-              stageStatus: 'review-ready',
+              stageStatus: 'review',
               runtimeState: 'idle',
               todoCompleted: 1,
               todoTotal: 1,
@@ -316,13 +329,13 @@ describe('feature page behavior contracts', () => {
     ).toEqual(['s-1']);
   });
 
-  it('uses runtime fallback status when detecting review-ready transitions', () => {
+  it('uses runtime fallback status when detecting review transitions', () => {
     const stages = [
       { id: 's-1', title: 'Stage 1', status: 'not-started' },
     ] as const;
 
     expect(
-      stageIdsTransitionedToReviewReady({
+      stageIdsTransitionedToReview({
         stages: [...stages],
         implementationRuntimeByStageId: {
           's-1': {
@@ -336,7 +349,7 @@ describe('feature page behavior contracts', () => {
           [
             's-1',
             {
-              stageStatus: 'review-ready',
+              stageStatus: 'review',
               runtimeState: 'idle',
               todoCompleted: 3,
               todoTotal: 3,

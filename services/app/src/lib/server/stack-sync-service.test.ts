@@ -98,23 +98,36 @@ describe('stack-sync-service', () => {
   it('marks stages out of sync when branch is behind base', async () => {
     runCommandMock.mockImplementation(async (_command, args) => {
       if (args[0] === 'rev-parse' && args[3] === 'origin/main^{commit}') {
-        return ok('');
+        return ok('main-sha');
       }
 
-      if (args[0] === 'rev-parse' && args[3] === 'feature/stage-1^{commit}') {
-        return ok('');
+      if (
+        args[0] === 'rev-parse' &&
+        (args[3] === 'origin/feature/stage-1^{commit}' ||
+          args[3] === 'origin/feature/stage-2^{commit}' ||
+          args[3] === 'feature/stage-1^{commit}')
+      ) {
+        if (args[3] === 'origin/feature/stage-1^{commit}') {
+          return ok('stage-1-sha');
+        }
+
+        if (args[3] === 'origin/feature/stage-2^{commit}') {
+          return ok('stage-2-sha');
+        }
+
+        return ok('stage-1-local-sha');
       }
 
       if (
         args[0] === 'rev-list' &&
-        args[2] === 'feature/stage-1..origin/main'
+        args[2] === 'origin/feature/stage-1..origin/main'
       ) {
         return ok('2');
       }
 
       if (
         args[0] === 'rev-list' &&
-        args[2] === 'feature/stage-2..feature/stage-1'
+        args[2] === 'origin/feature/stage-2..origin/feature/stage-1'
       ) {
         return ok('0');
       }
@@ -132,7 +145,47 @@ describe('stack-sync-service', () => {
     expect(status['stage-2']).toMatchObject({
       isOutOfSync: false,
       behindBy: 0,
-      baseRef: 'feature/stage-1',
+      baseRef: 'origin/feature/stage-1',
+    });
+  });
+
+  it('returns unavailable sync metadata when prior merged stage branch is gone', async () => {
+    runCommandMock.mockImplementation(async (_command, args) => {
+      if (args[0] === 'rev-parse' && args[3] === 'origin/main^{commit}') {
+        return ok('main-sha');
+      }
+
+      if (
+        args[0] === 'rev-parse' &&
+        args[3] === 'origin/feature/stage-2^{commit}'
+      ) {
+        return ok('stage-2-sha');
+      }
+
+      if (
+        args[0] === 'rev-list' &&
+        args[2] === 'origin/feature/stage-2..origin/main'
+      ) {
+        return fail('fatal: ambiguous argument');
+      }
+
+      return fail(`unexpected command: ${args.join(' ')}`);
+    });
+
+    const stack = createStack();
+    stack.stages = [
+      { id: 'stage-1', title: 'Stage 1', status: 'done' },
+      { id: 'stage-2', title: 'Stage 2', status: 'in-progress' },
+    ];
+
+    const status = await getStageSyncById(stack);
+    expect(status['stage-1']).toMatchObject({
+      isOutOfSync: false,
+      reasonIfUnavailable: 'Stage is merged; sync is not required.',
+    });
+    expect(status['stage-2']).toMatchObject({
+      isOutOfSync: false,
+      reasonIfUnavailable: expect.stringContaining('comparison branch'),
     });
   });
 
@@ -140,23 +193,36 @@ describe('stack-sync-service', () => {
     getStackByIdMock.mockResolvedValue(createStack());
     runCommandMock.mockImplementation(async (_command, args) => {
       if (args[0] === 'rev-parse' && args[3] === 'origin/main^{commit}') {
-        return ok('');
+        return ok('main-sha');
       }
 
-      if (args[0] === 'rev-parse' && args[3] === 'feature/stage-1^{commit}') {
-        return ok('');
+      if (
+        args[0] === 'rev-parse' &&
+        (args[3] === 'origin/feature/stage-1^{commit}' ||
+          args[3] === 'origin/feature/stage-2^{commit}' ||
+          args[3] === 'feature/stage-1^{commit}')
+      ) {
+        if (args[3] === 'origin/feature/stage-1^{commit}') {
+          return ok('stage-1-sha');
+        }
+
+        if (args[3] === 'origin/feature/stage-2^{commit}') {
+          return ok('stage-2-sha');
+        }
+
+        return ok('stage-1-local-sha');
       }
 
       if (
         args[0] === 'rev-list' &&
-        args[2] === 'feature/stage-1..origin/main'
+        args[2] === 'origin/feature/stage-1..origin/main'
       ) {
         return ok('1');
       }
 
       if (
         args[0] === 'rev-list' &&
-        args[2] === 'feature/stage-2..feature/stage-1'
+        args[2] === 'origin/feature/stage-2..origin/feature/stage-1'
       ) {
         return ok('3');
       }
@@ -184,7 +250,7 @@ describe('stack-sync-service', () => {
     );
     expect(runCommandMock).toHaveBeenCalledWith(
       'git',
-      ['rebase', 'feature/stage-1'],
+      ['rebase', '--onto', 'feature/stage-1', 'stage-1-sha', 'feature/stage-2'],
       '/repo/.stacked/worktrees/stage-2',
       expect.any(Object),
     );
@@ -206,16 +272,29 @@ describe('stack-sync-service', () => {
     getStackByIdMock.mockResolvedValue(createStack());
     runCommandMock.mockImplementation(async (_command, args) => {
       if (args[0] === 'rev-parse' && args[3] === 'origin/main^{commit}') {
-        return ok('');
+        return ok('main-sha');
       }
 
-      if (args[0] === 'rev-parse' && args[3] === 'feature/stage-1^{commit}') {
-        return ok('');
+      if (
+        args[0] === 'rev-parse' &&
+        (args[3] === 'origin/feature/stage-1^{commit}' ||
+          args[3] === 'origin/feature/stage-2^{commit}' ||
+          args[3] === 'feature/stage-1^{commit}')
+      ) {
+        if (args[3] === 'origin/feature/stage-1^{commit}') {
+          return ok('stage-1-sha');
+        }
+
+        if (args[3] === 'origin/feature/stage-2^{commit}') {
+          return ok('stage-2-sha');
+        }
+
+        return ok('stage-1-local-sha');
       }
 
       if (
         args[0] === 'rev-list' &&
-        args[2] === 'feature/stage-1..origin/main'
+        args[2] === 'origin/feature/stage-1..origin/main'
       ) {
         return ok('1');
       }
@@ -241,16 +320,29 @@ describe('stack-sync-service', () => {
     getStackByIdMock.mockResolvedValue(createStack());
     runCommandMock.mockImplementation(async (_command, args) => {
       if (args[0] === 'rev-parse' && args[3] === 'origin/main^{commit}') {
-        return ok('');
+        return ok('main-sha');
       }
 
-      if (args[0] === 'rev-parse' && args[3] === 'feature/stage-1^{commit}') {
-        return ok('');
+      if (
+        args[0] === 'rev-parse' &&
+        (args[3] === 'origin/feature/stage-1^{commit}' ||
+          args[3] === 'origin/feature/stage-2^{commit}' ||
+          args[3] === 'feature/stage-1^{commit}')
+      ) {
+        if (args[3] === 'origin/feature/stage-1^{commit}') {
+          return ok('stage-1-sha');
+        }
+
+        if (args[3] === 'origin/feature/stage-2^{commit}') {
+          return ok('stage-2-sha');
+        }
+
+        return ok('stage-1-local-sha');
       }
 
       if (
         args[0] === 'rev-list' &&
-        args[2] === 'feature/stage-1..origin/main'
+        args[2] === 'origin/feature/stage-1..origin/main'
       ) {
         return ok('1');
       }

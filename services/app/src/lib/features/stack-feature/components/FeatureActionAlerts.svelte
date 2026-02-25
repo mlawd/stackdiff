@@ -2,11 +2,15 @@
   let {
     syncError,
     syncSuccess,
+    mergeDownError,
+    mergeDownSuccess,
     startError,
     startSuccess,
   }: {
     syncError: string | null;
     syncSuccess: string | null;
+    mergeDownError: string | null;
+    mergeDownSuccess: string | null;
     startError: string | null;
     startSuccess: string | null;
   } = $props();
@@ -25,6 +29,22 @@
     class="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100"
   >
     {syncSuccess}
+  </div>
+{/if}
+
+{#if mergeDownError}
+  <div
+    class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+  >
+    {mergeDownError}
+  </div>
+{/if}
+
+{#if mergeDownSuccess}
+  <div
+    class="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100"
+  >
+    {mergeDownSuccess}
   </div>
 {/if}
 
