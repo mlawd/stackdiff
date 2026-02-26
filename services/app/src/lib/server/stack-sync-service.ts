@@ -5,6 +5,7 @@ import {
   getStackById,
 } from '$lib/server/stack-store';
 import {
+  createStageBranchIdentity,
   resolveDefaultBaseBranch,
   resolveWorktreeAbsolutePath,
 } from '$lib/server/worktree-service';
@@ -145,6 +146,96 @@ async function resolveCommitSha(
   }
 
   return resolved.stdout.trim();
+}
+
+function normalizeBranchRef(ref: string): string {
+  return ref.startsWith('origin/') ? ref.slice('origin/'.length) : ref;
+}
+
+async function gitCommitRefExists(
+  repositoryRoot: string,
+  ref: string,
+): Promise<boolean> {
+  if (!ref.trim()) {
+    return false;
+  }
+
+  const result = await runCommand(
+    'git',
+    ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`],
+    repositoryRoot,
+  );
+
+  return result.ok;
+}
+
+async function gitIsAncestor(
+  repositoryRoot: string,
+  ancestor: string,
+  descendant: string,
+): Promise<boolean> {
+  if (!ancestor.trim() || !descendant.trim()) {
+    return false;
+  }
+
+  const result = await runCommand(
+    'git',
+    ['merge-base', '--is-ancestor', ancestor, descendant],
+    repositoryRoot,
+  );
+
+  return result.ok;
+}
+
+async function gitMergeBase(
+  repositoryRoot: string,
+  a: string,
+  b: string,
+): Promise<string | undefined> {
+  if (!a.trim() || !b.trim()) {
+    return undefined;
+  }
+
+  const result = await runCommand('git', ['merge-base', a, b], repositoryRoot);
+  if (!result.ok) {
+    return undefined;
+  }
+
+  const sha = result.stdout.trim();
+  return sha || undefined;
+}
+
+async function resolveTransplantUpstream(
+  repositoryRoot: string,
+  stageBranch: string,
+  oldParent: string,
+): Promise<string | undefined> {
+  const parent = oldParent.trim();
+  if (!parent) {
+    return undefined;
+  }
+
+  const candidates = [parent, `origin/${parent}`];
+  for (const candidate of candidates) {
+    if (!(await gitCommitRefExists(repositoryRoot, candidate))) {
+      continue;
+    }
+
+    if (await gitIsAncestor(repositoryRoot, candidate, stageBranch)) {
+      return candidate;
+    }
+
+    const mergeBase = await gitMergeBase(
+      repositoryRoot,
+      candidate,
+      stageBranch,
+    );
+    if (mergeBase) {
+      return mergeBase;
+    }
+  }
+
+  return undefined;
 }
 
 function isMissingRefFailure(message: string): boolean {
@@ -370,35 +461,53 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
     throw new StackSyncServiceError('not-found', 'Feature not found.');
   }
 
-  const repositoryRoot = await getRuntimeRepositoryPath({ stackId: stack.id });
-  const sessions = await getImplementationSessionsByStackId(stack.id);
+  const resolvedStack = stack;
+
+  const repositoryRoot = await getRuntimeRepositoryPath({
+    stackId: resolvedStack.id,
+  });
+  const sessions = await getImplementationSessionsByStackId(resolvedStack.id);
   const sessionsByStageId = new Map<string, StackImplementationSession>();
   for (const session of sessions) {
     sessionsByStageId.set(session.stageId, session);
   }
 
   const contexts = await resolveStageContexts(
-    stack,
+    resolvedStack,
     repositoryRoot,
     sessionsByStageId,
+  );
+  const defaultBaseBranch = await resolveDefaultBaseBranch(repositoryRoot);
+  const defaultBaseRef = await resolveExistingRef(
+    repositoryRoot,
+    defaultBaseBranch,
   );
   const stageResults: SyncStackStageResult[] = [];
   let rebasedStages = 0;
   let skippedStages = 0;
+  let currentParent = defaultBaseRef;
 
-  function findPreviousStageContext(
-    currentIndex: number,
-  ): ResolvedStageContext | undefined {
-    for (let index = currentIndex - 1; index >= 0; index -= 1) {
-      const candidate = contexts[index];
-      if (!candidate?.session || !candidate.branchName) {
-        continue;
-      }
-
-      return candidate;
+  function oldParentForStage(index: number): string {
+    if (index <= 0) {
+      return defaultBaseBranch;
     }
 
-    return undefined;
+    const previousStage = resolvedStack.stages?.[index - 1];
+    if (!previousStage) {
+      return defaultBaseBranch;
+    }
+
+    const previousSession = sessionsByStageId.get(previousStage.id);
+    if (previousSession?.branchName) {
+      return previousSession.branchName;
+    }
+
+    return createStageBranchIdentity({
+      featureType: resolvedStack.type,
+      featureName: resolvedStack.name,
+      stageNumber: index,
+      stageName: previousStage.title,
+    }).branchName;
   }
 
   for (
@@ -424,18 +533,22 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
       continue;
     }
 
+    const rebaseBase = currentParent;
+    const oldParent = oldParentForStage(contextIndex);
+
     const behindBy = await countBehind(
       repositoryRoot,
       context.comparisonBranchRef ?? context.branchName,
-      context.baseRef,
+      rebaseBase,
     );
     if (behindBy <= 0) {
+      currentParent = context.branchName;
       skippedStages += 1;
       stageResults.push({
         stageId: context.stageId,
         stageTitle: context.stageTitle,
         branchName: context.branchName,
-        baseRef: context.baseRef,
+        baseRef: rebaseBase,
         status: 'skipped',
         reason: 'Already in sync.',
       });
@@ -447,19 +560,30 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
       context.session.worktreePathKey,
     );
 
-    const previousContext = findPreviousStageContext(contextIndex);
-    const previousBranchName = previousContext?.branchName;
-    const previousBranchTip = previousContext?.comparisonBranchTip;
-    const rebaseArgs: string[] =
-      previousBranchName && previousBranchTip
-        ? [
-            'rebase',
-            '--onto',
-            previousBranchName,
-            previousBranchTip,
-            context.branchName,
-          ]
-        : ['rebase', context.baseRef];
+    const previousStage = resolvedStack.stages?.[contextIndex - 1];
+    const parentMerged = previousStage?.status === 'done';
+    const shouldTransplant =
+      parentMerged &&
+      oldParent.trim().length > 0 &&
+      normalizeBranchRef(rebaseBase) !== normalizeBranchRef(oldParent);
+
+    let rebaseArgs: string[] = ['rebase', rebaseBase];
+    if (shouldTransplant) {
+      const upstream = await resolveTransplantUpstream(
+        repositoryRoot,
+        context.branchName,
+        oldParent,
+      );
+      if (upstream) {
+        rebaseArgs = [
+          'rebase',
+          '--onto',
+          rebaseBase,
+          upstream,
+          context.branchName,
+        ];
+      }
+    }
 
     const rebased = await runCommand('git', rebaseArgs, worktreeAbsolutePath, {
       timeoutMs: 120_000,
@@ -489,11 +613,12 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
     }
 
     rebasedStages += 1;
+    currentParent = context.branchName;
     stageResults.push({
       stageId: context.stageId,
       stageTitle: context.stageTitle,
       branchName: context.branchName,
-      baseRef: context.baseRef,
+      baseRef: rebaseBase,
       status: 'rebased',
     });
   }

@@ -222,7 +222,7 @@ describe('stack-sync-service', () => {
 
       if (
         args[0] === 'rev-list' &&
-        args[2] === 'origin/feature/stage-2..origin/feature/stage-1'
+        args[2] === 'origin/feature/stage-2..feature/stage-1'
       ) {
         return ok('3');
       }
@@ -250,7 +250,7 @@ describe('stack-sync-service', () => {
     );
     expect(runCommandMock).toHaveBeenCalledWith(
       'git',
-      ['rebase', '--onto', 'feature/stage-1', 'stage-1-sha', 'feature/stage-2'],
+      ['rebase', 'feature/stage-1'],
       '/repo/.stacked/worktrees/stage-2',
       expect.any(Object),
     );
@@ -263,6 +263,82 @@ describe('stack-sync-service', () => {
     expect(runCommandMock).toHaveBeenCalledWith(
       'git',
       ['push', '--force-with-lease', 'origin', 'feature/stage-2'],
+      '/repo/.stacked/worktrees/stage-2',
+      expect.any(Object),
+    );
+  });
+
+  it('uses transplant rebase when previous stage is merged', async () => {
+    const stack = createStack();
+    stack.stages = [
+      { id: 'stage-1', title: 'Stage 1', status: 'done' },
+      { id: 'stage-2', title: 'Stage 2', status: 'in-progress' },
+    ];
+    getStackByIdMock.mockResolvedValue(stack);
+
+    runCommandMock.mockImplementation(async (_command, args) => {
+      if (args[0] === 'rev-parse' && args[3] === 'origin/main^{commit}') {
+        return ok('main-sha');
+      }
+
+      if (
+        args[0] === 'rev-parse' &&
+        args[3] === 'origin/feature/stage-2^{commit}'
+      ) {
+        return ok('stage-2-sha');
+      }
+
+      if (
+        args[0] === 'rev-list' &&
+        args[2] === 'origin/feature/stage-2..origin/main'
+      ) {
+        return ok('2');
+      }
+
+      if (args[0] === 'rev-parse' && args[3] === 'feature/stage-1^{commit}') {
+        return fail('missing local parent');
+      }
+
+      if (
+        args[0] === 'rev-parse' &&
+        args[3] === 'origin/feature/stage-1^{commit}'
+      ) {
+        return ok('stage-1-sha');
+      }
+
+      if (
+        args[0] === 'merge-base' &&
+        args[1] === '--is-ancestor' &&
+        args[2] === 'origin/feature/stage-1' &&
+        args[3] === 'feature/stage-2'
+      ) {
+        return ok('');
+      }
+
+      if (args[0] === 'rebase') {
+        return ok('');
+      }
+
+      if (args[0] === 'push' && args[1] === '--force-with-lease') {
+        return ok('');
+      }
+
+      return fail(`unexpected command: ${args.join(' ')}`);
+    });
+
+    const result = await syncStack('stack-1');
+
+    expect(result.rebasedStages).toBe(1);
+    expect(result.skippedStages).toBe(1);
+    expect(runCommandMock).toHaveBeenCalledWith(
+      'git',
+      [
+        'rebase',
+        '--onto',
+        'origin/main',
+        'origin/feature/stage-1',
+        'feature/stage-2',
+      ],
       '/repo/.stacked/worktrees/stage-2',
       expect.any(Object),
     );

@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises';
+import { copyFile, mkdir, readdir } from 'node:fs/promises';
 import path from 'node:path';
 
 import { runCommand } from '$lib/server/command';
@@ -20,6 +20,8 @@ interface ParsedWorktree {
   path: string;
   branchRef?: string;
 }
+
+const SKIPPED_SCAN_DIRECTORIES = new Set(['.git', 'node_modules']);
 
 function sanitizeToken(
   value: string,
@@ -138,6 +140,58 @@ async function listGitWorktrees(
   }
 
   return parseWorktreeList(listed.stdout);
+}
+
+async function listEnvFiles(
+  repositoryRoot: string,
+  currentDirectory: string = repositoryRoot,
+): Promise<string[]> {
+  const entries = await readdir(currentDirectory, { withFileTypes: true });
+  const envFiles: string[] = [];
+
+  for (const entry of entries) {
+    const absolutePath = path.join(currentDirectory, entry.name);
+    const relativePath = path.relative(repositoryRoot, absolutePath);
+
+    if (entry.isDirectory()) {
+      if (SKIPPED_SCAN_DIRECTORIES.has(entry.name)) {
+        continue;
+      }
+
+      if (
+        relativePath === path.join('.stacked', 'worktrees') ||
+        relativePath.startsWith(path.join('.stacked', 'worktrees', path.sep))
+      ) {
+        continue;
+      }
+
+      envFiles.push(...(await listEnvFiles(repositoryRoot, absolutePath)));
+      continue;
+    }
+
+    if (entry.isFile() && entry.name.startsWith('.env')) {
+      envFiles.push(relativePath);
+    }
+  }
+
+  return envFiles;
+}
+
+async function copyEnvFilesToWorktree(
+  repositoryRoot: string,
+  worktreeAbsolutePath: string,
+): Promise<void> {
+  const envFiles = await listEnvFiles(repositoryRoot);
+
+  await Promise.all(
+    envFiles.map(async (relativePath) => {
+      const sourcePath = path.join(repositoryRoot, relativePath);
+      const destinationPath = path.join(worktreeAbsolutePath, relativePath);
+
+      await mkdir(path.dirname(destinationPath), { recursive: true });
+      await copyFile(sourcePath, destinationPath);
+    }),
+  );
 }
 
 export function createStageBranchIdentity(input: {
@@ -275,6 +329,16 @@ export async function ensureStageBranchWorktree(input: {
   if (!created.ok) {
     throw new Error(
       `Unable to ensure worktree for ${input.branchName}: ${created.stderr || created.error || 'unknown git error'}`,
+    );
+  }
+
+  try {
+    await copyEnvFilesToWorktree(input.repositoryRoot, worktreeAbsolutePath);
+  } catch (error) {
+    const details =
+      error instanceof Error && error.message ? error.message : String(error);
+    throw new Error(
+      `Created worktree for ${input.branchName}, but failed to copy .env files: ${details}`,
     );
   }
 
