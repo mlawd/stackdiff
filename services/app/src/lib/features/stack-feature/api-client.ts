@@ -40,17 +40,6 @@ async function requestJson<T>(
   return (payload as ApiSuccessEnvelope<T>).data;
 }
 
-export function getImplementationStatus(
-  stackId: string,
-  stageId: string,
-): Promise<ImplementationStatusResponse> {
-  return requestJson<ImplementationStatusResponse>(
-    `/api/stacks/${stackId}/stages/${stageId}/implementation/reconcile`,
-    { method: 'POST' },
-    'Unable to load implementation status.',
-  );
-}
-
 export function approveStageRequest(
   stackId: string,
   stageId: string,

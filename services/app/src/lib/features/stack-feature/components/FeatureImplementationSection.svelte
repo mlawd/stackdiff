@@ -20,6 +20,8 @@
     canSyncStack,
     canMergeDown,
     startButtonLabel,
+    streamConnectionState,
+    streamReconnectAttempt,
     onOpenPlanningChat,
     onStartFeature,
     onSyncStack,
@@ -39,6 +41,8 @@
     canSyncStack: boolean;
     canMergeDown: boolean;
     startButtonLabel: string;
+    streamConnectionState: 'connected' | 'reconnecting' | 'disconnected';
+    streamReconnectAttempt: number;
     onOpenPlanningChat: () => void;
     onStartFeature: () => void;
     onSyncStack: () => void;
@@ -47,6 +51,30 @@
     onApproveStage: (stageId: string) => void;
     onMergeStage: (stageId: string) => void;
   } = $props();
+
+  let streamStatusLabel = $derived.by(() => {
+    if (streamConnectionState === 'connected') {
+      return 'Connected';
+    }
+
+    if (streamConnectionState === 'disconnected') {
+      return 'Disconnected';
+    }
+
+    return `Reconnecting (attempt ${Math.max(1, streamReconnectAttempt)})`;
+  });
+
+  let streamStatusColorClass = $derived.by(() => {
+    if (streamConnectionState === 'connected') {
+      return 'bg-emerald-400/70';
+    }
+
+    if (streamConnectionState === 'disconnected') {
+      return 'bg-rose-400/70';
+    }
+
+    return 'bg-amber-300/80';
+  });
 </script>
 
 {#if hasSavedPlan}
@@ -58,6 +86,14 @@
         Implementation stages
       </p>
       <div class="flex flex-wrap items-center gap-2">
+        <span
+          class="inline-flex items-center gap-1.5 rounded-full border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-2 py-1 text-xs stacked-subtle"
+          aria-live="polite"
+        >
+          <span class={`h-1.5 w-1.5 rounded-full ${streamStatusColorClass}`}
+          ></span>
+          <span>{streamStatusLabel}</span>
+        </span>
         <Button
           type="button"
           size="sm"
