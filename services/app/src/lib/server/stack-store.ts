@@ -391,6 +391,10 @@ function isStackImplementationSession(
     typeof session.stageId === 'string' &&
     typeof session.branchName === 'string' &&
     typeof session.worktreePathKey === 'string' &&
+    (session.parentBranchNameAtStart === undefined ||
+      typeof session.parentBranchNameAtStart === 'string') &&
+    (session.parentHeadShaAtStart === undefined ||
+      typeof session.parentHeadShaAtStart === 'string') &&
     (session.opencodeSessionId === undefined ||
       typeof session.opencodeSessionId === 'string') &&
     typeof session.createdAt === 'string' &&
@@ -627,6 +631,10 @@ export async function createOrGetImplementationSession(
   stageId: string,
   branchName: string,
   worktreePathKey: string,
+  parentMetadata?: {
+    parentBranchNameAtStart?: string;
+    parentHeadShaAtStart?: string;
+  },
 ): Promise<{ session: StackImplementationSession; created: boolean }> {
   const file = await readStackFile();
   const existing = file.implementationSessions?.find(
@@ -645,6 +653,23 @@ export async function createOrGetImplementationSession(
       changed = true;
     }
 
+    if (
+      parentMetadata?.parentBranchNameAtStart &&
+      existing.parentBranchNameAtStart !==
+        parentMetadata.parentBranchNameAtStart
+    ) {
+      existing.parentBranchNameAtStart = parentMetadata.parentBranchNameAtStart;
+      changed = true;
+    }
+
+    if (
+      parentMetadata?.parentHeadShaAtStart &&
+      existing.parentHeadShaAtStart !== parentMetadata.parentHeadShaAtStart
+    ) {
+      existing.parentHeadShaAtStart = parentMetadata.parentHeadShaAtStart;
+      changed = true;
+    }
+
     if (changed) {
       existing.updatedAt = new Date().toISOString();
       await writeStackFile(file);
@@ -660,6 +685,8 @@ export async function createOrGetImplementationSession(
     stageId,
     branchName,
     worktreePathKey,
+    parentBranchNameAtStart: parentMetadata?.parentBranchNameAtStart,
+    parentHeadShaAtStart: parentMetadata?.parentHeadShaAtStart,
     opencodeSessionId: undefined,
     createdAt: now,
     updatedAt: now,

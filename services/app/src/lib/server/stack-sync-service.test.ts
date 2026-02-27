@@ -192,6 +192,14 @@ describe('stack-sync-service', () => {
   it('rebases out-of-sync stages in order', async () => {
     getStackByIdMock.mockResolvedValue(createStack());
     runCommandMock.mockImplementation(async (_command, args) => {
+      if (
+        args[0] === 'fetch' &&
+        args[1] === '--prune' &&
+        args[2] === 'origin'
+      ) {
+        return ok('');
+      }
+
       if (args[0] === 'rev-parse' && args[3] === 'origin/main^{commit}') {
         return ok('main-sha');
       }
@@ -277,6 +285,14 @@ describe('stack-sync-service', () => {
     getStackByIdMock.mockResolvedValue(stack);
 
     runCommandMock.mockImplementation(async (_command, args) => {
+      if (
+        args[0] === 'fetch' &&
+        args[1] === '--prune' &&
+        args[2] === 'origin'
+      ) {
+        return ok('');
+      }
+
       if (args[0] === 'rev-parse' && args[3] === 'origin/main^{commit}') {
         return ok('main-sha');
       }
@@ -344,9 +360,178 @@ describe('stack-sync-service', () => {
     );
   });
 
+  it('restacks with saved parent SHA when parent branch is gone', async () => {
+    const stack = createStack();
+    stack.stages = [
+      { id: 'stage-1', title: 'Stage 1', status: 'done' },
+      {
+        id: 'stage-2',
+        title: 'Stage 2',
+        status: 'in-progress',
+        approvedCommitSha: 'parent-approved-sha',
+      },
+    ];
+    getStackByIdMock.mockResolvedValue(stack);
+    getImplementationSessionsByStackIdMock.mockResolvedValue([
+      {
+        id: 'impl-2',
+        stackId: 'stack-1',
+        stageId: 'stage-2',
+        branchName: 'feature/stage-2',
+        worktreePathKey: '.stacked/worktrees/stage-2',
+        parentBranchNameAtStart: 'feature/stage-1',
+        parentHeadShaAtStart: 'parent-start-sha',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+
+    runCommandMock.mockImplementation(async (_command, args) => {
+      if (
+        args[0] === 'fetch' &&
+        args[1] === '--prune' &&
+        args[2] === 'origin'
+      ) {
+        return ok('');
+      }
+
+      if (args[0] === 'rev-parse' && args[3] === 'origin/main^{commit}') {
+        return ok('main-sha');
+      }
+
+      if (
+        args[0] === 'rev-parse' &&
+        args[3] === 'origin/feature/stage-2^{commit}'
+      ) {
+        return ok('stage-2-sha');
+      }
+
+      if (
+        args[0] === 'rev-list' &&
+        args[2] === 'origin/feature/stage-2..origin/main'
+      ) {
+        return ok('2');
+      }
+
+      if (args[0] === 'rev-parse' && args[3] === 'parent-start-sha^{commit}') {
+        return ok('parent-start-sha');
+      }
+
+      if (
+        args[0] === 'merge-base' &&
+        args[1] === '--is-ancestor' &&
+        args[2] === 'parent-start-sha' &&
+        args[3] === 'feature/stage-2'
+      ) {
+        return ok('');
+      }
+
+      if (args[0] === 'rebase') {
+        return ok('');
+      }
+
+      if (args[0] === 'push' && args[1] === '--force-with-lease') {
+        return ok('');
+      }
+
+      return fail(`unexpected command: ${args.join(' ')}`);
+    });
+
+    const result = await syncStack('stack-1');
+
+    expect(result.rebasedStages).toBe(1);
+    expect(result.skippedStages).toBe(1);
+    expect(runCommandMock).toHaveBeenCalledWith(
+      'git',
+      [
+        'rebase',
+        '--onto',
+        'origin/main',
+        'parent-start-sha',
+        'feature/stage-2',
+      ],
+      '/repo/.stacked/worktrees/stage-2',
+      expect.any(Object),
+    );
+  });
+
+  it('fails sync when transplant boundary cannot be resolved', async () => {
+    const stack = createStack();
+    stack.stages = [
+      { id: 'stage-1', title: 'Stage 1', status: 'done' },
+      { id: 'stage-2', title: 'Stage 2', status: 'in-progress' },
+    ];
+    getStackByIdMock.mockResolvedValue(stack);
+    getImplementationSessionsByStackIdMock.mockResolvedValue([
+      {
+        id: 'impl-2',
+        stackId: 'stack-1',
+        stageId: 'stage-2',
+        branchName: 'feature/stage-2',
+        worktreePathKey: '.stacked/worktrees/stage-2',
+        parentBranchNameAtStart: 'feature/stage-1',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+
+    runCommandMock.mockImplementation(async (_command, args) => {
+      if (
+        args[0] === 'fetch' &&
+        args[1] === '--prune' &&
+        args[2] === 'origin'
+      ) {
+        return ok('');
+      }
+
+      if (args[0] === 'rev-parse' && args[3] === 'origin/main^{commit}') {
+        return ok('main-sha');
+      }
+
+      if (
+        args[0] === 'rev-parse' &&
+        args[3] === 'origin/feature/stage-2^{commit}'
+      ) {
+        return ok('stage-2-sha');
+      }
+
+      if (
+        args[0] === 'rev-list' &&
+        args[2] === 'origin/feature/stage-2..origin/main'
+      ) {
+        return ok('2');
+      }
+
+      if (args[0] === 'rev-parse') {
+        return fail('missing ref');
+      }
+
+      if (args[0] === 'merge-base') {
+        return fail('no merge base');
+      }
+
+      return fail(`unexpected command: ${args.join(' ')}`);
+    });
+
+    await expect(syncStack('stack-1')).rejects.toMatchObject({
+      code: 'invalid-state',
+      message: expect.stringContaining(
+        'Could not determine a safe transplant boundary',
+      ),
+    });
+  });
+
   it('fails when force-with-lease push fails after rebase', async () => {
     getStackByIdMock.mockResolvedValue(createStack());
     runCommandMock.mockImplementation(async (_command, args) => {
+      if (
+        args[0] === 'fetch' &&
+        args[1] === '--prune' &&
+        args[2] === 'origin'
+      ) {
+        return ok('');
+      }
+
       if (args[0] === 'rev-parse' && args[3] === 'origin/main^{commit}') {
         return ok('main-sha');
       }
@@ -395,6 +580,14 @@ describe('stack-sync-service', () => {
   it('auto-aborts rebase when stage sync fails', async () => {
     getStackByIdMock.mockResolvedValue(createStack());
     runCommandMock.mockImplementation(async (_command, args) => {
+      if (
+        args[0] === 'fetch' &&
+        args[1] === '--prune' &&
+        args[2] === 'origin'
+      ) {
+        return ok('');
+      }
+
       if (args[0] === 'rev-parse' && args[3] === 'origin/main^{commit}') {
         return ok('main-sha');
       }

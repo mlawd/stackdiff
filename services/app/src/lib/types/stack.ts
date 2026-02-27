@@ -135,6 +135,8 @@ export interface StackImplementationSession {
   stageId: string;
   branchName: string;
   worktreePathKey: string;
+  parentBranchNameAtStart?: string;
+  parentHeadShaAtStart?: string;
   opencodeSessionId?: string;
   createdAt: string;
   updatedAt: string;

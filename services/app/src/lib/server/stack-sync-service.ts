@@ -59,6 +59,18 @@ class StackSyncServiceError extends Error {
   }
 }
 
+function logStackSync(
+  message: string,
+  details?: Record<string, unknown>,
+): void {
+  if (details) {
+    console.info(`[stack-sync] ${message}`, details);
+    return;
+  }
+
+  console.info(`[stack-sync] ${message}`);
+}
+
 async function resolveExistingRef(
   repositoryRoot: string,
   ref: string,
@@ -127,6 +139,21 @@ async function countBehind(
   }
 
   return parsed;
+}
+
+async function fetchOrigin(repositoryRoot: string): Promise<void> {
+  const fetched = await runCommand(
+    'git',
+    ['fetch', '--prune', 'origin'],
+    repositoryRoot,
+    { timeoutMs: 120_000 },
+  );
+  if (!fetched.ok) {
+    throw new StackSyncServiceError(
+      'command-failed',
+      `Unable to fetch from origin before sync: ${fetched.stderr || fetched.error || 'unknown git failure'}`,
+    );
+  }
 }
 
 async function resolveCommitSha(
@@ -205,30 +232,84 @@ async function gitMergeBase(
   return sha || undefined;
 }
 
-async function resolveTransplantUpstream(
-  repositoryRoot: string,
-  stageBranch: string,
-  oldParent: string,
-): Promise<string | undefined> {
-  const parent = oldParent.trim();
-  if (!parent) {
-    return undefined;
-  }
-
-  const candidates = [parent, `origin/${parent}`];
-  for (const candidate of candidates) {
-    if (!(await gitCommitRefExists(repositoryRoot, candidate))) {
+function uniqueNonEmpty(values: Array<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (!trimmed || seen.has(trimmed)) {
       continue;
     }
 
-    if (await gitIsAncestor(repositoryRoot, candidate, stageBranch)) {
-      return candidate;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  }
+
+  return normalized;
+}
+
+function expandParentRefCandidates(parentRef: string): string[] {
+  const value = parentRef.trim();
+  if (!value) {
+    return [];
+  }
+
+  if (value.startsWith('origin/')) {
+    return [value, value.slice('origin/'.length)].filter((entry) =>
+      entry.trim(),
+    );
+  }
+
+  return [value, `origin/${value}`];
+}
+
+async function resolveTransplantUpstream(input: {
+  repositoryRoot: string;
+  stageBranch: string;
+  parentRefs: string[];
+  anchorShas: string[];
+}): Promise<string | undefined> {
+  const anchorShas = uniqueNonEmpty(input.anchorShas);
+  for (const anchor of anchorShas) {
+    if (!(await gitCommitRefExists(input.repositoryRoot, anchor))) {
+      continue;
     }
 
+    if (await gitIsAncestor(input.repositoryRoot, anchor, input.stageBranch)) {
+      return anchor;
+    }
+  }
+
+  const parentRefs = uniqueNonEmpty(input.parentRefs);
+  for (const parentRef of parentRefs) {
+    const candidates = uniqueNonEmpty(expandParentRefCandidates(parentRef));
+    for (const candidate of candidates) {
+      if (!(await gitCommitRefExists(input.repositoryRoot, candidate))) {
+        continue;
+      }
+
+      if (
+        await gitIsAncestor(input.repositoryRoot, candidate, input.stageBranch)
+      ) {
+        return candidate;
+      }
+
+      const mergeBase = await gitMergeBase(
+        input.repositoryRoot,
+        candidate,
+        input.stageBranch,
+      );
+      if (mergeBase) {
+        return mergeBase;
+      }
+    }
+  }
+
+  for (const anchor of anchorShas) {
     const mergeBase = await gitMergeBase(
-      repositoryRoot,
-      candidate,
-      stageBranch,
+      input.repositoryRoot,
+      anchor,
+      input.stageBranch,
     );
     if (mergeBase) {
       return mergeBase;
@@ -466,6 +547,7 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
   const repositoryRoot = await getRuntimeRepositoryPath({
     stackId: resolvedStack.id,
   });
+  await fetchOrigin(repositoryRoot);
   const sessions = await getImplementationSessionsByStackId(resolvedStack.id);
   const sessionsByStageId = new Map<string, StackImplementationSession>();
   for (const session of sessions) {
@@ -486,6 +568,12 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
   let rebasedStages = 0;
   let skippedStages = 0;
   let currentParent = defaultBaseRef;
+
+  logStackSync('Starting stack sync', {
+    stackId,
+    totalStages: contexts.length,
+    defaultBaseRef,
+  });
 
   function oldParentForStage(index: number): string {
     if (index <= 0) {
@@ -510,6 +598,28 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
     }).branchName;
   }
 
+  function anchorShasForStage(index: number): string[] {
+    if (index <= 0) {
+      return [];
+    }
+
+    const previousStage = resolvedStack.stages?.[index - 1];
+    if (!previousStage) {
+      return [];
+    }
+
+    const currentStage = resolvedStack.stages?.[index];
+    const currentSession = currentStage
+      ? sessionsByStageId.get(currentStage.id)
+      : undefined;
+
+    return uniqueNonEmpty([
+      currentSession?.parentHeadShaAtStart,
+      previousStage.approvedCommitSha,
+      previousStage.pullRequest?.headRefOid,
+    ]);
+  }
+
   for (
     let contextIndex = 0;
     contextIndex < contexts.length;
@@ -522,6 +632,14 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
 
     if (!context.session || !context.branchName || !context.baseRef) {
       skippedStages += 1;
+      logStackSync('Skipping stage: unavailable branch/session', {
+        stackId,
+        stageId: context.stageId,
+        stageTitle: context.stageTitle,
+        branchName: context.branchName,
+        baseRef: context.baseRef,
+        reason: context.reasonIfUnavailable ?? 'Stage branch is unavailable.',
+      });
       stageResults.push({
         stageId: context.stageId,
         stageTitle: context.stageTitle,
@@ -534,7 +652,9 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
     }
 
     const rebaseBase = currentParent;
-    const oldParent = oldParentForStage(contextIndex);
+    const oldParent =
+      context.session.parentBranchNameAtStart ||
+      oldParentForStage(contextIndex);
 
     const behindBy = await countBehind(
       repositoryRoot,
@@ -544,6 +664,13 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
     if (behindBy <= 0) {
       currentParent = context.branchName;
       skippedStages += 1;
+      logStackSync('Skipping stage: already in sync', {
+        stackId,
+        stageId: context.stageId,
+        stageTitle: context.stageTitle,
+        branchName: context.branchName,
+        baseRef: rebaseBase,
+      });
       stageResults.push({
         stageId: context.stageId,
         stageTitle: context.stageTitle,
@@ -560,30 +687,60 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
       context.session.worktreePathKey,
     );
 
-    const previousStage = resolvedStack.stages?.[contextIndex - 1];
-    const parentMerged = previousStage?.status === 'done';
     const shouldTransplant =
-      parentMerged &&
+      contextIndex > 0 &&
       oldParent.trim().length > 0 &&
       normalizeBranchRef(rebaseBase) !== normalizeBranchRef(oldParent);
 
     let rebaseArgs: string[] = ['rebase', rebaseBase];
+    let strategy: 'rebase' | 'transplant' = 'rebase';
+    let upstreamUsed: string | undefined;
     if (shouldTransplant) {
-      const upstream = await resolveTransplantUpstream(
+      const upstream = await resolveTransplantUpstream({
         repositoryRoot,
-        context.branchName,
-        oldParent,
-      );
-      if (upstream) {
-        rebaseArgs = [
-          'rebase',
-          '--onto',
+        stageBranch: context.branchName,
+        parentRefs: [oldParent, context.baseRef],
+        anchorShas: anchorShasForStage(contextIndex),
+      });
+      if (!upstream) {
+        console.error('[stack-sync] Unable to resolve transplant boundary', {
+          stackId,
+          stageId: context.stageId,
+          stageTitle: context.stageTitle,
+          branchName: context.branchName,
+          oldParent,
           rebaseBase,
-          upstream,
-          context.branchName,
-        ];
+          candidateParentRefs: [oldParent, context.baseRef],
+          anchorShas: anchorShasForStage(contextIndex),
+        });
+        throw new StackSyncServiceError(
+          'invalid-state',
+          `Unable to restack stage ${context.stageTitle}. Could not determine a safe transplant boundary from ${oldParent}. Re-approve the previous stage or recreate the parent branch before syncing.`,
+        );
       }
+
+      strategy = 'transplant';
+      upstreamUsed = upstream;
+
+      rebaseArgs = [
+        'rebase',
+        '--onto',
+        rebaseBase,
+        upstream,
+        context.branchName,
+      ];
     }
+
+    logStackSync('Rebasing stage', {
+      stackId,
+      stageId: context.stageId,
+      stageTitle: context.stageTitle,
+      branchName: context.branchName,
+      rebaseBase,
+      strategy,
+      upstreamUsed,
+      behindBy,
+    });
 
     const rebased = await runCommand('git', rebaseArgs, worktreeAbsolutePath, {
       timeoutMs: 120_000,
@@ -614,6 +771,15 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
 
     rebasedStages += 1;
     currentParent = context.branchName;
+    logStackSync('Rebased and pushed stage', {
+      stackId,
+      stageId: context.stageId,
+      stageTitle: context.stageTitle,
+      branchName: context.branchName,
+      baseRef: rebaseBase,
+      strategy,
+      upstreamUsed,
+    });
     stageResults.push({
       stageId: context.stageId,
       stageTitle: context.stageTitle,
@@ -622,6 +788,13 @@ export async function syncStack(stackId: string): Promise<SyncStackResult> {
       status: 'rebased',
     });
   }
+
+  logStackSync('Completed stack sync', {
+    stackId,
+    totalStages: contexts.length,
+    rebasedStages,
+    skippedStages,
+  });
 
   return {
     stackId,

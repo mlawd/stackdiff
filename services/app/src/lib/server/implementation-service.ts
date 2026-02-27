@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { runCommand } from '$lib/server/command';
 import { createAndSeedOpencodeSession } from '$lib/server/opencode';
 import {
   createOrGetImplementationSession,
@@ -128,6 +129,28 @@ function resolvePlanningArtifactPath(
   return path.resolve(repositoryRoot, value);
 }
 
+async function resolveCommitSha(
+  repositoryRoot: string,
+  ref: string,
+): Promise<string | undefined> {
+  const value = ref.trim();
+  if (!value) {
+    return undefined;
+  }
+
+  const resolved = await runCommand(
+    'git',
+    ['rev-parse', '--verify', '--quiet', `${value}^{commit}`],
+    repositoryRoot,
+  );
+  if (!resolved.ok) {
+    return undefined;
+  }
+
+  const sha = resolved.stdout.trim();
+  return sha || undefined;
+}
+
 export async function ensureImplementationSessionBootstrap(input: {
   stack: StackMetadata;
   stage: FeatureStage;
@@ -135,12 +158,27 @@ export async function ensureImplementationSessionBootstrap(input: {
   branchName: string;
   worktreePathKey: string;
   worktreeAbsolutePath: string;
+  baseBranch?: string;
 }): Promise<{ session: StackImplementationSession; reusedSession: boolean }> {
+  const repositoryRoot = await getRuntimeRepositoryPath({
+    stackId: input.stack.id,
+  });
+  let parentHeadShaAtStart: string | undefined;
+  if (input.baseBranch?.trim()) {
+    parentHeadShaAtStart =
+      (await resolveCommitSha(repositoryRoot, input.baseBranch)) ??
+      (await resolveCommitSha(repositoryRoot, `origin/${input.baseBranch}`));
+  }
+
   const ensured = await createOrGetImplementationSession(
     input.stack.id,
     input.stage.id,
     input.branchName,
     input.worktreePathKey,
+    {
+      parentBranchNameAtStart: input.baseBranch,
+      parentHeadShaAtStart,
+    },
   );
 
   let session = ensured.session;
@@ -148,9 +186,6 @@ export async function ensureImplementationSessionBootstrap(input: {
 
   if (!session.opencodeSessionId) {
     const planningSession = await getPlanningSessionByStackId(input.stack.id);
-    const repositoryRoot = await getRuntimeRepositoryPath({
-      stackId: input.stack.id,
-    });
     const savedPlanAbsolutePath = resolvePlanningArtifactPath(
       repositoryRoot,
       planningSession?.savedPlanPath,

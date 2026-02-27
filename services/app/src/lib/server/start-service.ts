@@ -136,6 +136,7 @@ export async function startFeatureNextStage(
     branchName: worktree.branchName,
     worktreePathKey: worktree.worktreePathKey,
     worktreeAbsolutePath: worktree.worktreeAbsolutePath,
+    baseBranch: stage.baseBranch,
   });
 
   const updated = await setStackStartedWithStageInProgress(
