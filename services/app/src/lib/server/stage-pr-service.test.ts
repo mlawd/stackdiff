@@ -94,6 +94,17 @@ describe('stage-pr-service', () => {
                                   conclusion: 'SUCCESS',
                                 },
                                 {
+                                  __typename: 'StatusContext',
+                                  context: 'build-test',
+                                  state: 'SUCCESS',
+                                },
+                                {
+                                  __typename: 'CheckRun',
+                                  name: 'build-test',
+                                  status: 'COMPLETED',
+                                  conclusion: 'SUCCESS',
+                                },
+                                {
                                   __typename: 'CheckRun',
                                   name: 'E2E',
                                   status: 'IN_PROGRESS',
@@ -157,13 +168,14 @@ describe('stage-pr-service', () => {
 
     expect(pullRequest?.commentCount).toBe(3);
     expect(pullRequest?.checks).toEqual({
-      completed: 3,
-      total: 4,
-      passed: 2,
+      completed: 4,
+      total: 5,
+      passed: 3,
       failed: 1,
       items: [
         { name: 'Lint', status: 'Passed' },
         { name: 'Unit tests', status: 'Passed' },
+        { name: 'build-test', status: 'Passed' },
         { name: 'E2E', status: 'Pending' },
         { name: 'Type check', status: 'Failed' },
       ],
@@ -175,13 +187,14 @@ describe('stage-pr-service', () => {
         number: 14,
         commentCount: 3,
         checks: {
-          completed: 3,
-          total: 4,
-          passed: 2,
+          completed: 4,
+          total: 5,
+          passed: 3,
           failed: 1,
           items: [
             { name: 'Lint', status: 'Passed' },
             { name: 'Unit tests', status: 'Passed' },
+            { name: 'build-test', status: 'Passed' },
             { name: 'E2E', status: 'Pending' },
             { name: 'Type check', status: 'Failed' },
           ],

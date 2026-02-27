@@ -166,7 +166,7 @@
             class="pointer-events-none absolute left-0 top-full z-20 mt-1 min-w-64 rounded-lg border border-[var(--stacked-border-soft)] bg-[color-mix(in_oklab,var(--stacked-bg-soft)_94%,#05070d_6%)] p-2 text-xs text-[var(--stacked-text)] opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
           >
             {#if checks.items.length > 0}
-              {#each checks.items as item (item.name + ':' + item.status)}
+              {#each checks.items as item, index (`${item.name}:${item.status}:${index}`)}
                 <p class="truncate">
                   {item.name}: {item.status}
                 </p>

@@ -349,7 +349,40 @@ function summarizeChecksFromSnapshot(
     return undefined;
   }
 
-  return summarizeChecks(states);
+  const dedupedByName = new Map<string, PullRequestCheckStatePayload>();
+  const rank = (state: string): number => {
+    const status = checkStatusLabel({ state });
+    if (status === 'fail') {
+      return 3;
+    }
+
+    if (status === 'pending') {
+      return 2;
+    }
+
+    if (status === 'pass') {
+      return 1;
+    }
+
+    return 0;
+  };
+
+  for (const state of states) {
+    const name = typeof state.name === 'string' ? state.name.trim() : '';
+    const key = name.length > 0 ? name.toLowerCase() : 'unnamed-check';
+    const existing = dedupedByName.get(key);
+    if (
+      !existing ||
+      rank(String(state.state ?? '')) > rank(String(existing.state ?? ''))
+    ) {
+      dedupedByName.set(key, {
+        ...state,
+        name: name.length > 0 ? name : 'Unnamed check',
+      });
+    }
+  }
+
+  return summarizeChecks(Array.from(dedupedByName.values()));
 }
 
 function parseRepositoryOwnerAndNameFromPullRequestUrl(input: {
