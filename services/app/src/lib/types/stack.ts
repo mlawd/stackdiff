@@ -43,9 +43,18 @@ export interface StackedProject {
   repositoryPath: string;
 }
 
+export type RuntimeSyncMode = 'local' | 'webhook' | 'hybrid';
+
+export interface StackedRuntimeConfig {
+  syncMode: RuntimeSyncMode;
+  pollIntervalMs: number;
+  prSnapshotTtlMs: number;
+}
+
 export interface StackedProjectConfig {
   version: number;
   defaultModel?: string;
+  runtime: StackedRuntimeConfig;
   projects: StackedProject[];
 }
 

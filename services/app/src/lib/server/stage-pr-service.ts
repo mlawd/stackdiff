@@ -1,4 +1,5 @@
 import { runCommand } from '$lib/server/command';
+import { loadProjectConfig } from '$lib/server/project-config';
 import {
   getImplementationSessionByStackAndStage,
   setStackStagePullRequest,
@@ -17,7 +18,7 @@ interface GitHubPullRequestPayload {
   isDraft: boolean;
   url: string;
   updatedAt: string;
-  comments?: unknown[];
+  comments?: unknown;
   reviewDecision?: unknown;
   headRefOid?: unknown;
 }
@@ -45,6 +46,58 @@ interface PullRequestThreadsResponse {
     };
   };
 }
+
+interface StackPullRequestSnapshotResponse {
+  data?: {
+    repository?: Record<string, unknown>;
+    rateLimit?: {
+      cost?: unknown;
+      remaining?: unknown;
+      resetAt?: unknown;
+    };
+  };
+}
+
+interface GraphqlCheckRunNode {
+  __typename?: unknown;
+  name?: unknown;
+  conclusion?: unknown;
+  status?: unknown;
+}
+
+interface GraphqlStatusContextNode {
+  __typename?: unknown;
+  context?: unknown;
+  state?: unknown;
+}
+
+interface SnapshotPullRequestPayload extends GitHubPullRequestPayload {
+  comments?: {
+    totalCount?: unknown;
+  };
+  commits?: {
+    nodes?: Array<{
+      commit?: {
+        statusCheckRollup?: {
+          contexts?: {
+            nodes?: Array<GraphqlCheckRunNode | GraphqlStatusContextNode>;
+          };
+        };
+      };
+    }>;
+  };
+}
+
+interface PullRequestSnapshotCacheEntry {
+  key: string;
+  expiresAt: number;
+  byNumber: Map<number, StackPullRequest>;
+}
+
+const pullRequestSnapshotCache = new Map<
+  string,
+  PullRequestSnapshotCacheEntry
+>();
 
 function parseJsonPayload<T>(output: string): T {
   const trimmed = output.trim();
@@ -224,6 +277,261 @@ function summarizeChecks(
     failed,
     items,
   };
+}
+
+function toCheckStatePayloadFromRollupNode(
+  node: GraphqlCheckRunNode | GraphqlStatusContextNode,
+): PullRequestCheckStatePayload | undefined {
+  if (typeof node !== 'object' || node === null) {
+    return undefined;
+  }
+
+  const typename =
+    typeof node.__typename === 'string' ? node.__typename.trim() : '';
+  if (typename === 'CheckRun') {
+    const checkRun = node as GraphqlCheckRunNode;
+    const name =
+      typeof checkRun.name === 'string' ? checkRun.name : 'Unnamed check';
+    const status =
+      typeof checkRun.status === 'string'
+        ? checkRun.status.trim().toUpperCase()
+        : '';
+    const conclusion =
+      typeof checkRun.conclusion === 'string'
+        ? checkRun.conclusion.trim().toUpperCase()
+        : '';
+
+    if (status !== 'COMPLETED' || !conclusion) {
+      return {
+        name,
+        state: 'pending',
+      };
+    }
+
+    return {
+      name,
+      state: conclusion,
+    };
+  }
+
+  if (typename === 'StatusContext') {
+    const statusContext = node as GraphqlStatusContextNode;
+    const context =
+      typeof statusContext.context === 'string'
+        ? statusContext.context
+        : 'Unnamed check';
+    return {
+      name: context,
+      state:
+        typeof statusContext.state === 'string'
+          ? statusContext.state
+          : 'pending',
+    };
+  }
+
+  return undefined;
+}
+
+function summarizeChecksFromSnapshot(
+  payload: SnapshotPullRequestPayload,
+): PullRequestChecksSummary | undefined {
+  const nodes = payload.commits?.nodes;
+  const latestCommit = Array.isArray(nodes) ? nodes[0] : undefined;
+  const contextNodes = latestCommit?.commit?.statusCheckRollup?.contexts?.nodes;
+  if (!Array.isArray(contextNodes)) {
+    return undefined;
+  }
+
+  const states = contextNodes
+    .map((node) => toCheckStatePayloadFromRollupNode(node))
+    .filter((entry): entry is PullRequestCheckStatePayload => Boolean(entry));
+  if (states.length === 0) {
+    return undefined;
+  }
+
+  return summarizeChecks(states);
+}
+
+function parseRepositoryOwnerAndNameFromPullRequestUrl(input: {
+  stackId: string;
+  pullRequests: Array<{ url: string }>;
+}): { owner: string; name: string } | undefined {
+  for (const pullRequest of input.pullRequests) {
+    try {
+      const parsedUrl = new URL(pullRequest.url);
+      const segments = parsedUrl.pathname
+        .split('/')
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+      if (segments.length >= 4 && segments[2] === 'pull') {
+        const owner = segments[0];
+        const name = segments[1];
+        if (owner && name) {
+          return { owner, name };
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return undefined;
+}
+
+function buildSnapshotCacheKey(input: {
+  repositoryRoot: string;
+  stack: StackMetadata;
+  pullRequestNumbers: number[];
+}): string {
+  const sorted = [...input.pullRequestNumbers].sort(
+    (left, right) => left - right,
+  );
+  return `${input.repositoryRoot}::${input.stack.id}::${sorted.join(',')}`;
+}
+
+function getSnapshotCommentCount(payload: SnapshotPullRequestPayload): number {
+  const fromCommentsField = payload.comments;
+  if (
+    typeof fromCommentsField === 'object' &&
+    fromCommentsField !== null &&
+    'totalCount' in fromCommentsField
+  ) {
+    const totalCount = (fromCommentsField as { totalCount?: unknown })
+      .totalCount;
+    if (typeof totalCount === 'number' && Number.isFinite(totalCount)) {
+      return totalCount;
+    }
+  }
+
+  if (Array.isArray(payload.comments)) {
+    return payload.comments.length;
+  }
+
+  return 0;
+}
+
+async function readSnapshotTtlMs(): Promise<number> {
+  try {
+    const config = await loadProjectConfig();
+    return config.runtime.prSnapshotTtlMs;
+  } catch {
+    return 30_000;
+  }
+}
+
+async function getStackPullRequestSnapshotByNumber(input: {
+  repositoryRoot: string;
+  stack: StackMetadata;
+}): Promise<Map<number, StackPullRequest>> {
+  const stages = input.stack.stages ?? [];
+  const stagePullRequests = stages
+    .map((stage) => stage.pullRequest)
+    .filter((pullRequest): pullRequest is StackPullRequest =>
+      Boolean(pullRequest?.number && pullRequest.url),
+    );
+  if (stagePullRequests.length === 0) {
+    return new Map();
+  }
+
+  const pullRequestNumbers = stagePullRequests.map((pullRequest) =>
+    Number(pullRequest.number),
+  );
+  const cacheKey = buildSnapshotCacheKey({
+    repositoryRoot: input.repositoryRoot,
+    stack: input.stack,
+    pullRequestNumbers,
+  });
+  const now = Date.now();
+  const existing = pullRequestSnapshotCache.get(cacheKey);
+  if (existing && existing.expiresAt > now) {
+    return existing.byNumber;
+  }
+
+  const repoOwnerAndName = parseRepositoryOwnerAndNameFromPullRequestUrl({
+    stackId: input.stack.id,
+    pullRequests: stagePullRequests,
+  });
+  if (!repoOwnerAndName) {
+    throw new Error(
+      'Unable to resolve GitHub repository owner/name for stack PR snapshot.',
+    );
+  }
+
+  const aliasEntries = pullRequestNumbers.map((_, index) => {
+    const alias = `pr${index}`;
+    const variable = `$number${index}`;
+    return {
+      alias,
+      variable,
+      field: `${alias}: pullRequest(number: ${variable}) { number title state isDraft url updatedAt reviewDecision headRefOid comments { totalCount } commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion } ... on StatusContext { context state } } } } } } } }`,
+    };
+  });
+  const variableDefinitions = ['$owner: String!', '$name: String!']
+    .concat(aliasEntries.map((entry) => `${entry.variable}: Int!`))
+    .join(', ');
+  const query = `query(${variableDefinitions}) { repository(owner: $owner, name: $name) { ${aliasEntries
+    .map((entry) => entry.field)
+    .join(' ')} } rateLimit { cost remaining resetAt } }`;
+
+  const args = [
+    'api',
+    'graphql',
+    '-f',
+    `query=${query}`,
+    '-F',
+    `owner=${repoOwnerAndName.owner}`,
+    '-F',
+    `name=${repoOwnerAndName.name}`,
+  ];
+  aliasEntries.forEach((entry, index) => {
+    args.push('-F', `number${index}=${pullRequestNumbers[index]}`);
+  });
+
+  const response = await runCommand('gh', args, input.repositoryRoot);
+  if (!response.ok) {
+    throw new Error(
+      `Unable to fetch stack PR snapshot: ${response.stderr || response.error || 'unknown gh error'}`,
+    );
+  }
+
+  const parsed = parseJsonPayload<StackPullRequestSnapshotResponse>(
+    response.stdout || '{}',
+  );
+  const repositoryPayload = parsed.data?.repository;
+  if (!repositoryPayload || typeof repositoryPayload !== 'object') {
+    return new Map();
+  }
+
+  const byNumber = new Map<number, StackPullRequest>();
+  aliasEntries.forEach((entry) => {
+    const payload = repositoryPayload[entry.alias];
+    if (typeof payload !== 'object' || payload === null) {
+      return;
+    }
+
+    const pullRequestPayload = payload as SnapshotPullRequestPayload;
+    if (typeof pullRequestPayload.number !== 'number') {
+      return;
+    }
+
+    const normalized = toStackPullRequest(
+      pullRequestPayload,
+      getSnapshotCommentCount(pullRequestPayload),
+      summarizeChecksFromSnapshot(pullRequestPayload),
+    );
+    if (normalized) {
+      byNumber.set(normalized.number, normalized);
+    }
+  });
+
+  const ttlMs = await readSnapshotTtlMs();
+  pullRequestSnapshotCache.set(cacheKey, {
+    key: cacheKey,
+    expiresAt: now + ttlMs,
+    byNumber,
+  });
+
+  return byNumber;
 }
 
 async function getPullRequestChecksSummary(
@@ -487,6 +795,35 @@ export async function ensureStagePullRequest(input: {
   stageIndex: number;
   branchName: string;
 }): Promise<StackPullRequest | undefined> {
+  const matchingStage = (input.stack.stages ?? []).find(
+    (stage) => stage.id === input.stage.id,
+  );
+  const existingPullRequestNumber =
+    input.stage.pullRequest?.number ?? matchingStage?.pullRequest?.number;
+  if (typeof existingPullRequestNumber === 'number') {
+    try {
+      const snapshotByNumber = await getStackPullRequestSnapshotByNumber({
+        repositoryRoot: input.repositoryRoot,
+        stack: input.stack,
+      });
+      const fromSnapshot = snapshotByNumber.get(existingPullRequestNumber);
+      if (fromSnapshot) {
+        await setStackStagePullRequest(
+          input.stack.id,
+          input.stage.id,
+          fromSnapshot,
+        );
+        return fromSnapshot;
+      }
+    } catch (error) {
+      console.error('[stage-pr-service] Failed stack PR snapshot lookup', {
+        stackId: input.stack.id,
+        stageId: input.stage.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   const existing = await lookupPullRequestByHeadBranch(
     input.repositoryRoot,
     input.branchName,

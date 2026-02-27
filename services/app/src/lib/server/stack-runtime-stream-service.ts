@@ -3,6 +3,7 @@ import {
   reconcileImplementationStageStatus,
   type ImplementationStageStatusSummary,
 } from '$lib/server/implementation-status-service';
+import { loadProjectConfig } from '$lib/server/project-config';
 import { getStackById } from '$lib/server/stack-store';
 
 const STREAM_HEADERS = {
@@ -11,8 +12,8 @@ const STREAM_HEADERS = {
   connection: 'keep-alive',
 };
 
-const POLL_INTERVAL_MS = 2000;
 const HEARTBEAT_INTERVAL_MS = 25000;
+const DEFAULT_POLL_INTERVAL_MS = 15_000;
 
 interface RuntimeSnapshotEventData {
   runtimeByStageId: Record<string, ImplementationStageStatusSummary>;
@@ -162,11 +163,26 @@ function stopPollerIfUnused(stackId: string): void {
   pollersByStackId.delete(stackId);
 }
 
-function getOrCreatePoller(stackId: string): PollerEntry {
+async function resolvePollIntervalMs(): Promise<number> {
+  try {
+    const config = await loadProjectConfig();
+    return config.runtime.pollIntervalMs;
+  } catch (error) {
+    console.error('[stack-runtime-stream] Failed to read runtime poll config', {
+      error: toErrorMessage(error),
+      fallbackPollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
+    });
+    return DEFAULT_POLL_INTERVAL_MS;
+  }
+}
+
+async function getOrCreatePoller(stackId: string): Promise<PollerEntry> {
   const existing = pollersByStackId.get(stackId);
   if (existing) {
     return existing;
   }
+
+  const pollIntervalMs = await resolvePollIntervalMs();
 
   const entry: PollerEntry = {
     stackId,
@@ -174,7 +190,7 @@ function getOrCreatePoller(stackId: string): PollerEntry {
     runtimeByStageId: {},
     pollTimer: setInterval(() => {
       void runPoll(entry);
-    }, POLL_INTERVAL_MS),
+    }, pollIntervalMs),
     heartbeatTimer: setInterval(() => {
       broadcast(entry, 'heartbeat', { now: new Date().toISOString() });
     }, HEARTBEAT_INTERVAL_MS),
@@ -196,7 +212,7 @@ export async function handleStackRuntimeStreamRequest(input: {
     throw notFound('Stack not found.');
   }
 
-  const poller = getOrCreatePoller(input.stackId);
+  const poller = await getOrCreatePoller(input.stackId);
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {

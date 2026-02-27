@@ -57,74 +57,64 @@ describe('stage-pr-service', () => {
 
   it('counts unresolved review threads for existing pull requests', async () => {
     runCommandMock.mockImplementation(async (_command, args) => {
-      if (args[0] === 'pr' && args[1] === 'list') {
-        return ok(
-          JSON.stringify([
-            {
-              number: 14,
-              title: 'Stage PR',
-              state: 'OPEN',
-              isDraft: false,
-              url: 'https://github.com/org/repo/pull/14',
-              updatedAt: '2026-02-22T00:00:00.000Z',
-              comments: [{ id: 'fallback-1' }],
-            },
-          ]),
-        );
-      }
-
-      if (
-        args[0] === 'api' &&
-        args[1] === 'graphql' &&
-        !args.includes('after=cursor-1')
-      ) {
+      if (args[0] === 'api' && args[1] === 'graphql') {
         return ok(
           JSON.stringify({
             data: {
-              resource: {
-                reviewThreads: {
-                  nodes: [{ isResolved: false }, { isResolved: true }],
-                  pageInfo: {
-                    hasNextPage: true,
-                    endCursor: 'cursor-1',
+              repository: {
+                pr0: {
+                  number: 14,
+                  title: 'Stage PR',
+                  state: 'OPEN',
+                  isDraft: false,
+                  url: 'https://github.com/org/repo/pull/14',
+                  updatedAt: '2026-02-22T00:00:00.000Z',
+                  reviewDecision: 'REVIEW_REQUIRED',
+                  headRefOid: 'abc123',
+                  comments: {
+                    totalCount: 3,
+                  },
+                  commits: {
+                    nodes: [
+                      {
+                        commit: {
+                          statusCheckRollup: {
+                            contexts: {
+                              nodes: [
+                                {
+                                  __typename: 'CheckRun',
+                                  name: 'Lint',
+                                  status: 'COMPLETED',
+                                  conclusion: 'SUCCESS',
+                                },
+                                {
+                                  __typename: 'CheckRun',
+                                  name: 'Unit tests',
+                                  status: 'COMPLETED',
+                                  conclusion: 'SUCCESS',
+                                },
+                                {
+                                  __typename: 'CheckRun',
+                                  name: 'E2E',
+                                  status: 'IN_PROGRESS',
+                                  conclusion: null,
+                                },
+                                {
+                                  __typename: 'StatusContext',
+                                  context: 'Type check',
+                                  state: 'FAILURE',
+                                },
+                              ],
+                            },
+                          },
+                        },
+                      },
+                    ],
                   },
                 },
               },
             },
           }),
-        );
-      }
-
-      if (
-        args[0] === 'api' &&
-        args[1] === 'graphql' &&
-        args.includes('after=cursor-1')
-      ) {
-        return ok(
-          JSON.stringify({
-            data: {
-              resource: {
-                reviewThreads: {
-                  nodes: [{ isResolved: false }, { isResolved: false }],
-                  pageInfo: {
-                    hasNextPage: false,
-                    endCursor: null,
-                  },
-                },
-              },
-            },
-          }),
-        );
-      }
-
-      if (args[0] === 'pr' && args[1] === 'checks') {
-        return ok(
-          JSON.stringify([
-            { name: 'Lint', state: 'pass', bucket: 'pass' },
-            { name: 'Unit tests', state: 'success', bucket: 'pass' },
-            { name: 'E2E', state: 'pending', bucket: 'pending' },
-            { name: 'Type check', state: 'failure', bucket: 'fail' },
-          ]),
         );
       }
 

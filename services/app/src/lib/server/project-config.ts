@@ -4,10 +4,21 @@ import path from 'node:path';
 
 import { badRequest, notFound } from '$lib/server/api-errors';
 import { runCommand } from '$lib/server/command';
-import type { StackedProject, StackedProjectConfig } from '$lib/types/stack';
+import type {
+  RuntimeSyncMode,
+  StackedProject,
+  StackedProjectConfig,
+  StackedRuntimeConfig,
+} from '$lib/types/stack';
 
 const CONFIG_VERSION = 1;
 const MODEL_IDENTIFIER_PATTERN = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._:-]*$/i;
+const RUNTIME_SYNC_MODES: RuntimeSyncMode[] = ['local', 'webhook', 'hybrid'];
+const DEFAULT_RUNTIME_CONFIG: StackedRuntimeConfig = {
+  syncMode: 'local',
+  pollIntervalMs: 15_000,
+  prSnapshotTtlMs: 30_000,
+};
 
 function defaultConfigPath(): string {
   return path.join(os.homedir(), '.config', 'stacked', 'config.json');
@@ -66,6 +77,7 @@ function normalizeConfig(raw: unknown): StackedProjectConfig {
   const candidate = raw as {
     version?: unknown;
     defaultModel?: unknown;
+    runtime?: unknown;
     projects?: unknown;
   };
 
@@ -76,6 +88,8 @@ function normalizeConfig(raw: unknown): StackedProjectConfig {
   if (!Array.isArray(candidate.projects)) {
     throw badRequest('Config projects must be an array.');
   }
+
+  const runtime = normalizeRuntimeConfig(candidate.runtime);
 
   let defaultModel: string | undefined;
   if (candidate.defaultModel !== undefined) {
@@ -124,7 +138,73 @@ function normalizeConfig(raw: unknown): StackedProjectConfig {
   return {
     version: CONFIG_VERSION,
     defaultModel,
+    runtime,
     projects,
+  };
+}
+
+function parsePositiveInteger(
+  value: unknown,
+  key: string,
+  fallback: number,
+): number {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    !Number.isFinite(value) ||
+    value <= 0
+  ) {
+    throw badRequest(`Config runtime.${key} must be a positive integer.`);
+  }
+
+  return value;
+}
+
+function normalizeRuntimeConfig(raw: unknown): StackedRuntimeConfig {
+  if (raw === undefined) {
+    return { ...DEFAULT_RUNTIME_CONFIG };
+  }
+
+  if (typeof raw !== 'object' || raw === null) {
+    throw badRequest('Config runtime must be an object.');
+  }
+
+  const candidate = raw as {
+    syncMode?: unknown;
+    pollIntervalMs?: unknown;
+    prSnapshotTtlMs?: unknown;
+  };
+
+  const syncModeRaw = candidate.syncMode;
+  const syncMode =
+    syncModeRaw === undefined
+      ? DEFAULT_RUNTIME_CONFIG.syncMode
+      : typeof syncModeRaw === 'string'
+        ? (syncModeRaw.trim() as RuntimeSyncMode)
+        : null;
+
+  if (!syncMode || !RUNTIME_SYNC_MODES.includes(syncMode)) {
+    throw badRequest(
+      `Config runtime.syncMode must be one of: ${RUNTIME_SYNC_MODES.join(', ')}.`,
+    );
+  }
+
+  return {
+    syncMode,
+    pollIntervalMs: parsePositiveInteger(
+      candidate.pollIntervalMs,
+      'pollIntervalMs',
+      DEFAULT_RUNTIME_CONFIG.pollIntervalMs,
+    ),
+    prSnapshotTtlMs: parsePositiveInteger(
+      candidate.prSnapshotTtlMs,
+      'prSnapshotTtlMs',
+      DEFAULT_RUNTIME_CONFIG.prSnapshotTtlMs,
+    ),
   };
 }
 
@@ -135,7 +215,7 @@ export async function loadProjectConfig(): Promise<StackedProjectConfig> {
     await access(configPath);
   } catch {
     throw notFound(
-      `Project config not found at ${configPath}. Create it with { "version": 1, "defaultModel": "anthropic/claude-sonnet-4-6", "projects": [{ "id": "my-repo", "name": "My Repo", "repositoryPath": "/absolute/path/to/repo" }] }`,
+      `Project config not found at ${configPath}. Create it with { "version": 1, "defaultModel": "anthropic/claude-sonnet-4-6", "runtime": { "syncMode": "local", "pollIntervalMs": 15000, "prSnapshotTtlMs": 30000 }, "projects": [{ "id": "my-repo", "name": "My Repo", "repositoryPath": "/absolute/path/to/repo" }] }`,
     );
   }
 

@@ -8,7 +8,12 @@ vi.mock('$lib/server/stack-store', () => ({
   getStackById: vi.fn(),
 }));
 
+vi.mock('$lib/server/project-config', () => ({
+  loadProjectConfig: vi.fn(),
+}));
+
 import { reconcileImplementationStageStatus } from '$lib/server/implementation-status-service';
+import { loadProjectConfig } from '$lib/server/project-config';
 import { handleStackRuntimeStreamRequest } from '$lib/server/stack-runtime-stream-service';
 import { getStackById } from '$lib/server/stack-store';
 
@@ -16,6 +21,7 @@ const getStackByIdMock = vi.mocked(getStackById);
 const reconcileImplementationStageStatusMock = vi.mocked(
   reconcileImplementationStageStatus,
 );
+const loadProjectConfigMock = vi.mocked(loadProjectConfig);
 
 async function collectStreamText(input: {
   response: Response;
@@ -75,6 +81,15 @@ describe('stack-runtime-stream-service', () => {
       type: 'feature',
       status: 'started',
       stages: [{ id: 'stage-1', title: 'Stage 1', status: 'in-progress' }],
+    });
+    loadProjectConfigMock.mockResolvedValue({
+      version: 1,
+      projects: [],
+      runtime: {
+        syncMode: 'local',
+        pollIntervalMs: 2000,
+        prSnapshotTtlMs: 30000,
+      },
     });
   });
 

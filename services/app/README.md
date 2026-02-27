@@ -29,6 +29,35 @@ npm run dev
 npm run dev -- --open
 ```
 
+## Configuration
+
+`stacked` reads project/runtime config from `~/.config/stacked/config.json` (or `STACKED_CONFIG_PATH` when set).
+
+```json
+{
+  "version": 1,
+  "defaultModel": "anthropic/claude-sonnet-4-6",
+  "runtime": {
+    "syncMode": "local",
+    "pollIntervalMs": 15000,
+    "prSnapshotTtlMs": 30000
+  },
+  "projects": [
+    {
+      "id": "my-repo",
+      "name": "My Repo",
+      "repositoryPath": "/absolute/path/to/repo"
+    }
+  ]
+}
+```
+
+Runtime options:
+
+- `syncMode`: `local | webhook | hybrid` (currently local behavior is active)
+- `pollIntervalMs`: stack runtime stream polling interval in milliseconds
+- `prSnapshotTtlMs`: TTL for deduping stack PR snapshot GraphQL reads
+
 To run a production-like server locally:
 
 ```sh
