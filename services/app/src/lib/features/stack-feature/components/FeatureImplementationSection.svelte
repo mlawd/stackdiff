@@ -26,6 +26,7 @@
     onMergeDown,
     onOpenReview,
     onApproveStage,
+    onMergeStage,
   }: {
     hasSavedPlan: boolean;
     stages: FeatureStage[];
@@ -44,6 +45,7 @@
     onMergeDown: () => void;
     onOpenReview: (stageId: string) => void;
     onApproveStage: (stageId: string) => void;
+    onMergeStage: (stageId: string) => void;
   } = $props();
 </script>
 
@@ -95,6 +97,7 @@
       {implementationRuntimeByStageId}
       {onOpenReview}
       {onApproveStage}
+      {onMergeStage}
     />
   </div>
 {:else}

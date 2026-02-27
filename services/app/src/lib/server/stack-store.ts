@@ -80,6 +80,72 @@ function errorMessage(error: unknown): string {
   return 'unknown error';
 }
 
+function parseLenientJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    const text = raw.trimStart();
+    if (!text) {
+      throw new Error('Stacks file is empty.');
+    }
+
+    const first = text[0];
+    if (first !== '{' && first !== '[') {
+      throw new Error(
+        'Stacks file does not start with a JSON object or array.',
+      );
+    }
+
+    const closeForFirst = first === '{' ? '}' : ']';
+    let depth = 0;
+    let inString = false;
+    let escaping = false;
+
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index] as string;
+
+      if (inString) {
+        if (escaping) {
+          escaping = false;
+          continue;
+        }
+
+        if (char === '\\') {
+          escaping = true;
+          continue;
+        }
+
+        if (char === '"') {
+          inString = false;
+        }
+
+        continue;
+      }
+
+      if (char === '"') {
+        inString = true;
+        continue;
+      }
+
+      if (char === '{' || char === '[') {
+        depth += 1;
+        continue;
+      }
+
+      if (char === '}' || char === ']') {
+        depth -= 1;
+        if (depth === 0 && char === closeForFirst) {
+          return JSON.parse(text.slice(0, index + 1)) as unknown;
+        }
+
+        continue;
+      }
+    }
+
+    throw new Error('Unable to recover JSON payload from stacks file.');
+  }
+}
+
 async function getOrCreateStacksFilePath(
   candidates: string[],
 ): Promise<string> {
@@ -175,6 +241,10 @@ function isStackPullRequest(value: unknown): value is StackPullRequest {
   }
 
   const pullRequest = value as Partial<StackPullRequest>;
+  const checks = pullRequest.checks as
+    | Partial<NonNullable<StackPullRequest['checks']>>
+    | undefined;
+  const checkItems = checks?.items;
 
   return (
     typeof pullRequest.number === 'number' &&
@@ -192,7 +262,17 @@ function isStackPullRequest(value: unknown): value is StackPullRequest {
       pullRequest.reviewDecision === 'CHANGES_REQUESTED' ||
       pullRequest.reviewDecision === 'REVIEW_REQUIRED') &&
     (pullRequest.headRefOid === undefined ||
-      typeof pullRequest.headRefOid === 'string')
+      typeof pullRequest.headRefOid === 'string') &&
+    (checks === undefined ||
+      (typeof checks.completed === 'number' &&
+        typeof checks.total === 'number' &&
+        typeof checks.passed === 'number' &&
+        typeof checks.failed === 'number' &&
+        Array.isArray(checkItems) &&
+        checkItems.every(
+          (item) =>
+            typeof item?.name === 'string' && typeof item?.status === 'string',
+        )))
   );
 }
 
@@ -381,7 +461,7 @@ async function readStackFile(): Promise<StackFile> {
   const stacksFilePath = await getOrCreateStacksFilePath(candidates);
   const raw = await readFile(stacksFilePath, 'utf-8');
 
-  const parsed = JSON.parse(raw) as unknown;
+  const parsed = parseLenientJson(raw);
 
   if (!isStackFile(parsed)) {
     throw new Error(

@@ -62,6 +62,17 @@ export function approveStageRequest(
   );
 }
 
+export function mergeStageRequest(
+  stackId: string,
+  stageId: string,
+): Promise<ImplementationStatusResponse> {
+  return requestJson<ImplementationStatusResponse>(
+    `/api/stacks/${stackId}/stages/${stageId}/merge`,
+    { method: 'POST' },
+    'Unable to merge stage pull request.',
+  );
+}
+
 export function startFeatureRequest(stackId: string): Promise<StartResponse> {
   return requestJson<StartResponse>(
     `/api/stacks/${stackId}/start`,

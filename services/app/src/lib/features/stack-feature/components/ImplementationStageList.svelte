@@ -16,12 +16,14 @@
     implementationRuntimeByStageId,
     onOpenReview,
     onApproveStage,
+    onMergeStage,
   }: {
     stages: FeatureStage[];
     stageSyncById: Record<string, StageSyncMetadata> | undefined;
     implementationRuntimeByStageId: Record<string, ImplementationStageRuntime>;
     onOpenReview?: (stageId: string) => void;
     onApproveStage?: (stageId: string) => void;
+    onMergeStage?: (stageId: string) => void;
   } = $props();
 
   function stageSyncMetadata(stageId: string): StageSyncMetadata {
@@ -38,6 +40,7 @@
         syncMetadata={stageSyncMetadata(stage.id)}
         {onOpenReview}
         {onApproveStage}
+        {onMergeStage}
       />
     {/each}
   </div>

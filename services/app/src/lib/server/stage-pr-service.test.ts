@@ -117,6 +117,17 @@ describe('stage-pr-service', () => {
         );
       }
 
+      if (args[0] === 'pr' && args[1] === 'checks') {
+        return ok(
+          JSON.stringify([
+            { name: 'Lint', state: 'pass', bucket: 'pass' },
+            { name: 'Unit tests', state: 'success', bucket: 'pass' },
+            { name: 'E2E', state: 'pending', bucket: 'pending' },
+            { name: 'Type check', state: 'failure', bucket: 'fail' },
+          ]),
+        );
+      }
+
       return fail(`unexpected command: ${args.join(' ')}`);
     });
 
@@ -155,12 +166,36 @@ describe('stage-pr-service', () => {
     });
 
     expect(pullRequest?.commentCount).toBe(3);
+    expect(pullRequest?.checks).toEqual({
+      completed: 3,
+      total: 4,
+      passed: 2,
+      failed: 1,
+      items: [
+        { name: 'Lint', status: 'Passed' },
+        { name: 'Unit tests', status: 'Passed' },
+        { name: 'E2E', status: 'Pending' },
+        { name: 'Type check', status: 'Failed' },
+      ],
+    });
     expect(setStackStagePullRequestMock).toHaveBeenCalledWith(
       'stack-1',
       'stage-1',
       expect.objectContaining({
         number: 14,
         commentCount: 3,
+        checks: {
+          completed: 3,
+          total: 4,
+          passed: 2,
+          failed: 1,
+          items: [
+            { name: 'Lint', status: 'Passed' },
+            { name: 'Unit tests', status: 'Passed' },
+            { name: 'E2E', status: 'Pending' },
+            { name: 'Type check', status: 'Failed' },
+          ],
+        },
       }),
     );
   });

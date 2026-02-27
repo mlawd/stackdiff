@@ -170,6 +170,16 @@ export interface StackPullRequest {
   commentCount?: number;
   reviewDecision?: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED';
   headRefOid?: string;
+  checks?: {
+    completed: number;
+    total: number;
+    passed: number;
+    failed: number;
+    items: Array<{
+      name: string;
+      status: string;
+    }>;
+  };
 }
 
 export interface StackViewModel extends StackMetadata {

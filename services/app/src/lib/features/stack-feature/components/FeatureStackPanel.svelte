@@ -21,6 +21,7 @@
     getImplementationStatus,
     loadStageReviewSession,
     mergeDownStackRequest,
+    mergeStageRequest,
     startFeatureRequest,
     syncStackRequest,
   } from '../api-client';
@@ -171,6 +172,38 @@
           error instanceof Error
             ? error.message
             : 'Unable to approve stage for merge.',
+      };
+    }
+  }
+
+  async function mergeStage(stageId: string): Promise<void> {
+    if (mergeDownAction.pending || syncAction.pending || startAction.pending) {
+      return;
+    }
+
+    mergeDownAction = {
+      ...mergeDownAction,
+      error: null,
+      success: null,
+    };
+
+    try {
+      const runtime = await mergeStageRequest(stack.id, stageId);
+      implementationRuntimeByStageId = {
+        ...implementationRuntimeByStageId,
+        [stageId]: runtime,
+      };
+      mergeDownAction = {
+        ...mergeDownAction,
+        error: null,
+        success: 'Stage merged with squash.',
+      };
+      await invalidateAll();
+    } catch (error) {
+      mergeDownAction = {
+        ...mergeDownAction,
+        error:
+          error instanceof Error ? error.message : 'Unable to merge stage PR.',
       };
     }
   }
@@ -440,6 +473,7 @@
     onMergeDown={mergeDownStack}
     onOpenReview={openReviewStage}
     onApproveStage={approveStage}
+    onMergeStage={mergeStage}
   />
 </div>
 

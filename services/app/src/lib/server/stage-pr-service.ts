@@ -22,6 +22,14 @@ interface GitHubPullRequestPayload {
   headRefOid?: unknown;
 }
 
+interface PullRequestCheckStatePayload {
+  name?: unknown;
+  bucket?: unknown;
+  state?: unknown;
+}
+
+type PullRequestChecksSummary = NonNullable<StackPullRequest['checks']>;
+
 interface PullRequestThreadsResponse {
   data?: {
     resource?: {
@@ -38,9 +46,40 @@ interface PullRequestThreadsResponse {
   };
 }
 
+function parseJsonPayload<T>(output: string): T {
+  const trimmed = output.trim();
+  if (!trimmed) {
+    throw new Error('empty-json');
+  }
+
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    const arrayStart = trimmed.indexOf('[');
+    const objectStart = trimmed.indexOf('{');
+    let start = -1;
+    let end = -1;
+
+    if (arrayStart >= 0 && (objectStart === -1 || arrayStart < objectStart)) {
+      start = arrayStart;
+      end = trimmed.lastIndexOf(']');
+    } else if (objectStart >= 0) {
+      start = objectStart;
+      end = trimmed.lastIndexOf('}');
+    }
+
+    if (start >= 0 && end > start) {
+      return JSON.parse(trimmed.slice(start, end + 1)) as T;
+    }
+
+    throw new Error('invalid-json');
+  }
+}
+
 function toStackPullRequest(
   payload: GitHubPullRequestPayload | undefined,
   commentCount: number,
+  checks: PullRequestChecksSummary | undefined,
 ): StackPullRequest | undefined {
   if (!payload) {
     return undefined;
@@ -62,7 +101,159 @@ function toStackPullRequest(
         : undefined,
     headRefOid:
       typeof payload.headRefOid === 'string' ? payload.headRefOid : undefined,
+    checks,
   };
+}
+
+function normalizeCheckState(value: unknown): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function checkStatusLabel(entry: PullRequestCheckStatePayload): string {
+  const bucket = normalizeCheckState(entry.bucket);
+  if (bucket) {
+    if (bucket === 'pass') {
+      return 'pass';
+    }
+
+    if (bucket === 'fail' || bucket === 'cancel') {
+      return 'fail';
+    }
+
+    if (bucket === 'pending') {
+      return 'pending';
+    }
+
+    if (bucket === 'skipping') {
+      return 'skipped';
+    }
+  }
+
+  const state = normalizeCheckState(entry.state);
+  if (!state) {
+    return 'pending';
+  }
+
+  if (
+    state === 'pass' ||
+    state === 'passed' ||
+    state === 'success' ||
+    state === 'successful'
+  ) {
+    return 'pass';
+  }
+
+  if (
+    state === 'pending' ||
+    state === 'queued' ||
+    state === 'in_progress' ||
+    state === 'running' ||
+    state === 'requested' ||
+    state === 'waiting' ||
+    state === 'startup_pending'
+  ) {
+    return 'pending';
+  }
+
+  if (
+    state === 'fail' ||
+    state === 'failed' ||
+    state === 'failure' ||
+    state === 'error' ||
+    state === 'timed_out' ||
+    state === 'cancelled' ||
+    state === 'cancel' ||
+    state === 'action_required' ||
+    state === 'startup_failure'
+  ) {
+    return 'fail';
+  }
+
+  return state;
+}
+
+function summarizeChecks(
+  states: PullRequestCheckStatePayload[],
+): PullRequestChecksSummary {
+  const total = states.length;
+  let passed = 0;
+  let failed = 0;
+  let pending = 0;
+  const items: PullRequestChecksSummary['items'] = [];
+
+  for (const entry of states) {
+    const status = checkStatusLabel(entry);
+    if (status === 'pass') {
+      passed += 1;
+    } else if (status === 'pending') {
+      pending += 1;
+    } else if (status === 'fail') {
+      failed += 1;
+    }
+
+    const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+    const itemName = name.length > 0 ? name : 'Unnamed check';
+    const label =
+      status === 'pass'
+        ? 'Passed'
+        : status === 'fail'
+          ? 'Failed'
+          : status === 'pending'
+            ? 'Pending'
+            : status === 'skipped'
+              ? 'Skipped'
+              : status;
+    items.push({
+      name: itemName,
+      status: label,
+    });
+
+    if (status === 'skipped') {
+      continue;
+    }
+
+    if (status !== 'pass' && status !== 'fail' && status !== 'pending') {
+      pending += 1;
+    }
+  }
+
+  return {
+    completed: total - pending,
+    total,
+    passed,
+    failed,
+    items,
+  };
+}
+
+async function getPullRequestChecksSummary(
+  repositoryRoot: string,
+  pullRequestNumber: number,
+): Promise<PullRequestChecksSummary | undefined> {
+  const command = await runCommand(
+    'gh',
+    ['pr', 'checks', String(pullRequestNumber), '--json', 'name,state,bucket'],
+    repositoryRoot,
+  );
+
+  if (!command.ok) {
+    return undefined;
+  }
+
+  let parsed: PullRequestCheckStatePayload[];
+  try {
+    parsed = parseJsonPayload<PullRequestCheckStatePayload[]>(
+      command.stdout || '[]',
+    );
+  } catch {
+    return undefined;
+  }
+
+  if (!Array.isArray(parsed)) {
+    return undefined;
+  }
+
+  return summarizeChecks(parsed);
 }
 
 function unresolvedThreadCountFromResponse(output: string): {
@@ -72,7 +263,7 @@ function unresolvedThreadCountFromResponse(output: string): {
 } {
   let parsed: PullRequestThreadsResponse;
   try {
-    parsed = JSON.parse(output || '{}') as PullRequestThreadsResponse;
+    parsed = parseJsonPayload<PullRequestThreadsResponse>(output || '{}');
   } catch {
     return { unresolvedCount: 0, hasNextPage: false };
   }
@@ -151,9 +342,15 @@ async function toStackPullRequestWithCommentCount(
     payload.url,
   );
 
+  const checks = await getPullRequestChecksSummary(
+    repositoryRoot,
+    payload.number,
+  );
+
   return toStackPullRequest(
     payload,
     unresolvedReviewThreadCount ?? fallbackCommentCount,
+    checks,
   );
 }
 
@@ -213,7 +410,9 @@ async function lookupPullRequestByHeadBranch(
 
   let parsed: GitHubPullRequestPayload[];
   try {
-    parsed = JSON.parse(lookup.stdout || '[]') as GitHubPullRequestPayload[];
+    parsed = parseJsonPayload<GitHubPullRequestPayload[]>(
+      lookup.stdout || '[]',
+    );
   } catch {
     throw new Error('Unable to parse pull request lookup response.');
   }

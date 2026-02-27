@@ -209,6 +209,17 @@ function toSummary(
   };
 }
 
+function checksAreMergeable(
+  pullRequest: StackPullRequest | undefined,
+): boolean {
+  const checks = pullRequest?.checks;
+  if (!checks || checks.total === 0) {
+    return false;
+  }
+
+  return checks.completed === checks.total && checks.failed === 0;
+}
+
 async function refreshPullRequestContext(
   context: StageStatusContext,
 ): Promise<void> {
@@ -399,5 +410,57 @@ export async function approveStageForMerge(
     todoTotal: context.todoTotal,
     approvedCommitSha: updatedStage?.approvedCommitSha ?? headSha,
     pullRequest: context.pullRequest,
+  };
+}
+
+export async function mergeStagePullRequest(
+  stackId: string,
+  stageId: string,
+): Promise<ImplementationStageStatusSummary> {
+  const context = await loadStageStatusContext(stackId, stageId);
+  await refreshPullRequestContext(context);
+
+  if (context.stageStatus !== 'approved') {
+    throw new Error('Stage must be approved before merge.');
+  }
+
+  const pullRequestNumber = context.pullRequest?.number;
+  if (!pullRequestNumber) {
+    throw new Error('Stage pull request is unavailable.');
+  }
+
+  if (!checksAreMergeable(context.pullRequest)) {
+    throw new Error('Stage pull request checks are not fully passing yet.');
+  }
+
+  const repositoryRoot = await getRuntimeRepositoryPath({ stackId });
+  const merged = await runCommand(
+    'gh',
+    ['pr', 'merge', String(pullRequestNumber), '--squash'],
+    repositoryRoot,
+  );
+  if (!merged.ok) {
+    throw new Error(
+      `Unable to merge pull request: ${merged.stderr || merged.error || 'unknown gh error'}`,
+    );
+  }
+
+  const updatedStack = await setStackStageStatus(stackId, stageId, 'done');
+  const updatedStage = (updatedStack.stages ?? []).find(
+    (item) => item.id === stageId,
+  );
+
+  return {
+    stageStatus: updatedStage?.status ?? 'done',
+    runtimeState: context.runtimeState,
+    todoCompleted: context.todoCompleted,
+    todoTotal: context.todoTotal,
+    approvedCommitSha: undefined,
+    pullRequest: context.pullRequest
+      ? {
+          ...context.pullRequest,
+          state: 'MERGED',
+        }
+      : context.pullRequest,
   };
 }
