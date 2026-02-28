@@ -1,31 +1,19 @@
 <script lang="ts">
   import { invalidateAll } from '$app/navigation';
   import { onMount } from 'svelte';
-  import { SvelteSet } from 'svelte/reactivity';
 
-  import { readAppNotificationsEnabled } from '$lib/client/notifications';
   import type { StackViewModel } from '$lib/types/stack';
-  import {
-    canMergeDownStack,
-    canStartFeature as canStartFeatureWithRuntime,
-    formatMergeDownSuccessMessage,
-    formatStartSuccessMessage,
-    formatSyncSuccessMessage,
-    startButtonLabel as startButtonLabelWithRuntime,
-  } from '../behavior';
-  import {
-    approveStageRequest,
-    loadStageReviewSession,
-    mergeDownStackRequest,
-    mergeStageRequest,
-    startFeatureRequest,
-    syncStackRequest,
-  } from '../api-client';
+  import { loadStageReviewSession } from '../api-client';
   import type {
-    FeatureActionState,
     ImplementationStageRuntime,
     ReviewSessionResponse,
   } from '../contracts';
+  import {
+    createFeatureActionsController,
+    createInitialFeatureActionStateGroup,
+  } from '../feature-actions-controller';
+  import { createReviewReadyNotifier } from '../review-ready-notifier';
+  import { createReviewSessionController } from '../review-session-controller';
   import { createRuntimeStreamController } from '../runtime-stream-controller';
   import FeatureActionAlerts from './FeatureActionAlerts.svelte';
   import FeatureImplementationSection from './FeatureImplementationSection.svelte';
@@ -41,17 +29,7 @@
     onOpenPlanningChat: () => void;
   } = $props();
 
-  function createIdleActionState(): FeatureActionState {
-    return {
-      pending: false,
-      error: null,
-      success: null,
-    };
-  }
-
-  let startAction = $state<FeatureActionState>(createIdleActionState());
-  let syncAction = $state<FeatureActionState>(createIdleActionState());
-  let mergeDownAction = $state<FeatureActionState>(createIdleActionState());
+  let actionState = $state(createInitialFeatureActionStateGroup());
   let implementationRuntimeByStageId = $state<
     Record<string, ImplementationStageRuntime>
   >({});
@@ -63,44 +41,30 @@
     'connected' | 'reconnecting' | 'disconnected'
   >('reconnecting');
   let streamReconnectAttempt = $state(0);
-  let reviewRequestToken = 0;
-  const notifiedReviewStageIds = new SvelteSet<string>();
-  function canSendBrowserNotifications(): boolean {
-    if (typeof Notification === 'undefined') {
-      return false;
-    }
 
-    if (Notification.permission !== 'granted') {
-      return false;
-    }
+  const reviewSessionController = createReviewSessionController({
+    loadSession: loadStageReviewSession,
+    setState: (nextState) => {
+      selectedReviewStageId = nextState.selectedReviewStageId;
+      reviewLoading = nextState.reviewLoading;
+      reviewError = nextState.reviewError;
+      reviewSession = nextState.reviewSession;
+    },
+  });
 
-    try {
-      return readAppNotificationsEnabled();
-    } catch {
-      return false;
-    }
-  }
-
-  function notifyReviewReady(stageId: string, stageTitle: string): void {
-    if (!canSendBrowserNotifications()) {
-      return;
-    }
-
-    if (notifiedReviewStageIds.has(stageId)) {
-      return;
-    }
-
-    notifiedReviewStageIds.add(stageId);
-
-    try {
-      new Notification('Review', {
-        body: `${stageTitle || 'Stage'} is ready for review.`,
-        tag: `review:${stack.id}:${stageId}`,
-      });
-    } catch {
-      // Ignore notification construction errors.
-    }
-  }
+  const featureActionsController = createFeatureActionsController({
+    getStack: () => stack,
+    getImplementationRuntimeByStageId: () => implementationRuntimeByStageId,
+    setImplementationRuntimeByStageId: (next) => {
+      implementationRuntimeByStageId = next;
+    },
+    getActionState: () => actionState,
+    setActionState: (nextState) => {
+      actionState = nextState;
+    },
+    invalidate: () => invalidateAll(),
+    confirmMergeDown: (message) => window.confirm(message),
+  });
 
   let selectedReviewStage = $derived(
     selectedReviewStageId
@@ -110,120 +74,8 @@
       : null,
   );
 
-  function hasOutOfSyncStages(): boolean {
-    return (stack.stages ?? []).some(
-      (stage) => stack.stageSyncById?.[stage.id]?.isOutOfSync,
-    );
-  }
-
-  function canSyncStack(): boolean {
-    return (
-      hasOutOfSyncStages() &&
-      !syncAction.pending &&
-      !startAction.pending &&
-      !mergeDownAction.pending
-    );
-  }
-
-  function canMergeDown(): boolean {
-    return (
-      canMergeDownStack({
-        stages: stack.stages ?? [],
-        implementationRuntimeByStageId,
-      }) &&
-      !mergeDownAction.pending &&
-      !syncAction.pending &&
-      !startAction.pending
-    );
-  }
-
-  async function approveStage(stageId: string): Promise<void> {
-    if (mergeDownAction.pending || syncAction.pending || startAction.pending) {
-      return;
-    }
-
-    mergeDownAction = {
-      ...mergeDownAction,
-      error: null,
-      success: null,
-    };
-
-    try {
-      const runtime = await approveStageRequest(stack.id, stageId);
-      implementationRuntimeByStageId = {
-        ...implementationRuntimeByStageId,
-        [stageId]: runtime,
-      };
-      mergeDownAction = {
-        ...mergeDownAction,
-        error: null,
-        success: 'Stage approved for merge.',
-      };
-      await invalidateAll();
-    } catch (error) {
-      mergeDownAction = {
-        ...mergeDownAction,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unable to approve stage for merge.',
-      };
-    }
-  }
-
-  async function mergeStage(stageId: string): Promise<void> {
-    if (mergeDownAction.pending || syncAction.pending || startAction.pending) {
-      return;
-    }
-
-    mergeDownAction = {
-      ...mergeDownAction,
-      error: null,
-      success: null,
-    };
-
-    try {
-      const runtime = await mergeStageRequest(stack.id, stageId);
-      implementationRuntimeByStageId = {
-        ...implementationRuntimeByStageId,
-        [stageId]: runtime,
-      };
-      mergeDownAction = {
-        ...mergeDownAction,
-        error: null,
-        success: 'Stage merged with squash.',
-      };
-      await invalidateAll();
-    } catch (error) {
-      mergeDownAction = {
-        ...mergeDownAction,
-        error:
-          error instanceof Error ? error.message : 'Unable to merge stage PR.',
-      };
-    }
-  }
-
-  function canStartFeature(): boolean {
-    return (
-      canStartFeatureWithRuntime({
-        stages: stack.stages ?? [],
-        implementationRuntimeByStageId,
-        startPending: startAction.pending,
-      }) &&
-      !syncAction.pending &&
-      !mergeDownAction.pending
-    );
-  }
-
-  function startButtonLabel(): string {
-    return startButtonLabelWithRuntime({
-      stages: stack.stages ?? [],
-      implementationRuntimeByStageId,
-      startPending: startAction.pending,
-    });
-  }
-
   onMount(() => {
+    const reviewReadyNotifier = createReviewReadyNotifier(stack.id);
     const runtimeStreamController = createRuntimeStreamController({
       stackId: stack.id,
       onSnapshot: (runtimeByStageId) => {
@@ -236,7 +88,7 @@
         };
       },
       onReviewReady: (stageId, stageTitle) => {
-        notifyReviewReady(stageId, stageTitle);
+        reviewReadyNotifier.notify(stageId, stageTitle);
       },
       onConnectionStateChange: (state, reconnectAttempt) => {
         streamConnectionState = state;
@@ -250,169 +102,23 @@
     };
   });
 
-  async function startFeature(): Promise<void> {
-    if (!canStartFeature()) {
-      return;
-    }
-
-    startAction = {
-      pending: true,
-      error: null,
-      success: null,
-    };
-    syncAction = {
-      ...syncAction,
-      error: null,
-    };
-
-    try {
-      const response = await startFeatureRequest(stack.id);
-      startAction = {
-        pending: false,
-        error: null,
-        success: formatStartSuccessMessage(response),
-      };
-      await invalidateAll();
-    } catch (error) {
-      startAction = {
-        pending: false,
-        error:
-          error instanceof Error ? error.message : 'Unable to start feature.',
-        success: null,
-      };
-    }
-  }
-
-  async function syncStack(): Promise<void> {
-    if (!canSyncStack()) {
-      return;
-    }
-
-    syncAction = {
-      pending: true,
-      error: null,
-      success: null,
-    };
-    startAction = {
-      ...startAction,
-      error: null,
-    };
-    mergeDownAction = {
-      ...mergeDownAction,
-      error: null,
-    };
-
-    try {
-      const response = await syncStackRequest(stack.id);
-      syncAction = {
-        pending: false,
-        error: null,
-        success: formatSyncSuccessMessage(response),
-      };
-      await invalidateAll();
-    } catch (error) {
-      syncAction = {
-        pending: false,
-        error: error instanceof Error ? error.message : 'Unable to sync stack.',
-        success: null,
-      };
-    }
-  }
-
-  async function mergeDownStack(): Promise<void> {
-    if (!canMergeDown()) {
-      return;
-    }
-
-    const stageCount = (stack.stages ?? []).length;
-    const confirmed = window.confirm(
-      `Merge down ${stageCount} stage PR${stageCount === 1 ? '' : 's'} into the default branch using squash? This updates and merges each PR from bottom to top.`,
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    mergeDownAction = {
-      pending: true,
-      error: null,
-      success: null,
-    };
-    startAction = {
-      ...startAction,
-      error: null,
-    };
-    syncAction = {
-      ...syncAction,
-      error: null,
-    };
-
-    try {
-      const response = await mergeDownStackRequest(stack.id);
-      mergeDownAction = {
-        pending: false,
-        error: null,
-        success: formatMergeDownSuccessMessage(response),
-      };
-      await invalidateAll();
-    } catch (error) {
-      mergeDownAction = {
-        pending: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unable to merge down stack.',
-        success: null,
-      };
-    }
-  }
-
   async function openReviewStage(stageId: string): Promise<void> {
-    const requestToken = ++reviewRequestToken;
-    selectedReviewStageId = stageId;
-    reviewLoading = true;
-    reviewError = null;
-    reviewSession = null;
-
-    try {
-      const session = await loadStageReviewSession(stack.id, stageId);
-      if (requestToken !== reviewRequestToken) {
-        return;
-      }
-
-      reviewSession = session;
-    } catch (error) {
-      if (requestToken !== reviewRequestToken) {
-        return;
-      }
-
-      reviewError =
-        error instanceof Error
-          ? error.message
-          : 'Unable to open review session.';
-    } finally {
-      if (requestToken === reviewRequestToken) {
-        reviewLoading = false;
-      }
-    }
+    await reviewSessionController.open({ stackId: stack.id, stageId });
   }
 
   function closeReviewStage(): void {
-    reviewRequestToken += 1;
-    selectedReviewStageId = null;
-    reviewSession = null;
-    reviewError = null;
-    reviewLoading = false;
+    reviewSessionController.close();
   }
 </script>
 
 <div class="space-y-4">
   <FeatureActionAlerts
-    syncError={syncAction.error}
-    syncSuccess={syncAction.success}
-    mergeDownError={mergeDownAction.error}
-    mergeDownSuccess={mergeDownAction.success}
-    startError={startAction.error}
-    startSuccess={startAction.success}
+    syncError={actionState.syncAction.error}
+    syncSuccess={actionState.syncAction.success}
+    mergeDownError={actionState.mergeDownAction.error}
+    mergeDownSuccess={actionState.mergeDownAction.success}
+    startError={actionState.startAction.error}
+    startSuccess={actionState.startAction.success}
   />
 
   <FeatureImplementationSection
@@ -420,22 +126,22 @@
     stages={stack.stages ?? []}
     stageSyncById={stack.stageSyncById}
     {implementationRuntimeByStageId}
-    {startAction}
-    {syncAction}
-    {mergeDownAction}
-    canStartFeature={canStartFeature()}
-    canSyncStack={canSyncStack()}
-    canMergeDown={canMergeDown()}
-    startButtonLabel={startButtonLabel()}
+    startAction={actionState.startAction}
+    syncAction={actionState.syncAction}
+    mergeDownAction={actionState.mergeDownAction}
+    canStartFeature={featureActionsController.canStartFeature()}
+    canSyncStack={featureActionsController.canSyncStack()}
+    canMergeDown={featureActionsController.canMergeDown()}
+    startButtonLabel={featureActionsController.startButtonLabel()}
     {streamConnectionState}
     {streamReconnectAttempt}
     {onOpenPlanningChat}
-    onStartFeature={startFeature}
-    onSyncStack={syncStack}
-    onMergeDown={mergeDownStack}
+    onStartFeature={featureActionsController.startFeature}
+    onSyncStack={featureActionsController.syncStack}
+    onMergeDown={featureActionsController.mergeDownStack}
     onOpenReview={openReviewStage}
-    onApproveStage={approveStage}
-    onMergeStage={mergeStage}
+    onApproveStage={featureActionsController.approveStage}
+    onMergeStage={featureActionsController.mergeStage}
   />
 </div>
 
