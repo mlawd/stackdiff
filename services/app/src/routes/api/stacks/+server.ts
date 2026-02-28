@@ -1,5 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 
+import { createStack } from '$lib/features/stack-create/server/create-stack';
 import { fail, failInternal, ok } from '$lib/server/api-response';
 import {
   parseStackUpsertInput,
@@ -10,8 +11,6 @@ import {
   SELECTED_PROJECT_COOKIE,
 } from '$lib/server/project-context';
 import { listConfiguredProjects } from '$lib/server/project-config';
-import { enrichStackStatus } from '$lib/server/stack-status';
-import { createStackWithPlanningBootstrap } from '$lib/server/stack-create-service';
 import { readStacksByProjectId } from '$lib/server/stack-store';
 
 export const GET: RequestHandler = async ({ url, cookies }) => {
@@ -34,10 +33,8 @@ export const POST: RequestHandler = async ({ request }) => {
     const body = (await request.json()) as unknown;
     const input = parseStackUpsertInput(body);
     requireProjectId(input.projectId);
-    const created = await createStackWithPlanningBootstrap(input);
-
-    const enriched = await enrichStackStatus(created);
-    return ok({ stack: enriched }, 201);
+    const created = await createStack(input);
+    return ok({ stack: created }, 201);
   } catch (error) {
     return fail(error);
   }

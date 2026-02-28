@@ -8,22 +8,14 @@ vi.mock('$lib/server/stack-store', () => ({
   readStacksByProjectId: vi.fn(),
 }));
 
-vi.mock('$lib/server/stack-create-service', () => ({
-  createStackWithPlanningBootstrap: vi.fn(),
+vi.mock('$lib/features/stack-create/server/create-stack', () => ({
+  createStack: vi.fn(),
 }));
 
-vi.mock('$lib/server/stack-status', () => ({
-  enrichStackStatus: vi.fn(),
-}));
-
-import { createStackWithPlanningBootstrap } from '$lib/server/stack-create-service';
-import { enrichStackStatus } from '$lib/server/stack-status';
+import { createStack } from '$lib/features/stack-create/server/create-stack';
 import { POST } from './+server';
 
-const createStackWithPlanningBootstrapMock = vi.mocked(
-  createStackWithPlanningBootstrap,
-);
-const enrichStackStatusMock = vi.mocked(enrichStackStatus);
+const createStackMock = vi.mocked(createStack);
 
 describe('POST /api/stacks', () => {
   beforeEach(() => {
@@ -50,15 +42,7 @@ describe('POST /api/stacks', () => {
   });
 
   it('returns created stack payload on success', async () => {
-    createStackWithPlanningBootstrapMock.mockResolvedValue({
-      id: 'stack-1',
-      projectId: 'repo-1',
-      name: 'Feature',
-      type: 'feature',
-      status: 'created',
-      stages: [],
-    });
-    enrichStackStatusMock.mockResolvedValue({
+    createStackMock.mockResolvedValue({
       id: 'stack-1',
       projectId: 'repo-1',
       name: 'Feature',
@@ -86,7 +70,7 @@ describe('POST /api/stacks', () => {
 
     expect(response.status).toBe(201);
     expect(body.data.stack.id).toBe('stack-1');
-    expect(createStackWithPlanningBootstrapMock).toHaveBeenCalledWith(
+    expect(createStackMock).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: 'repo-1' }),
     );
   });
