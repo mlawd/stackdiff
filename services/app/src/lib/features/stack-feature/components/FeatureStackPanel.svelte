@@ -26,6 +26,7 @@
     ImplementationStageRuntime,
     ReviewSessionResponse,
   } from '../contracts';
+  import { createRuntimeStreamController } from '../runtime-stream-controller';
   import FeatureActionAlerts from './FeatureActionAlerts.svelte';
   import FeatureImplementationSection from './FeatureImplementationSection.svelte';
   import FeatureReviewDialog from './FeatureReviewDialog.svelte';
@@ -64,14 +65,6 @@
   let streamReconnectAttempt = $state(0);
   let reviewRequestToken = 0;
   const notifiedReviewStageIds = new SvelteSet<string>();
-  const runtimeStreamBaseRetryMs = 1_000;
-  const runtimeStreamMaxRetryMs = 15_000;
-  const runtimeStreamMaxReconnectAttempts = 8;
-
-  let runtimeStream: EventSource | null = null;
-  let runtimeReconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  let runtimeStreamDisposed = false;
-
   function canSendBrowserNotifications(): boolean {
     if (typeof Notification === 'undefined') {
       return false;
@@ -230,136 +223,30 @@
     });
   }
 
-  function closeRuntimeStream(): void {
-    runtimeStream?.close();
-    runtimeStream = null;
-  }
-
-  function clearRuntimeReconnectTimer(): void {
-    if (runtimeReconnectTimer !== null) {
-      clearTimeout(runtimeReconnectTimer);
-      runtimeReconnectTimer = null;
-    }
-  }
-
-  function reconnectRuntimeStreamWithBackoff(): void {
-    if (runtimeStreamDisposed) {
-      return;
-    }
-
-    clearRuntimeReconnectTimer();
-    closeRuntimeStream();
-
-    const nextAttempt = streamReconnectAttempt + 1;
-    if (nextAttempt > runtimeStreamMaxReconnectAttempts) {
-      streamConnectionState = 'disconnected';
-      return;
-    }
-
-    streamReconnectAttempt = nextAttempt;
-    streamConnectionState = 'reconnecting';
-
-    const retryDelayMs = Math.min(
-      runtimeStreamBaseRetryMs * 2 ** (nextAttempt - 1),
-      runtimeStreamMaxRetryMs,
-    );
-
-    runtimeReconnectTimer = setTimeout(() => {
-      runtimeReconnectTimer = null;
-      connectRuntimeStream();
-    }, retryDelayMs);
-  }
-
-  function connectRuntimeStream(): void {
-    if (runtimeStreamDisposed) {
-      return;
-    }
-
-    clearRuntimeReconnectTimer();
-    closeRuntimeStream();
-
-    const stream = new EventSource(`/api/stacks/${stack.id}/runtime/stream`);
-    runtimeStream = stream;
-
-    stream.addEventListener('open', () => {
-      if (runtimeStream !== stream || runtimeStreamDisposed) {
-        return;
-      }
-
-      streamConnectionState = 'connected';
-      streamReconnectAttempt = 0;
-    });
-
-    stream.addEventListener('snapshot', (event) => {
-      const message = event as MessageEvent<string>;
-      try {
-        const payload = JSON.parse(message.data) as {
-          runtimeByStageId?: Record<string, ImplementationStageRuntime>;
-        };
-        if (!payload.runtimeByStageId) {
-          return;
-        }
-
-        implementationRuntimeByStageId = payload.runtimeByStageId;
-      } catch {
-        // Ignore malformed stream payload.
-      }
-    });
-
-    stream.addEventListener('stage-runtime', (event) => {
-      const message = event as MessageEvent<string>;
-      try {
-        const payload = JSON.parse(message.data) as {
-          stageId?: string;
-          runtime?: ImplementationStageRuntime;
-        };
-        if (!payload.stageId || !payload.runtime) {
-          return;
-        }
-
+  onMount(() => {
+    const runtimeStreamController = createRuntimeStreamController({
+      stackId: stack.id,
+      onSnapshot: (runtimeByStageId) => {
+        implementationRuntimeByStageId = runtimeByStageId;
+      },
+      onStageRuntime: (stageId, runtime) => {
         implementationRuntimeByStageId = {
           ...implementationRuntimeByStageId,
-          [payload.stageId]: payload.runtime,
+          [stageId]: runtime,
         };
-      } catch {
-        // Ignore malformed stream payload.
-      }
+      },
+      onReviewReady: (stageId, stageTitle) => {
+        notifyReviewReady(stageId, stageTitle);
+      },
+      onConnectionStateChange: (state, reconnectAttempt) => {
+        streamConnectionState = state;
+        streamReconnectAttempt = reconnectAttempt;
+      },
     });
-
-    stream.addEventListener('review-ready', (event) => {
-      const message = event as MessageEvent<string>;
-      try {
-        const payload = JSON.parse(message.data) as {
-          stageId?: string;
-          stageTitle?: string;
-        };
-        if (!payload.stageId) {
-          return;
-        }
-
-        notifyReviewReady(payload.stageId, payload.stageTitle ?? 'Stage');
-      } catch {
-        // Ignore malformed stream payload.
-      }
-    });
-
-    stream.addEventListener('error', () => {
-      if (runtimeStream !== stream || runtimeStreamDisposed) {
-        return;
-      }
-
-      reconnectRuntimeStreamWithBackoff();
-    });
-  }
-
-  onMount(() => {
-    runtimeStreamDisposed = false;
-    connectRuntimeStream();
+    runtimeStreamController.start();
 
     return () => {
-      runtimeStreamDisposed = true;
-      clearRuntimeReconnectTimer();
-      closeRuntimeStream();
+      runtimeStreamController.stop();
     };
   });
 
