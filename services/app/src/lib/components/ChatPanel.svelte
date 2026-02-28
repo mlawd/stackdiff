@@ -1,74 +1,25 @@
 <script lang="ts">
+  import { Spinner } from 'flowbite-svelte';
   import { tick } from 'svelte';
-  import { Button, Dropdown, DropdownItem, Spinner } from 'flowbite-svelte';
 
-  import { renderMarkdown } from '$lib/markdown';
   import type {
     PlanningMessage,
     PlanningQuestionDialog,
-    PlanningQuestionItem,
-    PlanningQuestionOption,
   } from '$lib/types/stack';
-  import {
-    BrainSolid,
-    ChevronDownOutline,
-    UserCircleSolid,
-  } from 'flowbite-svelte-icons';
 
-  interface StreamDonePayload extends Record<string, unknown> {
-    assistantReply: string;
-    messages?: PlanningMessage[];
-  }
-
-  interface StreamQuestionPayload extends Record<string, unknown> {
-    requestId?: string;
-    source?: string;
-  }
-
-  interface StreamDeltaPayload extends Record<string, unknown> {
-    chunk?: string;
-    messageId?: string;
-  }
-
-  interface StreamErrorPayload {
-    message?: string;
-  }
-
-  interface SaveResponseBody extends Record<string, unknown> {
-    messages?: PlanningMessage[];
-  }
-
-  interface ApiErrorEnvelope {
-    error?: {
-      message?: string;
-    };
-  }
-
-  interface ApiSuccessEnvelope<T> {
-    data?: T;
-  }
-
-  interface StageSummaryItem {
-    stageName: string;
-    stageDescription: string;
-  }
-
-  interface QuestionAnswerItem {
-    question: string;
-    selected: string[];
-    customAnswer?: string;
-  }
-
-  interface StreamingAssistantMessage {
-    key: string;
-    content: string;
-  }
-
-  type ChatAgent = 'plan' | 'build';
-
-  const SAVE_PLAN_PROMPT_PREFIX =
-    'Create a detailed implementation plan and stages config from this conversation.';
-  const FALLBACK_STREAM_MESSAGE_KEY = 'streaming-assistant';
+  import { applyStreamEvent } from '$lib/components/chat/chat-stream';
+  import type {
+    ApiErrorEnvelope,
+    ApiSuccessEnvelope,
+    ChatAgent,
+    SaveResponseBody,
+    StreamDonePayload,
+    StreamingAssistantMessage,
+  } from '$lib/components/chat/chat-types';
+  import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
+  import ChatMessageList from '$lib/components/chat/ChatMessageList.svelte';
+  import ChatQuestionOverlay from '$lib/components/chat/ChatQuestionOverlay.svelte';
+  import ChatStatusBanner from '$lib/components/chat/ChatStatusBanner.svelte';
 
   interface Props {
     streamUrl: string;
@@ -153,407 +104,11 @@
     void scrollChatToBottom();
   });
 
-  function normalizeQuestionOption(
-    option: unknown,
-  ): PlanningQuestionOption | null {
-    if (typeof option === 'string') {
-      const label = option.trim();
-      if (!label) {
-        return null;
-      }
-
-      return { label };
-    }
-
-    if (typeof option !== 'object' || option === null) {
-      return null;
-    }
-
-    const candidate = option as {
-      label?: unknown;
-      text?: unknown;
-      value?: unknown;
-      description?: unknown;
-    };
-
-    const label =
-      typeof candidate.label === 'string'
-        ? candidate.label.trim()
-        : typeof candidate.text === 'string'
-          ? candidate.text.trim()
-          : typeof candidate.value === 'string'
-            ? candidate.value.trim()
-            : '';
-
-    if (!label) {
-      return null;
-    }
-
-    const description =
-      typeof candidate.description === 'string' &&
-      candidate.description.trim().length > 0
-        ? candidate.description.trim()
-        : undefined;
-
-    return { label, description };
-  }
-
-  function normalizeQuestionItem(item: unknown): PlanningQuestionItem | null {
-    if (typeof item !== 'object' || item === null) {
-      return null;
-    }
-
-    const candidate = item as {
-      header?: unknown;
-      title?: unknown;
-      question?: unknown;
-      prompt?: unknown;
-      text?: unknown;
-      label?: unknown;
-      options?: unknown;
-      choices?: unknown;
-      multiple?: unknown;
-      allowCustom?: unknown;
-      custom?: unknown;
-    };
-
-    const header =
-      typeof candidate.header === 'string' && candidate.header.trim().length > 0
-        ? candidate.header.trim()
-        : typeof candidate.title === 'string' &&
-            candidate.title.trim().length > 0
-          ? candidate.title.trim()
-          : 'Question';
-
-    const question =
-      typeof candidate.question === 'string'
-        ? candidate.question.trim()
-        : typeof candidate.prompt === 'string'
-          ? candidate.prompt.trim()
-          : typeof candidate.text === 'string'
-            ? candidate.text.trim()
-            : typeof candidate.label === 'string'
-              ? candidate.label.trim()
-              : '';
-
-    const optionsRaw = Array.isArray(candidate.options)
-      ? candidate.options
-      : Array.isArray(candidate.choices)
-        ? candidate.choices
-        : [];
-
-    const options = optionsRaw
-      .map((option) => normalizeQuestionOption(option))
-      .filter((option): option is PlanningQuestionOption => option !== null);
-
-    const allowCustom =
-      candidate.allowCustom === true ||
-      candidate.custom === true ||
-      (candidate.allowCustom === undefined &&
-        candidate.custom === undefined &&
-        options.length === 0);
-
-    if (!question || (options.length === 0 && !allowCustom)) {
-      return null;
-    }
-
-    return {
-      header,
-      question,
-      options,
-      multiple: candidate.multiple === true,
-      allowCustom,
-    };
-  }
-
-  function normalizeQuestionDialog(
-    payload: unknown,
-  ): PlanningQuestionDialog | null {
-    if (typeof payload !== 'object' || payload === null) {
-      return null;
-    }
-
-    const candidate = payload as {
-      questions?: unknown;
-      question?: unknown;
-      prompt?: unknown;
-      options?: unknown;
-      choices?: unknown;
-    };
-
-    if (Array.isArray(candidate.questions)) {
-      const questions = candidate.questions
-        .map((item) => normalizeQuestionItem(item))
-        .filter((item): item is PlanningQuestionItem => item !== null);
-
-      if (questions.length > 0) {
-        return { questions };
-      }
-    }
-
-    if (
-      candidate.question ||
-      candidate.prompt ||
-      candidate.options ||
-      candidate.choices
-    ) {
-      const fallback = normalizeQuestionItem(payload);
-      if (fallback) {
-        return {
-          questions: [fallback],
-        };
-      }
-
-      const nested = normalizeQuestionItem(candidate.question);
-      if (nested) {
-        return {
-          questions: [nested],
-        };
-      }
-    }
-
-    return null;
-  }
-
-  function parseQuestionDialogMessage(
-    content: string,
-  ): PlanningQuestionDialog | null {
-    const trimmed = content.trim();
-    if (!trimmed.startsWith('{')) {
-      return null;
-    }
-
-    try {
-      const parsed = JSON.parse(trimmed) as unknown;
-      return normalizeQuestionDialog(parsed);
-    } catch {
-      return null;
-    }
-  }
-
-  function parseQuestionAnswerMessage(
-    content: string,
-  ): QuestionAnswerItem[] | null {
-    const trimmed = content.trim();
-    if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) {
-      return null;
-    }
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(trimmed) as unknown;
-    } catch {
-      return null;
-    }
-
-    const fromArrayAnswers = (answers: unknown): QuestionAnswerItem[] => {
-      if (!Array.isArray(answers)) {
-        return [];
-      }
-
-      return answers
-        .map((answer, index) => {
-          if (Array.isArray(answer)) {
-            const selected = answer
-              .map((value) => (typeof value === 'string' ? value.trim() : ''))
-              .filter((value) => value.length > 0);
-            return selected.length > 0
-              ? {
-                  question: `Question ${index + 1}`,
-                  selected,
-                }
-              : null;
-          }
-
-          if (typeof answer !== 'object' || answer === null) {
-            return null;
-          }
-
-          const candidate = answer as {
-            header?: unknown;
-            question?: unknown;
-            selected?: unknown;
-            customAnswer?: unknown;
-          };
-
-          const question =
-            typeof candidate.question === 'string' &&
-            candidate.question.trim().length > 0
-              ? candidate.question.trim()
-              : typeof candidate.header === 'string' &&
-                  candidate.header.trim().length > 0
-                ? candidate.header.trim()
-                : `Question ${index + 1}`;
-
-          const selected = Array.isArray(candidate.selected)
-            ? candidate.selected
-                .map((value) => (typeof value === 'string' ? value.trim() : ''))
-                .filter((value) => value.length > 0)
-            : [];
-
-          const customAnswer =
-            typeof candidate.customAnswer === 'string' &&
-            candidate.customAnswer.trim().length > 0
-              ? candidate.customAnswer.trim()
-              : undefined;
-
-          if (selected.length === 0 && !customAnswer) {
-            return null;
-          }
-
-          return {
-            question,
-            selected,
-            customAnswer,
-          };
-        })
-        .filter((item): item is QuestionAnswerItem => item !== null);
-    };
-
-    if (Array.isArray(parsed)) {
-      const answers = fromArrayAnswers(parsed);
-      return answers.length > 0 ? answers : null;
-    }
-
-    if (typeof parsed !== 'object' || parsed === null) {
-      return null;
-    }
-
-    const candidate = parsed as { type?: unknown; answers?: unknown };
-    if (
-      candidate.type === 'question_answer' ||
-      Array.isArray(candidate.answers)
-    ) {
-      const answers = fromArrayAnswers(candidate.answers);
-      return answers.length > 0 ? answers : null;
-    }
-
-    return null;
-  }
-
-  function findPreviousQuestionDialog(
-    history: PlanningMessage[],
-    beforeIndex: number,
-  ): PlanningQuestionDialog | null {
-    for (let index = beforeIndex - 1; index >= 0; index -= 1) {
-      const message = history[index];
-      if (message.role === 'user') {
-        continue;
-      }
-
-      const dialog = parseQuestionDialogMessage(message.content);
-      if (dialog) {
-        return dialog;
-      }
-    }
-
-    return null;
-  }
-
-  function parseStageSummary(content: string): StageSummaryItem[] | null {
-    const trimmed = content.trim();
-    if (!trimmed.startsWith('{')) {
-      return null;
-    }
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(trimmed) as unknown;
-    } catch {
-      return null;
-    }
-
-    if (typeof parsed !== 'object' || parsed === null) {
-      return null;
-    }
-
-    const candidate = parsed as {
-      stages?: unknown;
-    };
-
-    if (!Array.isArray(candidate.stages)) {
-      return null;
-    }
-
-    const stages = candidate.stages
-      .map((entry) => {
-        if (typeof entry !== 'object' || entry === null) {
-          return null;
-        }
-
-        const stage = entry as {
-          stageName?: unknown;
-          name?: unknown;
-          title?: unknown;
-          stageDescription?: unknown;
-          description?: unknown;
-          details?: unknown;
-        };
-
-        const stageName =
-          typeof stage.stageName === 'string'
-            ? stage.stageName.trim()
-            : typeof stage.name === 'string'
-              ? stage.name.trim()
-              : typeof stage.title === 'string'
-                ? stage.title.trim()
-                : '';
-
-        const stageDescription =
-          typeof stage.stageDescription === 'string'
-            ? stage.stageDescription.trim()
-            : typeof stage.description === 'string'
-              ? stage.description.trim()
-              : typeof stage.details === 'string'
-                ? stage.details.trim()
-                : '';
-
-        if (!stageName || !stageDescription) {
-          return null;
-        }
-
-        return { stageName, stageDescription };
-      })
-      .filter((item): item is StageSummaryItem => item !== null);
-
-    return stages.length > 0 ? stages : null;
-  }
-
-  function isJsonObjectOrArray(content: string): boolean {
-    const trimmed = content.trim();
-    if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) {
-      return false;
-    }
-
-    try {
-      JSON.parse(trimmed);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  function getDisplayMessageContent(message: PlanningMessage): string {
-    if (
-      message.role === 'user' &&
-      message.content.startsWith(SAVE_PLAN_PROMPT_PREFIX) &&
-      message.content.includes('Return ONLY valid JSON')
-    ) {
-      return 'Save plan';
-    }
-
-    return message.content;
-  }
-
-  function isSavePlanPromptMessage(message: PlanningMessage): boolean {
-    return getDisplayMessageContent(message) === 'Save plan';
-  }
-
   function initializeQuestionResponses(dialog: PlanningQuestionDialog): void {
     const nextSelections: Record<number, string[]> = {};
     const nextCustomAnswers: Record<number, string> = {};
 
-    dialog.questions.forEach((item, index) => {
+    dialog.questions.forEach((_item, index) => {
       nextSelections[index] = [];
       nextCustomAnswers[index] = '';
     });
@@ -561,14 +116,6 @@
     activeQuestionIndex = 0;
     questionSelections = nextSelections;
     questionCustomAnswers = nextCustomAnswers;
-  }
-
-  function getActiveQuestion(): PlanningQuestionItem | null {
-    if (!activeQuestionDialog) {
-      return null;
-    }
-
-    return activeQuestionDialog.questions[activeQuestionIndex] ?? null;
   }
 
   function addOptimisticUserMessage(content: string): void {
@@ -643,96 +190,6 @@
 
     messages = [...messages, ...appendedMessages];
     return true;
-  }
-
-  function applyStreamEvent(eventBlock: string): {
-    done?: StreamDonePayload;
-    error?: StreamErrorPayload;
-    delta?: {
-      messageId: string;
-      chunk: string;
-    };
-    question?: {
-      dialog: PlanningQuestionDialog;
-      requestId: string | null;
-    };
-  } {
-    const lines = eventBlock.split('\n');
-    const event =
-      lines
-        .find((line) => line.startsWith('event:'))
-        ?.slice(6)
-        .trim() ?? 'message';
-    const dataLine = lines
-      .filter((line) => line.startsWith('data:'))
-      .map((line) => line.slice(5).trim())
-      .join('');
-
-    if (!dataLine) {
-      return {};
-    }
-
-    let payload: unknown;
-    try {
-      payload = JSON.parse(dataLine) as unknown;
-    } catch {
-      return {};
-    }
-
-    if (event === 'start') {
-      return {};
-    }
-
-    if (event === 'delta') {
-      const deltaPayload =
-        typeof payload === 'object' && payload !== null
-          ? (payload as StreamDeltaPayload)
-          : null;
-      const chunk =
-        typeof deltaPayload?.chunk === 'string' ? deltaPayload.chunk : '';
-      if (chunk) {
-        const messageId =
-          typeof deltaPayload?.messageId === 'string' &&
-          deltaPayload.messageId.trim().length > 0
-            ? deltaPayload.messageId
-            : FALLBACK_STREAM_MESSAGE_KEY;
-        return {
-          delta: {
-            messageId,
-            chunk,
-          },
-        };
-      }
-      return {};
-    }
-
-    if (event === 'question') {
-      const question = normalizeQuestionDialog(payload);
-      if (question) {
-        const envelope = payload as StreamQuestionPayload;
-        const requestId =
-          typeof envelope.requestId === 'string' &&
-          envelope.requestId.length > 0
-            ? envelope.requestId
-            : null;
-        return {
-          question: {
-            dialog: question,
-            requestId,
-          },
-        };
-      }
-    }
-
-    if (event === 'done' && typeof payload === 'object' && payload !== null) {
-      return { done: payload as StreamDonePayload };
-    }
-
-    if (event === 'error' && typeof payload === 'object' && payload !== null) {
-      return { error: payload as StreamErrorPayload };
-    }
-
-    return {};
   }
 
   async function streamMessage(options: {
@@ -862,20 +319,6 @@
     }
   }
 
-  async function sendMessage(event: SubmitEvent): Promise<void> {
-    event.preventDefault();
-    await submitCurrentMessage();
-  }
-
-  async function handleInputKeydown(event: KeyboardEvent): Promise<void> {
-    if (event.key !== 'Enter' || (!event.metaKey && !event.ctrlKey)) {
-      return;
-    }
-
-    event.preventDefault();
-    await submitCurrentMessage();
-  }
-
   async function scrollChatToBottom(): Promise<void> {
     await tick();
     if (!messagesViewport) {
@@ -883,14 +326,6 @@
     }
 
     messagesViewport.scrollTop = messagesViewport.scrollHeight;
-  }
-
-  function isQuestionOptionSelected(
-    questionIndex: number,
-    optionLabel: string,
-  ): boolean {
-    const selected = questionSelections[questionIndex] ?? [];
-    return selected.includes(optionLabel);
   }
 
   function setSingleQuestionOption(
@@ -957,7 +392,7 @@
       return false;
     }
 
-    return activeQuestionDialog.questions.every((item, index) => {
+    return activeQuestionDialog.questions.every((_item, index) => {
       return canAnswerQuestion(index);
     });
   }
@@ -1091,28 +526,16 @@
     }
   }
 
-  let isAgentPickerOpen = $state(false);
+  function setMessageInput(value: string): void {
+    messageInput = value;
+  }
+
   function selectAgent(agent: ChatAgent): void {
     selectedAgent = agent;
-    isAgentPickerOpen = false;
   }
 </script>
 
-{#if errorMessage}
-  <div
-    class="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200"
-  >
-    {errorMessage}
-  </div>
-{/if}
-
-{#if successMessage}
-  <div
-    class="mb-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100"
-  >
-    {successMessage}
-  </div>
-{/if}
+<ChatStatusBanner {errorMessage} {successMessage} />
 
 <div class="flex h-full min-h-0 flex-col">
   <div class="relative mb-3 min-h-0 flex-1">
@@ -1120,305 +543,31 @@
       bind:this={messagesViewport}
       class={`stacked-scroll h-full overflow-y-auto p-1 ${activeQuestionDialog ? 'pb-64' : 'pb-4'}`}
     >
-      {#if messages.length === 0 && !sending}
-        <div
-          class="stacked-chat-font h-full content-center text-sm stacked-subtle"
-        >
-          <p class="mb-2 font-semibold text-[var(--stacked-text)]">
-            {emptyTitle}
-          </p>
-          <p>{emptyDescription}</p>
-        </div>
-      {:else}
-        <div class="space-y-3">
-          {#each messages as message, messageIndex (message.id)}
-            {@const messageQuestionDialog =
-              message.role !== 'user'
-                ? parseQuestionDialogMessage(message.content)
-                : null}
-            {@const messageQuestionAnswers =
-              message.role !== 'assistant'
-                ? parseQuestionAnswerMessage(message.content)
-                : null}
-            {@const answeredQuestionDialog = messageQuestionAnswers
-              ? findPreviousQuestionDialog(messages, messageIndex)
-              : null}
-            {@const messageStageSummary =
-              message.role === 'assistant'
-                ? parseStageSummary(message.content)
-                : null}
-            {@const renderAsUserBubble =
-              message.role === 'user' || Boolean(messageQuestionAnswers)}
-            {@const hideRawToolPayload =
-              (message.role === 'tool' || message.role === 'system') &&
-              !messageQuestionDialog &&
-              !messageQuestionAnswers &&
-              !messageStageSummary &&
-              isJsonObjectOrArray(message.content)}
-            {#if !hideRawToolPayload}
-              <div class="stacked-chat-font flex items-start gap-2">
-                {#if renderAsUserBubble}
-                  <UserCircleSolid class="mt-0.5 h-8 w-8 shrink-0 opacity-80" />
-                {:else}
-                  <BrainSolid class="mt-0.5 h-8 w-8 shrink-0 opacity-80" />
-                {/if}
-                <div
-                  class={`w-fit max-w-[90%] rounded-2xl border px-4 py-3 text-sm ${
-                    renderAsUserBubble
-                      ? 'mr-auto rounded-tl-none border-[var(--stacked-accent)] bg-blue-500/20 text-blue-50'
-                      : 'mr-auto rounded-tl-none border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] text-[var(--stacked-text)]'
-                  }`}
-                >
-                  <p
-                    class="mb-1 text-[11px] uppercase tracking-wide opacity-70"
-                  >
-                    <span
-                      >{renderAsUserBubble
-                        ? 'user'
-                        : message.role === 'assistant'
-                          ? 'agent'
-                          : message.role === 'tool'
-                            ? 'tool'
-                            : message.role}</span
-                    >
-                  </p>
-                  {#if messageQuestionDialog}
-                    <div class="space-y-2">
-                      <p class="stacked-subtle text-xs uppercase tracking-wide">
-                        Questions asked
-                      </p>
-                      {#each messageQuestionDialog.questions as question, questionIndex (`${question.header}-${questionIndex}`)}
-                        <div
-                          class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg)]/40 p-3"
-                        >
-                          <p
-                            class="text-xs font-semibold uppercase tracking-wide opacity-70"
-                          >
-                            {question.header}
-                          </p>
-                          <p class="mt-1 text-sm">{question.question}</p>
-                          {#if question.options.length > 0}
-                            <ul class="mt-2 space-y-1 text-sm">
-                              {#each question.options as option, optionIndex (`${option.label}-${optionIndex}`)}
-                                <li class="stacked-subtle">
-                                  - {option.label}
-                                  {#if option.description}
-                                    <span class="opacity-80">
-                                      ({option.description})</span
-                                    >
-                                  {/if}
-                                </li>
-                              {/each}
-                            </ul>
-                          {/if}
-                          {#if question.allowCustom}
-                            <p class="mt-2 text-xs stacked-subtle">
-                              Includes custom answer input.
-                            </p>
-                          {/if}
-                        </div>
-                      {/each}
-                    </div>
-                  {:else if messageQuestionAnswers}
-                    <div class="space-y-2">
-                      <p class="stacked-subtle text-xs uppercase tracking-wide">
-                        Answers given
-                      </p>
-                      {#each messageQuestionAnswers as answer, answerIndex (`${answer.question}-${answerIndex}`)}
-                        {@const matchedQuestion =
-                          answeredQuestionDialog?.questions[answerIndex]}
-                        {@const answerValue = [
-                          ...answer.selected,
-                          ...(answer.customAnswer ? [answer.customAnswer] : []),
-                        ].join(', ')}
-                        <div
-                          class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg)]/40 p-3"
-                        >
-                          <p
-                            class="text-xs font-semibold uppercase tracking-wide opacity-70"
-                          >
-                            {matchedQuestion?.header ??
-                              `Question ${answerIndex + 1}`}
-                          </p>
-                          <p class="mt-1 text-sm">{answerValue}</p>
-                        </div>
-                      {/each}
-                    </div>
-                  {:else if messageStageSummary}
-                    <div class="space-y-2">
-                      <p class="stacked-subtle text-xs uppercase tracking-wide">
-                        Stages
-                      </p>
-                      {#each messageStageSummary as stage, stageIndex (`${stage.stageName}-${stageIndex}`)}
-                        <p class="leading-snug">
-                          <span class="text-sm font-semibold"
-                            >{stage.stageName}</span
-                          >
-                          <span class="mx-1 opacity-70">-</span>
-                          <span class="text-sm">{stage.stageDescription}</span>
-                        </p>
-                      {/each}
-                    </div>
-                  {:else if isSavePlanPromptMessage(message)}
-                    <div
-                      class="inline-flex items-center gap-2 rounded-full border border-blue-300/50 bg-blue-400/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-blue-100"
-                    >
-                      <span class="opacity-80">Action</span>
-                      <span class="h-1 w-1 rounded-full bg-blue-100/80"></span>
-                      <span>Save plan</span>
-                    </div>
-                  {:else}
-                    <div class="stacked-markdown">
-                      {@html renderMarkdown(getDisplayMessageContent(message))}
-                    </div>
-                  {/if}
-                </div>
-              </div>
-            {/if}
-          {/each}
-
-          {#if sending}
-            {#each streamingAssistantMessages as streamingMessage (streamingMessage.key)}
-              <div class="stacked-chat-font flex items-start gap-2">
-                <BrainSolid class="mt-0.5 h-8 w-8 shrink-0 opacity-80" />
-                <div
-                  class="mr-auto w-fit max-w-[90%] rounded-2xl rounded-tl-none border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-4 py-3 text-sm text-[var(--stacked-text)]"
-                >
-                  <p
-                    class="mb-1 text-[11px] uppercase tracking-wide opacity-70"
-                  >
-                    <span>agent</span>
-                  </p>
-                  <div class="stacked-markdown">
-                    {@html renderMarkdown(streamingMessage.content)}
-                  </div>
-                </div>
-              </div>
-            {/each}
-          {/if}
-        </div>
-      {/if}
+      <ChatMessageList
+        {messages}
+        {streamingAssistantMessages}
+        {sending}
+        {emptyTitle}
+        {emptyDescription}
+      />
     </div>
 
-    {#if activeQuestionDialog}
-      {@const activeQuestion = getActiveQuestion()}
-      {#if activeQuestion}
-        <div
-          class="pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2 sm:p-3"
-        >
-          <div
-            class="pointer-events-auto rounded-2xl border border-[var(--stacked-border-soft)] bg-[color-mix(in_oklab,var(--stacked-bg-soft)_86%,black_14%)] px-4 py-3 shadow-xl backdrop-blur-sm stacked-chat-font text-sm text-[var(--stacked-text)]"
-          >
-            <div class="mb-2 flex items-center justify-between gap-3">
-              <p class="text-[11px] uppercase tracking-wide opacity-70">
-                agent question
-              </p>
-              <p class="stacked-subtle text-xs">
-                Question {activeQuestionIndex + 1} of {activeQuestionDialog
-                  .questions.length}
-              </p>
-            </div>
-            <div
-              class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)]/60 p-3"
-            >
-              <p
-                class="text-xs font-semibold uppercase tracking-wide opacity-70"
-              >
-                {activeQuestion.header}
-              </p>
-              <p class="mt-1 text-sm">{activeQuestion.question}</p>
-              <div class="mt-2 space-y-2">
-                {#each activeQuestion.options as option, optionIndex (`${option.label}-${optionIndex}`)}
-                  <label
-                    class="flex items-start gap-2 rounded-md border border-transparent px-2 py-1.5 transition hover:border-[var(--stacked-border-soft)] hover:bg-[var(--stacked-bg)]/50"
-                  >
-                    <input
-                      type={activeQuestion.multiple ? 'checkbox' : 'radio'}
-                      name={`question-${activeQuestionIndex}`}
-                      checked={isQuestionOptionSelected(
-                        activeQuestionIndex,
-                        option.label,
-                      )}
-                      onchange={(event) => {
-                        const target = event.currentTarget as HTMLInputElement;
-                        if (activeQuestion.multiple) {
-                          toggleQuestionOption(
-                            activeQuestionIndex,
-                            option.label,
-                            target.checked,
-                          );
-                          return;
-                        }
-                        setSingleQuestionOption(
-                          activeQuestionIndex,
-                          option.label,
-                        );
-                      }}
-                    />
-                    <span class="leading-snug">
-                      <span class="block text-sm">{option.label}</span>
-                      {#if option.description}
-                        <span class="stacked-subtle block text-xs"
-                          >{option.description}</span
-                        >
-                      {/if}
-                    </span>
-                  </label>
-                {/each}
-              </div>
-              {#if activeQuestion.allowCustom}
-                <label class="mt-3 flex flex-col gap-1 text-sm">
-                  <span class="stacked-subtle text-xs"
-                    >Type your own answer</span
-                  >
-                  <input
-                    value={questionCustomAnswers[activeQuestionIndex] ?? ''}
-                    oninput={(event) =>
-                      setQuestionCustomAnswer(
-                        activeQuestionIndex,
-                        (event.currentTarget as HTMLInputElement).value,
-                      )}
-                    placeholder="Type your own answer"
-                    class="rounded-lg border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 text-sm text-[var(--stacked-text)] outline-none transition focus:border-[var(--stacked-accent)]"
-                  />
-                </label>
-              {/if}
-            </div>
-            <div class="mt-4 flex items-center justify-end gap-2">
-              <Button
-                size="sm"
-                color="alternative"
-                onclick={goToPreviousQuestion}
-                disabled={sending || saving || activeQuestionIndex === 0}
-              >
-                Back
-              </Button>
-              {#if activeQuestionIndex < activeQuestionDialog.questions.length - 1}
-                <Button
-                  size="sm"
-                  color="primary"
-                  onclick={goToNextQuestion}
-                  disabled={sending ||
-                    saving ||
-                    !canAnswerQuestion(activeQuestionIndex)}
-                >
-                  Next
-                </Button>
-              {:else}
-                <Button
-                  size="sm"
-                  color="primary"
-                  onclick={submitQuestionAnswer}
-                  disabled={sending || saving || !canSubmitQuestionAnswers()}
-                >
-                  Send Answer
-                </Button>
-              {/if}
-            </div>
-          </div>
-        </div>
-      {/if}
-    {/if}
+    <ChatQuestionOverlay
+      {activeQuestionDialog}
+      {activeQuestionIndex}
+      {questionSelections}
+      {questionCustomAnswers}
+      {sending}
+      {saving}
+      onPrevious={goToPreviousQuestion}
+      onNext={goToNextQuestion}
+      onSubmit={submitQuestionAnswer}
+      onToggleOption={toggleQuestionOption}
+      onSetSingleOption={setSingleQuestionOption}
+      onSetCustomAnswer={setQuestionCustomAnswer}
+      {canAnswerQuestion}
+      {canSubmitQuestionAnswers}
+    />
   </div>
 
   {#if sending && !activeQuestionDialog}
@@ -1436,66 +585,18 @@
     </div>
   {/if}
 
-  <form
-    onsubmit={sendMessage}
-    class="stacked-chat-font mt-2 grid gap-2.5 border-t stacked-divider pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)] pt-3 sm:grid-cols-[1fr_auto] sm:gap-3 sm:pt-4"
-  >
-    <textarea
-      bind:value={messageInput}
-      onkeydown={handleInputKeydown}
-      rows="3"
-      placeholder={inputPlaceholder}
-      class="rounded-xl border border-[var(--stacked-border-soft)] bg-[var(--stacked-bg-soft)] px-3 py-2 text-[0.95rem] text-[var(--stacked-text)] outline-none transition focus:border-[var(--stacked-accent)]"
-    ></textarea>
-    <div class="flex flex-col gap-2 sm:items-stretch">
-      <Button
-        type="submit"
-        size="sm"
-        color="primary"
-        disabled={sending || saving}
-        loading={sending}
-      >
-        Send
-      </Button>
-      {#if saveUrl}
-        <Button
-          type="button"
-          size="sm"
-          outline
-          color="emerald"
-          onclick={saveConversation}
-          disabled={sending || saving}
-          loading={saving}
-        >
-          Save
-        </Button>
-      {/if}
-      {#if showAgentSelector}
-        <Button
-          id="agent-picker-trigger"
-          type="button"
-          size="sm"
-          color="alternative"
-          class="w-full justify-between"
-          disabled={sending || saving}
-          aria-label="Select agent"
-        >
-          Agent: {selectedAgent === 'plan' ? 'Plan' : 'Build'}
-          <ChevronDownOutline class="h-6 w-6 text-white dark:text-white" />
-        </Button>
-        <Dropdown
-          triggeredBy="#agent-picker-trigger"
-          bind:isOpen={isAgentPickerOpen}
-          simple
-        >
-          <DropdownItem onclick={() => selectAgent('plan')}>Plan</DropdownItem>
-          <DropdownItem onclick={() => selectAgent('build')}>Build</DropdownItem
-          >
-        </Dropdown>
-      {/if}
-    </div>
-    <p class="text-xs stacked-subtle sm:col-span-2">
-      Enter for new line, Cmd/Ctrl+Enter to send
-    </p>
-  </form>
+  <ChatComposer
+    {messageInput}
+    {inputPlaceholder}
+    {sending}
+    {saving}
+    saveEnabled={Boolean(saveUrl)}
+    {saveButtonLabel}
+    {showAgentSelector}
+    {selectedAgent}
+    onInput={setMessageInput}
+    onSend={submitCurrentMessage}
+    onSave={saveConversation}
+    onSelectAgent={selectAgent}
+  />
 </div>
