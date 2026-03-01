@@ -3,24 +3,35 @@
   import { Button } from 'flowbite-svelte';
 
   import type { StackedProject } from '$lib/types/stack';
+  import { projectStacksNewPath, projectStacksPath } from '$lib/project-paths';
   import NotificationsToggleButton from '$lib/components/layout/NotificationsToggleButton.svelte';
   import ProjectSwitcher from '$lib/components/layout/ProjectSwitcher.svelte';
 
   interface Props {
-    pipelineRoute: '/' | `/projects/${string}/stacks`;
-    createFeatureRoute: '/' | `/projects/${string}/stacks/new`;
     projects: StackedProject[];
     selectedProjectId: string | null;
     onProjectChange: (projectId: string) => void;
   }
 
-  let {
-    pipelineRoute,
-    createFeatureRoute,
-    projects,
-    selectedProjectId,
-    onProjectChange,
-  }: Props = $props();
+  let { projects, selectedProjectId, onProjectChange }: Props = $props();
+
+  let pipelineRoute = $derived.by<'/' | `/projects/${string}/stacks`>(() => {
+    if (!selectedProjectId) {
+      return '/';
+    }
+
+    return projectStacksPath(selectedProjectId);
+  });
+
+  let createFeatureRoute = $derived.by<'/' | `/projects/${string}/stacks/new`>(
+    () => {
+      if (!selectedProjectId) {
+        return '/';
+      }
+
+      return projectStacksNewPath(selectedProjectId);
+    },
+  );
 </script>
 
 <header
