@@ -1,60 +1,25 @@
 <script lang="ts">
   import { Button } from 'flowbite-svelte';
 
-  import type { PlanningQuestionDialog } from '$lib/types/stack';
+  import { getChatPanelContext } from '$lib/components/chat/chat-panel-context.svelte';
 
-  interface Props {
-    activeQuestionDialog: PlanningQuestionDialog | null;
-    activeQuestionIndex: number;
-    questionSelections: Record<number, string[]>;
-    questionCustomAnswers: Record<number, string>;
-    sending: boolean;
-    saving: boolean;
-    onPrevious: () => void;
-    onNext: () => void;
-    onSubmit: () => void;
-    onToggleOption: (
-      questionIndex: number,
-      optionLabel: string,
-      checked: boolean,
-    ) => void;
-    onSetSingleOption: (questionIndex: number, optionLabel: string) => void;
-    onSetCustomAnswer: (questionIndex: number, value: string) => void;
-    canAnswerQuestion: (questionIndex: number) => boolean;
-    canSubmitQuestionAnswers: () => boolean;
-  }
-
-  let {
-    activeQuestionDialog,
-    activeQuestionIndex,
-    questionSelections,
-    questionCustomAnswers,
-    sending,
-    saving,
-    onPrevious,
-    onNext,
-    onSubmit,
-    onToggleOption,
-    onSetSingleOption,
-    onSetCustomAnswer,
-    canAnswerQuestion,
-    canSubmitQuestionAnswers,
-  }: Props = $props();
+  const chatPanel = getChatPanelContext();
 
   const activeQuestion = $derived(
-    activeQuestionDialog?.questions[activeQuestionIndex] ?? null,
+    chatPanel.activeQuestionDialog?.questions[chatPanel.activeQuestionIndex] ??
+      null,
   );
 
   function isQuestionOptionSelected(
     questionIndex: number,
     optionLabel: string,
   ): boolean {
-    const selected = questionSelections[questionIndex] ?? [];
+    const selected = chatPanel.questionSelections[questionIndex] ?? [];
     return selected.includes(optionLabel);
   }
 </script>
 
-{#if activeQuestionDialog && activeQuestion}
+{#if chatPanel.activeQuestionDialog && activeQuestion}
   <div class="pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2 sm:p-3">
     <div
       class="pointer-events-auto rounded-2xl border border-[var(--stacked-border-soft)] bg-[color-mix(in_oklab,var(--stacked-bg-soft)_86%,black_14%)] px-4 py-3 shadow-xl backdrop-blur-sm stacked-chat-font text-sm text-[var(--stacked-text)]"
@@ -64,8 +29,8 @@
           agent question
         </p>
         <p class="stacked-subtle text-xs">
-          Question {activeQuestionIndex + 1} of {activeQuestionDialog.questions
-            .length}
+          Question {chatPanel.activeQuestionIndex + 1} of {chatPanel
+            .activeQuestionDialog.questions.length}
         </p>
       </div>
       <div
@@ -82,22 +47,25 @@
             >
               <input
                 type={activeQuestion.multiple ? 'checkbox' : 'radio'}
-                name={`question-${activeQuestionIndex}`}
+                name={`${chatPanel.panelId}-question-${chatPanel.activeQuestionIndex}`}
                 checked={isQuestionOptionSelected(
-                  activeQuestionIndex,
+                  chatPanel.activeQuestionIndex,
                   option.label,
                 )}
                 onchange={(event) => {
                   const target = event.currentTarget as HTMLInputElement;
                   if (activeQuestion.multiple) {
-                    onToggleOption(
-                      activeQuestionIndex,
+                    chatPanel.toggleQuestionOption(
+                      chatPanel.activeQuestionIndex,
                       option.label,
                       target.checked,
                     );
                     return;
                   }
-                  onSetSingleOption(activeQuestionIndex, option.label);
+                  chatPanel.setSingleQuestionOption(
+                    chatPanel.activeQuestionIndex,
+                    option.label,
+                  );
                 }}
               />
               <span class="leading-snug">
@@ -115,10 +83,12 @@
           <label class="mt-3 flex flex-col gap-1 text-sm">
             <span class="stacked-subtle text-xs">Type your own answer</span>
             <input
-              value={questionCustomAnswers[activeQuestionIndex] ?? ''}
+              value={chatPanel.questionCustomAnswers[
+                chatPanel.activeQuestionIndex
+              ] ?? ''}
               oninput={(event) =>
-                onSetCustomAnswer(
-                  activeQuestionIndex,
+                chatPanel.setQuestionCustomAnswer(
+                  chatPanel.activeQuestionIndex,
                   (event.currentTarget as HTMLInputElement).value,
                 )}
               placeholder="Type your own answer"
@@ -131,19 +101,21 @@
         <Button
           size="sm"
           color="alternative"
-          onclick={onPrevious}
-          disabled={sending || saving || activeQuestionIndex === 0}
+          onclick={chatPanel.goToPreviousQuestion}
+          disabled={chatPanel.sending ||
+            chatPanel.saving ||
+            chatPanel.activeQuestionIndex === 0}
         >
           Back
         </Button>
-        {#if activeQuestionIndex < activeQuestionDialog.questions.length - 1}
+        {#if chatPanel.activeQuestionIndex < chatPanel.activeQuestionDialog.questions.length - 1}
           <Button
             size="sm"
             color="primary"
-            onclick={onNext}
-            disabled={sending ||
-              saving ||
-              !canAnswerQuestion(activeQuestionIndex)}
+            onclick={chatPanel.goToNextQuestion}
+            disabled={chatPanel.sending ||
+              chatPanel.saving ||
+              !chatPanel.canAnswerQuestion(chatPanel.activeQuestionIndex)}
           >
             Next
           </Button>
@@ -151,8 +123,10 @@
           <Button
             size="sm"
             color="primary"
-            onclick={onSubmit}
-            disabled={sending || saving || !canSubmitQuestionAnswers()}
+            onclick={() => void chatPanel.submitQuestionAnswer()}
+            disabled={chatPanel.sending ||
+              chatPanel.saving ||
+              !chatPanel.canSubmitQuestionAnswers()}
           >
             Send Answer
           </Button>

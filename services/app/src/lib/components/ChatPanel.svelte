@@ -10,6 +10,7 @@
   } from '$lib/components/chat/chat-types';
   import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
   import ChatMessageList from '$lib/components/chat/ChatMessageList.svelte';
+  import { setChatPanelContext } from '$lib/components/chat/chat-panel-context.svelte';
   import ChatQuestionOverlay from '$lib/components/chat/ChatQuestionOverlay.svelte';
   import ChatStatusBanner from '$lib/components/chat/ChatStatusBanner.svelte';
   import { useChatPanel } from '$lib/components/chat/use-chat-panel.svelte';
@@ -56,12 +57,11 @@
     onSaveResponse: () => onSaveResponse,
     defaultAgent: () => defaultAgent,
   });
+
+  setChatPanelContext(chatPanel);
 </script>
 
-<ChatStatusBanner
-  errorMessage={chatPanel.errorMessage}
-  successMessage={chatPanel.successMessage}
-/>
+<ChatStatusBanner />
 
 <div class="flex h-full min-h-0 flex-col">
   <div class="relative mb-3 min-h-0 flex-1">
@@ -69,31 +69,10 @@
       {@attach chatPanel.messagesViewportAttachment}
       class={`stacked-scroll h-full overflow-y-auto p-1 ${chatPanel.activeQuestionDialog ? 'pb-64' : 'pb-4'}`}
     >
-      <ChatMessageList
-        messages={chatPanel.messages}
-        streamingAssistantMessages={chatPanel.streamingAssistantMessages}
-        sending={chatPanel.sending}
-        {emptyTitle}
-        {emptyDescription}
-      />
+      <ChatMessageList {emptyTitle} {emptyDescription} />
     </div>
 
-    <ChatQuestionOverlay
-      activeQuestionDialog={chatPanel.activeQuestionDialog}
-      activeQuestionIndex={chatPanel.activeQuestionIndex}
-      questionSelections={chatPanel.questionSelections}
-      questionCustomAnswers={chatPanel.questionCustomAnswers}
-      sending={chatPanel.sending}
-      saving={chatPanel.saving}
-      onPrevious={chatPanel.goToPreviousQuestion}
-      onNext={chatPanel.goToNextQuestion}
-      onSubmit={chatPanel.submitQuestionAnswer}
-      onToggleOption={chatPanel.toggleQuestionOption}
-      onSetSingleOption={chatPanel.setSingleQuestionOption}
-      onSetCustomAnswer={chatPanel.setQuestionCustomAnswer}
-      canAnswerQuestion={chatPanel.canAnswerQuestion}
-      canSubmitQuestionAnswers={chatPanel.canSubmitQuestionAnswers}
-    />
+    <ChatQuestionOverlay />
   </div>
 
   {#if chatPanel.sending && !chatPanel.activeQuestionDialog}
@@ -112,17 +91,9 @@
   {/if}
 
   <ChatComposer
-    messageInput={chatPanel.messageInput}
     {inputPlaceholder}
-    sending={chatPanel.sending}
-    saving={chatPanel.saving}
     saveEnabled={Boolean(saveUrl)}
     {saveButtonLabel}
     {showAgentSelector}
-    selectedAgent={chatPanel.selectedAgent}
-    onInput={chatPanel.setMessageInput}
-    onSend={chatPanel.submitCurrentMessage}
-    onSave={chatPanel.saveConversation}
-    onSelectAgent={chatPanel.selectAgent}
   />
 </div>

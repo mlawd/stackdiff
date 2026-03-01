@@ -2,43 +2,30 @@
   import { Button, Dropdown, DropdownItem } from 'flowbite-svelte';
   import { ChevronDownOutline } from 'flowbite-svelte-icons';
 
-  import type { ChatAgent } from './chat-types';
+  import { getChatPanelContext } from './chat-panel-context.svelte';
 
   interface Props {
-    messageInput: string;
     inputPlaceholder: string;
-    sending: boolean;
-    saving: boolean;
     saveEnabled: boolean;
     saveButtonLabel: string;
     showAgentSelector: boolean;
-    selectedAgent: ChatAgent;
-    onInput: (value: string) => void;
-    onSend: () => void;
-    onSave: () => void;
-    onSelectAgent: (agent: ChatAgent) => void;
   }
 
   let {
-    messageInput,
     inputPlaceholder,
-    sending,
-    saving,
     saveEnabled,
     saveButtonLabel,
     showAgentSelector,
-    selectedAgent,
-    onInput,
-    onSend,
-    onSave,
-    onSelectAgent,
   }: Props = $props();
+
+  const chatPanel = getChatPanelContext();
+  const agentPickerTriggerId = `${chatPanel.panelId}-agent-picker-trigger`;
 
   let isAgentPickerOpen = $state(false);
 
   function sendMessage(event: SubmitEvent): void {
     event.preventDefault();
-    onSend();
+    void chatPanel.submitCurrentMessage();
   }
 
   function handleInputKeydown(event: KeyboardEvent): void {
@@ -47,12 +34,7 @@
     }
 
     event.preventDefault();
-    onSend();
-  }
-
-  function selectAgent(agent: ChatAgent): void {
-    onSelectAgent(agent);
-    isAgentPickerOpen = false;
+    void chatPanel.submitCurrentMessage();
   }
 </script>
 
@@ -61,9 +43,11 @@
   class="stacked-chat-font mt-2 grid gap-2.5 border-t stacked-divider pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)] pt-3 sm:grid-cols-[1fr_auto] sm:gap-3 sm:pt-4"
 >
   <textarea
-    value={messageInput}
+    value={chatPanel.messageInput}
     oninput={(event) =>
-      onInput((event.currentTarget as HTMLTextAreaElement).value)}
+      chatPanel.setMessageInput(
+        (event.currentTarget as HTMLTextAreaElement).value,
+      )}
     onkeydown={handleInputKeydown}
     rows="3"
     placeholder={inputPlaceholder}
@@ -74,8 +58,8 @@
       type="submit"
       size="sm"
       color="primary"
-      disabled={sending || saving}
-      loading={sending}
+      disabled={chatPanel.sending || chatPanel.saving}
+      loading={chatPanel.sending}
     >
       Send
     </Button>
@@ -85,33 +69,43 @@
         size="sm"
         outline
         color="emerald"
-        onclick={onSave}
-        disabled={sending || saving}
-        loading={saving}
+        onclick={() => void chatPanel.saveConversation()}
+        disabled={chatPanel.sending || chatPanel.saving}
+        loading={chatPanel.saving}
       >
         {saveButtonLabel}
       </Button>
     {/if}
     {#if showAgentSelector}
       <Button
-        id="agent-picker-trigger"
+        id={agentPickerTriggerId}
         type="button"
         size="sm"
         color="alternative"
         class="w-full justify-between"
-        disabled={sending || saving}
+        disabled={chatPanel.sending || chatPanel.saving}
         aria-label="Select agent"
       >
-        Agent: {selectedAgent === 'plan' ? 'Plan' : 'Build'}
+        Agent: {chatPanel.selectedAgent === 'plan' ? 'Plan' : 'Build'}
         <ChevronDownOutline class="h-6 w-6 text-white dark:text-white" />
       </Button>
       <Dropdown
-        triggeredBy="#agent-picker-trigger"
+        triggeredBy={`#${agentPickerTriggerId}`}
         bind:isOpen={isAgentPickerOpen}
         simple
       >
-        <DropdownItem onclick={() => selectAgent('plan')}>Plan</DropdownItem>
-        <DropdownItem onclick={() => selectAgent('build')}>Build</DropdownItem>
+        <DropdownItem
+          onclick={() => {
+            chatPanel.selectAgent('plan');
+            isAgentPickerOpen = false;
+          }}>Plan</DropdownItem
+        >
+        <DropdownItem
+          onclick={() => {
+            chatPanel.selectAgent('build');
+            isAgentPickerOpen = false;
+          }}>Build</DropdownItem
+        >
       </Dropdown>
     {/if}
   </div>

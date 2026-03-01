@@ -36,6 +36,7 @@ interface UseChatPanelProps {
 }
 
 export interface ChatPanelViewModel {
+  readonly panelId: string;
   readonly messages: PlanningMessage[];
   readonly messageInput: string;
   readonly sending: boolean;
@@ -64,6 +65,7 @@ export interface ChatPanelViewModel {
 }
 
 export function useChatPanel(input: UseChatPanelProps): ChatPanelViewModel {
+  const panelId = `chat-panel-${crypto.randomUUID()}`;
   let messagesViewport: HTMLDivElement | null = null;
   let scrollPending = false;
 
@@ -221,6 +223,9 @@ export function useChatPanel(input: UseChatPanelProps): ChatPanelViewModel {
   }
 
   return {
+    get panelId() {
+      return panelId;
+    },
     get messages() {
       return messages;
     },
