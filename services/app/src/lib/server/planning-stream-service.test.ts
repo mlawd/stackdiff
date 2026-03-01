@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/server/opencode', () => ({
-  getOpencodeSessionRuntimeState: vi.fn(),
-  listPendingOpencodeSessionQuestions: vi.fn(),
-  replyOpencodeQuestion: vi.fn(),
-  streamOpencodeSessionMessage: vi.fn(),
-  watchOpencodeSession: vi.fn(),
+vi.mock('$lib/server/agent-runtime', () => ({
+  getAgentSessionRuntimeState: vi.fn(),
+  listPendingAgentSessionQuestions: vi.fn(),
+  replyAgentQuestion: vi.fn(),
+  streamAgentSessionMessage: vi.fn(),
+  watchAgentSession: vi.fn(),
 }));
 
 vi.mock('$lib/server/planning-service', () => ({
@@ -22,7 +22,7 @@ vi.mock('$lib/server/stack-store', () => ({
   touchPlanningSessionUpdatedAt: vi.fn(),
 }));
 
-import { streamOpencodeSessionMessage } from '$lib/server/opencode';
+import { streamAgentSessionMessage } from '$lib/server/agent-runtime';
 import {
   getPlanningMessages,
   loadExistingPlanningSession,
@@ -35,9 +35,7 @@ import {
   touchPlanningSessionUpdatedAt,
 } from '$lib/server/stack-store';
 
-const streamOpencodeSessionMessageMock = vi.mocked(
-  streamOpencodeSessionMessage,
-);
+const streamAgentSessionMessageMock = vi.mocked(streamAgentSessionMessage);
 const getPlanningMessagesMock = vi.mocked(getPlanningMessages);
 const loadExistingPlanningSessionMock = vi.mocked(loadExistingPlanningSession);
 const shouldAutoSavePlanMock = vi.mocked(shouldAutoSavePlan);
@@ -63,7 +61,7 @@ describe('planning-stream-service', () => {
       session: {
         id: 'session-1',
         stackId: 'stack-1',
-        opencodeSessionId: 'opencode-1',
+        agentSessionId: 'opencode-1',
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
       },
@@ -75,7 +73,7 @@ describe('planning-stream-service', () => {
     touchPlanningSessionUpdatedAtMock.mockResolvedValue({
       id: 'session-1',
       stackId: 'stack-1',
-      opencodeSessionId: 'opencode-1',
+      agentSessionId: 'opencode-1',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     });
@@ -99,7 +97,7 @@ describe('planning-stream-service', () => {
   });
 
   it('emits done immediately after question event', async () => {
-    streamOpencodeSessionMessageMock.mockReturnValue(
+    streamAgentSessionMessageMock.mockReturnValue(
       (async function* () {
         yield {
           type: 'question',
@@ -141,7 +139,7 @@ describe('planning-stream-service', () => {
 
     expect(touchPlanningSessionUpdatedAtMock).toHaveBeenCalledWith('stack-1');
     expect(getPlanningMessagesMock).toHaveBeenCalledWith('stack-1');
-    expect(streamOpencodeSessionMessageMock).toHaveBeenCalledWith(
+    expect(streamAgentSessionMessageMock).toHaveBeenCalledWith(
       'opencode-1',
       'hello',
       expect.objectContaining({

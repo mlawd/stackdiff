@@ -3,18 +3,18 @@ import {
   writeStackStageConfigFile,
 } from '$lib/server/plan-file';
 import {
-  createAndSeedOpencodeSession,
-  getOpencodeSessionRuntimeState,
-  getOpencodeSessionMessages,
-  sendOpencodeSessionMessage,
-} from '$lib/server/opencode';
+  createAndSeedAgentSession,
+  getAgentSessionRuntimeState,
+  getAgentSessionMessages,
+  sendAgentSessionMessage,
+} from '$lib/server/agent-runtime';
 import {
   createOrGetPlanningSession,
   getStackById,
   getRuntimeRepositoryPath,
   getPlanningSessionByStackId,
   markPlanningSessionSaved,
-  setPlanningSessionOpencodeId,
+  setPlanningSessionAgentId,
   setStackStatus,
   setStackStages,
   touchPlanningSessionUpdatedAt,
@@ -250,7 +250,7 @@ export function shouldAutoSavePlan(content: string): boolean {
   return /\bsave (the )?plan\b/i.test(content.trim());
 }
 
-async function requireSessionWithOpencodeId(
+async function requireSessionWithAgentId(
   stackId: string,
 ): Promise<StackPlanningSession> {
   const session = await getPlanningSessionByStackId(stackId);
@@ -260,9 +260,9 @@ async function requireSessionWithOpencodeId(
     );
   }
 
-  if (!session.opencodeSessionId) {
+  if (!session.agentSessionId) {
     throw new Error(
-      'Planning session is missing an OpenCode session id. Recreate the feature to reinitialize planning.',
+      'Planning session is missing an agent runtime session id. Recreate the feature to reinitialize planning.',
     );
   }
 
@@ -274,26 +274,26 @@ export async function createAndSeedPlanningSessionForStack(
 ): Promise<{ session: StackPlanningSession; messages: PlanningMessage[] }> {
   const session = await createOrGetPlanningSession(stack.id);
   const directory = await getPlanningDirectory(stack.id);
-  if (session.opencodeSessionId) {
-    const messages = await getOpencodeSessionMessages(
-      session.opencodeSessionId as string,
+  if (session.agentSessionId) {
+    const messages = await getAgentSessionMessages(
+      session.agentSessionId as string,
       { directory },
     );
     return { session, messages };
   }
 
-  const opencodeSessionId = await createAndSeedOpencodeSession({
+  const agentSessionId = await createAndSeedAgentSession({
     prompt: buildInitialPlanningPrompt(stack),
     agent: 'plan',
     system: PLANNING_SYSTEM_PROMPT,
     directory,
   });
-  const seededSession = await setPlanningSessionOpencodeId(
+  const seededSession = await setPlanningSessionAgentId(
     stack.id,
-    opencodeSessionId,
+    agentSessionId,
   );
-  const messages = await getOpencodeSessionMessages(
-    seededSession.opencodeSessionId as string,
+  const messages = await getAgentSessionMessages(
+    seededSession.agentSessionId as string,
     { directory },
   );
 
@@ -306,9 +306,9 @@ export async function createAndSeedPlanningSessionForStack(
 export async function getPlanningMessages(
   stackId: string,
 ): Promise<PlanningMessage[]> {
-  const session = await requireSessionWithOpencodeId(stackId);
+  const session = await requireSessionWithAgentId(stackId);
   const directory = await getPlanningDirectory(stackId);
-  return getOpencodeSessionMessages(session.opencodeSessionId as string, {
+  return getAgentSessionMessages(session.agentSessionId as string, {
     directory,
   });
 }
@@ -318,14 +318,14 @@ export async function loadExistingPlanningSession(stackId: string): Promise<{
   messages: PlanningMessage[];
   awaitingResponse: boolean;
 }> {
-  const session = await requireSessionWithOpencodeId(stackId);
+  const session = await requireSessionWithAgentId(stackId);
   const directory = await getPlanningDirectory(stackId);
-  const messages = await getOpencodeSessionMessages(
-    session.opencodeSessionId as string,
+  const messages = await getAgentSessionMessages(
+    session.agentSessionId as string,
     { directory },
   );
-  const runtimeState = await getOpencodeSessionRuntimeState(
-    session.opencodeSessionId as string,
+  const runtimeState = await getAgentSessionRuntimeState(
+    session.agentSessionId as string,
     { directory },
   );
 
@@ -345,10 +345,10 @@ export async function sendPlanningMessage(
   autoSavedPlanPath?: string;
   autoSavedStageConfigPath?: string;
 }> {
-  const session = await requireSessionWithOpencodeId(stackId);
+  const session = await requireSessionWithAgentId(stackId);
   const directory = await getPlanningDirectory(stackId);
-  const assistantReply = await sendOpencodeSessionMessage(
-    session.opencodeSessionId as string,
+  const assistantReply = await sendAgentSessionMessage(
+    session.agentSessionId as string,
     content,
     {
       system: PLANNING_SYSTEM_PROMPT,
@@ -376,10 +376,10 @@ export async function savePlanFromSession(stackId: string): Promise<{
   savedStageConfigPath: string;
   planMarkdown: string;
 }> {
-  const session = await requireSessionWithOpencodeId(stackId);
+  const session = await requireSessionWithAgentId(stackId);
   const directory = await getPlanningDirectory(stackId);
-  const messages = await getOpencodeSessionMessages(
-    session.opencodeSessionId as string,
+  const messages = await getAgentSessionMessages(
+    session.agentSessionId as string,
     { directory },
   );
 
@@ -387,8 +387,8 @@ export async function savePlanFromSession(stackId: string): Promise<{
     throw new Error('Add at least one planning message before saving a plan.');
   }
 
-  const savePayload = await sendOpencodeSessionMessage(
-    session.opencodeSessionId as string,
+  const savePayload = await sendAgentSessionMessage(
+    session.agentSessionId as string,
     SAVE_PLAN_PROMPT,
     {
       system: PLANNING_SYSTEM_PROMPT,

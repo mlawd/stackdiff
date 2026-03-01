@@ -1,13 +1,13 @@
 import { badRequest, notFound } from '$lib/server/api-errors';
 import { parsePlanningMessageBody } from '$lib/server/api-validators';
 import {
-  getOpencodeSessionMessages,
-  getOpencodeSessionRuntimeState,
-  listPendingOpencodeSessionQuestions,
-  replyOpencodeQuestion,
-  streamOpencodeSessionMessage,
-  watchOpencodeSession,
-} from '$lib/server/opencode';
+  getAgentSessionMessages,
+  getAgentSessionRuntimeState,
+  listPendingAgentSessionQuestions,
+  replyAgentQuestion,
+  streamAgentSessionMessage,
+  watchAgentSession,
+} from '$lib/server/agent-runtime';
 import {
   getExistingStageReviewSession,
   REVIEW_SYSTEM_PROMPT,
@@ -36,10 +36,10 @@ async function createNoOpWatchResponse(input: {
   sessionId: string;
   worktreeAbsolutePath: string;
 }): Promise<Response> {
-  const messages = await getOpencodeSessionMessages(input.sessionId, {
+  const messages = await getAgentSessionMessages(input.sessionId, {
     directory: input.worktreeAbsolutePath,
   });
-  const pendingQuestions = await listPendingOpencodeSessionQuestions(
+  const pendingQuestions = await listPendingAgentSessionQuestions(
     input.sessionId,
     {
       directory: input.worktreeAbsolutePath,
@@ -92,7 +92,7 @@ async function createReviewStream(input: {
         let assistantReply = '';
 
         if (input.questionReply) {
-          await replyOpencodeQuestion(
+          await replyAgentQuestion(
             input.questionReply.requestId,
             input.questionReply.answers,
             {
@@ -103,18 +103,14 @@ async function createReviewStream(input: {
 
         const events =
           input.watch || input.questionReply
-            ? watchOpencodeSession(input.sessionId, {
+            ? watchAgentSession(input.sessionId, {
                 directory: input.worktreeAbsolutePath,
               })
-            : streamOpencodeSessionMessage(
-                input.sessionId,
-                input.content ?? '',
-                {
-                  system: REVIEW_SYSTEM_PROMPT,
-                  directory: input.worktreeAbsolutePath,
-                  agent: input.agent,
-                },
-              );
+            : streamAgentSessionMessage(input.sessionId, input.content ?? '', {
+                system: REVIEW_SYSTEM_PROMPT,
+                directory: input.worktreeAbsolutePath,
+                agent: input.agent,
+              });
 
         for await (const event of events) {
           if (event.type === 'question') {
@@ -126,7 +122,7 @@ async function createReviewStream(input: {
               }),
             );
             await touchReviewSessionUpdatedAt(input.stackId, input.stageId);
-            const messages = await getOpencodeSessionMessages(input.sessionId, {
+            const messages = await getAgentSessionMessages(input.sessionId, {
               directory: input.worktreeAbsolutePath,
             });
             controller.enqueue(
@@ -148,7 +144,7 @@ async function createReviewStream(input: {
         }
 
         await touchReviewSessionUpdatedAt(input.stackId, input.stageId);
-        const messages = await getOpencodeSessionMessages(input.sessionId, {
+        const messages = await getAgentSessionMessages(input.sessionId, {
           directory: input.worktreeAbsolutePath,
         });
         controller.enqueue(
@@ -198,20 +194,20 @@ export async function handleStageReviewMessageStreamRequest(input: {
     },
   );
 
-  if (!session.opencodeSessionId) {
-    throw badRequest('Review session is missing an OpenCode session id.');
+  if (!session.agentSessionId) {
+    throw badRequest('Review session is missing an agent runtime session id.');
   }
 
   if (parsedBody.watch) {
-    const runtimeState = await getOpencodeSessionRuntimeState(
-      session.opencodeSessionId,
+    const runtimeState = await getAgentSessionRuntimeState(
+      session.agentSessionId,
       {
         directory: worktreeAbsolutePath,
       },
     );
     if (runtimeState !== 'busy' && runtimeState !== 'retry') {
       return createNoOpWatchResponse({
-        sessionId: session.opencodeSessionId,
+        sessionId: session.agentSessionId,
         worktreeAbsolutePath,
       });
     }
@@ -220,7 +216,7 @@ export async function handleStageReviewMessageStreamRequest(input: {
   const stream = await createReviewStream({
     stackId: input.stackId,
     stageId: input.stageId,
-    sessionId: session.opencodeSessionId,
+    sessionId: session.agentSessionId,
     worktreeAbsolutePath,
     content: parsedBody.content ?? '',
     agent: parsedBody.agent,

@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/server/opencode', () => ({
-  getOpencodeSessionMessages: vi.fn(),
-  getOpencodeSessionRuntimeState: vi.fn(),
-  listPendingOpencodeSessionQuestions: vi.fn(),
-  replyOpencodeQuestion: vi.fn(),
-  streamOpencodeSessionMessage: vi.fn(),
-  watchOpencodeSession: vi.fn(),
+vi.mock('$lib/server/agent-runtime', () => ({
+  getAgentSessionMessages: vi.fn(),
+  getAgentSessionRuntimeState: vi.fn(),
+  listPendingAgentSessionQuestions: vi.fn(),
+  replyAgentQuestion: vi.fn(),
+  streamAgentSessionMessage: vi.fn(),
+  watchAgentSession: vi.fn(),
 }));
 
 vi.mock('$lib/server/stage-review-service', () => ({
@@ -20,9 +20,9 @@ vi.mock('$lib/server/stack-store', () => ({
 }));
 
 import {
-  getOpencodeSessionMessages,
-  streamOpencodeSessionMessage,
-} from '$lib/server/opencode';
+  getAgentSessionMessages,
+  streamAgentSessionMessage,
+} from '$lib/server/agent-runtime';
 import { getExistingStageReviewSession } from '$lib/server/stage-review-service';
 import { handleStageReviewMessageStreamRequest } from '$lib/server/stage-review-stream-service';
 import {
@@ -30,10 +30,8 @@ import {
   touchReviewSessionUpdatedAt,
 } from '$lib/server/stack-store';
 
-const getOpencodeSessionMessagesMock = vi.mocked(getOpencodeSessionMessages);
-const streamOpencodeSessionMessageMock = vi.mocked(
-  streamOpencodeSessionMessage,
-);
+const getAgentSessionMessagesMock = vi.mocked(getAgentSessionMessages);
+const streamAgentSessionMessageMock = vi.mocked(streamAgentSessionMessage);
 const getExistingStageReviewSessionMock = vi.mocked(
   getExistingStageReviewSession,
 );
@@ -57,7 +55,7 @@ describe('stage-review-stream-service', () => {
         id: 'review-session-1',
         stackId: 'stack-1',
         stageId: 'stage-1',
-        opencodeSessionId: 'opencode-review-1',
+        agentSessionId: 'opencode-review-1',
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
       },
@@ -67,11 +65,11 @@ describe('stage-review-stream-service', () => {
       id: 'review-session-1',
       stackId: 'stack-1',
       stageId: 'stage-1',
-      opencodeSessionId: 'opencode-review-1',
+      agentSessionId: 'opencode-review-1',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     });
-    getOpencodeSessionMessagesMock.mockResolvedValue([
+    getAgentSessionMessagesMock.mockResolvedValue([
       {
         id: 'assistant-question',
         role: 'assistant',
@@ -91,7 +89,7 @@ describe('stage-review-stream-service', () => {
   });
 
   it('emits done immediately after question event', async () => {
-    streamOpencodeSessionMessageMock.mockReturnValue(
+    streamAgentSessionMessageMock.mockReturnValue(
       (async function* () {
         yield {
           type: 'question',
@@ -135,7 +133,7 @@ describe('stage-review-stream-service', () => {
       'stack-1',
       'stage-1',
     );
-    expect(getOpencodeSessionMessagesMock).toHaveBeenCalledWith(
+    expect(getAgentSessionMessagesMock).toHaveBeenCalledWith(
       'opencode-review-1',
       {
         directory: '/repo/.stacked/worktrees/stage-1',

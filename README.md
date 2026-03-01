@@ -50,7 +50,7 @@ Projects are configured in `~/.config/stacked/config.json`:
 }
 ```
 
-`defaultModel` is optional and applies globally to all OpenCode sessions.
+`defaultModel` is optional and applies globally to all agent runtime sessions.
 Use `provider/model` format.
 
 Common model IDs:
@@ -60,4 +60,4 @@ Common model IDs:
 - `anthropic/claude-haiku-4-5`
 - `openai/gpt-5.3-codex`
 
-Each stack is associated with a configured `projectId`, and all runtime git/gh/opencode operations use that project's repository path.
+Each stack is associated with a configured `projectId`, and all runtime git/gh/agent operations use that project's repository path.

@@ -121,7 +121,7 @@ export interface PlanningQuestionAnswer {
 export interface StackPlanningSession {
   id: string;
   stackId: string;
-  opencodeSessionId?: string;
+  agentSessionId?: string;
   createdAt: string;
   updatedAt: string;
   savedPlanPath?: string;
@@ -137,7 +137,7 @@ export interface StackImplementationSession {
   worktreePathKey: string;
   parentBranchNameAtStart?: string;
   parentHeadShaAtStart?: string;
-  opencodeSessionId?: string;
+  agentSessionId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -146,7 +146,7 @@ export interface StackReviewSession {
   id: string;
   stackId: string;
   stageId: string;
-  opencodeSessionId?: string;
+  agentSessionId?: string;
   createdAt: string;
   updatedAt: string;
 }

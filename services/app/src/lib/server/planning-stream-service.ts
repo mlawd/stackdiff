@@ -1,12 +1,12 @@
 import { badRequest, notFound } from '$lib/server/api-errors';
 import { parsePlanningMessageBody } from '$lib/server/api-validators';
 import {
-  getOpencodeSessionRuntimeState,
-  listPendingOpencodeSessionQuestions,
-  replyOpencodeQuestion,
-  streamOpencodeSessionMessage,
-  watchOpencodeSession,
-} from '$lib/server/opencode';
+  getAgentSessionRuntimeState,
+  listPendingAgentSessionQuestions,
+  replyAgentQuestion,
+  streamAgentSessionMessage,
+  watchAgentSession,
+} from '$lib/server/agent-runtime';
 import {
   getPlanningMessages,
   loadExistingPlanningSession,
@@ -56,12 +56,12 @@ function toErrorMessage(error: unknown): string {
 
 async function createNoOpWatchResponse(input: {
   stackId: string;
-  opencodeSessionId: string;
+  sessionId: string;
   directory: string;
 }): Promise<Response> {
   const messages = await getPlanningMessages(input.stackId);
-  const pendingQuestions = await listPendingOpencodeSessionQuestions(
-    input.opencodeSessionId,
+  const pendingQuestions = await listPendingAgentSessionQuestions(
+    input.sessionId,
     {
       directory: input.directory,
     },
@@ -95,7 +95,7 @@ async function createNoOpWatchResponse(input: {
 
 async function createPlanningStream(input: {
   stackId: string;
-  opencodeSessionId: string;
+  sessionId: string;
   content?: string;
   agent: 'plan' | 'build';
   questionReply?: {
@@ -113,7 +113,7 @@ async function createPlanningStream(input: {
         let assistantReply = '';
 
         if (input.questionReply) {
-          await replyOpencodeQuestion(
+          await replyAgentQuestion(
             input.questionReply.requestId,
             input.questionReply.answers,
             {
@@ -124,18 +124,14 @@ async function createPlanningStream(input: {
 
         const events =
           input.watch || input.questionReply
-            ? watchOpencodeSession(input.opencodeSessionId, {
+            ? watchAgentSession(input.sessionId, {
                 directory: input.directory,
               })
-            : streamOpencodeSessionMessage(
-                input.opencodeSessionId,
-                input.content ?? '',
-                {
-                  system: PLANNING_SYSTEM_PROMPT,
-                  directory: input.directory,
-                  agent: input.agent,
-                },
-              );
+            : streamAgentSessionMessage(input.sessionId, input.content ?? '', {
+                system: PLANNING_SYSTEM_PROMPT,
+                directory: input.directory,
+                agent: input.agent,
+              });
 
         for await (const event of events) {
           if (event.type === 'question') {
@@ -225,8 +221,10 @@ export async function handlePlanningMessageStreamRequest(input: {
   const { session } = await loadExistingPlanningSession(input.stackId);
   const directory = await getRuntimeRepositoryPath({ stackId: input.stackId });
 
-  if (!session.opencodeSessionId) {
-    throw badRequest('Planning session is missing an OpenCode session id.');
+  if (!session.agentSessionId) {
+    throw badRequest(
+      'Planning session is missing an agent runtime session id.',
+    );
   }
 
   const content = parsedBody.content ?? '';
@@ -242,8 +240,8 @@ export async function handlePlanningMessageStreamRequest(input: {
   });
 
   if (parsedBody.watch) {
-    const runtimeState = await getOpencodeSessionRuntimeState(
-      session.opencodeSessionId,
+    const runtimeState = await getAgentSessionRuntimeState(
+      session.agentSessionId,
       {
         directory,
       },
@@ -251,7 +249,7 @@ export async function handlePlanningMessageStreamRequest(input: {
     if (runtimeState !== 'busy' && runtimeState !== 'retry') {
       return createNoOpWatchResponse({
         stackId: input.stackId,
-        opencodeSessionId: session.opencodeSessionId,
+        sessionId: session.agentSessionId,
         directory,
       });
     }
@@ -259,7 +257,7 @@ export async function handlePlanningMessageStreamRequest(input: {
 
   const stream = await createPlanningStream({
     stackId: input.stackId,
-    opencodeSessionId: session.opencodeSessionId,
+    sessionId: session.agentSessionId,
     content,
     agent: parsedBody.agent,
     questionReply: parsedBody.questionReply,

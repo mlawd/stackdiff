@@ -1,7 +1,7 @@
 import {
-  getOpencodeSessionRuntimeState,
-  getOpencodeSessionTodos,
-} from '$lib/server/opencode';
+  getAgentSessionRuntimeState,
+  getAgentSessionTodos,
+} from '$lib/server/agent-runtime';
 import { runCommand } from '$lib/server/command';
 import { ensureStagePullRequest } from '$lib/server/stage-pr-service';
 import {
@@ -140,7 +140,7 @@ async function loadStageStatusContext(
     stackId,
     stageId,
   );
-  if (!implementationSession?.opencodeSessionId) {
+  if (!implementationSession?.agentSessionId) {
     return {
       stackId,
       stageId,
@@ -166,14 +166,14 @@ async function loadStageStatusContext(
     stageIndex,
   );
 
-  const runtimeState = await getOpencodeSessionRuntimeState(
-    implementationSession.opencodeSessionId,
+  const runtimeState = await getAgentSessionRuntimeState(
+    implementationSession.agentSessionId,
     {
       directory: worktreeAbsolutePath,
     },
   );
-  const todos = await getOpencodeSessionTodos(
-    implementationSession.opencodeSessionId,
+  const todos = await getAgentSessionTodos(
+    implementationSession.agentSessionId,
     {
       directory: worktreeAbsolutePath,
     },

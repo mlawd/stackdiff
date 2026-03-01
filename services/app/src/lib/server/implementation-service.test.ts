@@ -4,23 +4,23 @@ vi.mock('node:fs/promises', () => ({
   readFile: vi.fn(),
 }));
 
-vi.mock('$lib/server/opencode', () => ({
-  createAndSeedOpencodeSession: vi.fn(),
+vi.mock('$lib/server/agent-runtime', () => ({
+  createAndSeedAgentSession: vi.fn(),
 }));
 
 vi.mock('$lib/server/stack-store', () => ({
   createOrGetImplementationSession: vi.fn(),
   getPlanningSessionByStackId: vi.fn(),
   getRuntimeRepositoryPath: vi.fn(),
-  setImplementationSessionOpencodeId: vi.fn(),
+  setImplementationSessionAgentId: vi.fn(),
 }));
 
-import { createAndSeedOpencodeSession } from '$lib/server/opencode';
+import { createAndSeedAgentSession } from '$lib/server/agent-runtime';
 import {
   createOrGetImplementationSession,
   getPlanningSessionByStackId,
   getRuntimeRepositoryPath,
-  setImplementationSessionOpencodeId,
+  setImplementationSessionAgentId,
 } from '$lib/server/stack-store';
 import { ensureImplementationSessionBootstrap } from '$lib/server/implementation-service';
 
@@ -29,12 +29,10 @@ const createOrGetImplementationSessionMock = vi.mocked(
 );
 const getPlanningSessionByStackIdMock = vi.mocked(getPlanningSessionByStackId);
 const getRuntimeRepositoryPathMock = vi.mocked(getRuntimeRepositoryPath);
-const setImplementationSessionOpencodeIdMock = vi.mocked(
-  setImplementationSessionOpencodeId,
+const setImplementationSessionAgentIdMock = vi.mocked(
+  setImplementationSessionAgentId,
 );
-const createAndSeedOpencodeSessionMock = vi.mocked(
-  createAndSeedOpencodeSession,
-);
+const createAndSeedAgentSessionMock = vi.mocked(createAndSeedAgentSession);
 
 describe('implementation-service', () => {
   beforeEach(() => {
@@ -54,14 +52,14 @@ describe('implementation-service', () => {
     });
     getPlanningSessionByStackIdMock.mockResolvedValue(undefined);
     getRuntimeRepositoryPathMock.mockResolvedValue('/repo');
-    createAndSeedOpencodeSessionMock.mockResolvedValue('opencode-impl-1');
-    setImplementationSessionOpencodeIdMock.mockResolvedValue({
+    createAndSeedAgentSessionMock.mockResolvedValue('opencode-impl-1');
+    setImplementationSessionAgentIdMock.mockResolvedValue({
       id: 'impl-1',
       stackId: 'stack-1',
       stageId: 'stage-1',
       branchName: 'feature/auth-stage-1',
       worktreePathKey: 'auth-stage-1',
-      opencodeSessionId: 'opencode-impl-1',
+      agentSessionId: 'opencode-impl-1',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     });
@@ -89,14 +87,14 @@ describe('implementation-service', () => {
       worktreeAbsolutePath: '/repo/.stacked/worktrees/auth-stage-1',
     });
 
-    expect(createAndSeedOpencodeSessionMock).toHaveBeenCalledTimes(1);
-    expect(createAndSeedOpencodeSessionMock).toHaveBeenCalledWith(
+    expect(createAndSeedAgentSessionMock).toHaveBeenCalledTimes(1);
+    expect(createAndSeedAgentSessionMock).toHaveBeenCalledWith(
       expect.objectContaining({
         agent: 'build',
       }),
     );
     const seededPrompt =
-      createAndSeedOpencodeSessionMock.mock.calls[0]?.[0]?.prompt;
+      createAndSeedAgentSessionMock.mock.calls[0]?.[0]?.prompt;
 
     expect(seededPrompt).toContain(
       'Before committing, run /review on the current uncommitted changes in this worktree.',

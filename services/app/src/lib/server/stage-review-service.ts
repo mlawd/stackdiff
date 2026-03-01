@@ -1,8 +1,8 @@
 import {
-  createAndSeedOpencodeSession,
-  getOpencodeSessionMessages,
-  getOpencodeSessionRuntimeState,
-} from '$lib/server/opencode';
+  createAndSeedAgentSession,
+  getAgentSessionMessages,
+  getAgentSessionRuntimeState,
+} from '$lib/server/agent-runtime';
 import { getStagePullRequestComments } from '$lib/server/stage-review-comment-service';
 import {
   createOrGetReviewSession,
@@ -10,7 +10,7 @@ import {
   getReviewSessionByStackAndStage,
   getRuntimeRepositoryPath,
   getStackById,
-  setReviewSessionOpencodeId,
+  setReviewSessionAgentId,
 } from '$lib/server/stack-store';
 import { resolveWorktreeAbsolutePath } from '$lib/server/worktree-service';
 import type {
@@ -167,7 +167,7 @@ async function requireReviewContext(
   );
 
   const reviewSession = await createOrGetReviewSession(stackId, stageId);
-  if (!reviewSession.opencodeSessionId) {
+  if (!reviewSession.agentSessionId) {
     const comments = await getStagePullRequestComments({
       repositoryRoot,
       pullRequest: stage.pullRequest,
@@ -185,16 +185,16 @@ async function requireReviewContext(
       pullRequestUrl: stage.pullRequest.url,
       comments,
     });
-    const opencodeSessionId = await createAndSeedOpencodeSession({
+    const agentSessionId = await createAndSeedAgentSession({
       prompt,
       agent: 'plan',
       system: REVIEW_SYSTEM_PROMPT,
       directory: worktreeAbsolutePath,
     });
-    const seeded = await setReviewSessionOpencodeId(
+    const seeded = await setReviewSessionAgentId(
       stackId,
       stageId,
-      opencodeSessionId,
+      agentSessionId,
     );
 
     return {
@@ -220,15 +220,15 @@ export async function loadStageReviewSession(input: {
   awaitingResponse: boolean;
 }> {
   const context = await requireReviewContext(input.stackId, input.stageId);
-  const sessionId = context.reviewSession.opencodeSessionId;
+  const sessionId = context.reviewSession.agentSessionId;
   if (!sessionId) {
-    throw new Error('Review session is missing an OpenCode session id.');
+    throw new Error('Review session is missing an agent runtime session id.');
   }
 
-  const messages = await getOpencodeSessionMessages(sessionId, {
+  const messages = await getAgentSessionMessages(sessionId, {
     directory: context.worktreeAbsolutePath,
   });
-  const runtimeState = await getOpencodeSessionRuntimeState(sessionId, {
+  const runtimeState = await getAgentSessionRuntimeState(sessionId, {
     directory: context.worktreeAbsolutePath,
   });
 
@@ -250,7 +250,7 @@ export async function getExistingStageReviewSession(input: {
     input.stackId,
     input.stageId,
   );
-  if (!existing?.opencodeSessionId) {
+  if (!existing?.agentSessionId) {
     const loaded = await requireReviewContext(input.stackId, input.stageId);
     return {
       session: loaded.reviewSession,

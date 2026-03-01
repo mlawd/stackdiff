@@ -2,12 +2,12 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { runCommand } from '$lib/server/command';
-import { createAndSeedOpencodeSession } from '$lib/server/opencode';
+import { createAndSeedAgentSession } from '$lib/server/agent-runtime';
 import {
   createOrGetImplementationSession,
   getRuntimeRepositoryPath,
   getPlanningSessionByStackId,
-  setImplementationSessionOpencodeId,
+  setImplementationSessionAgentId,
 } from '$lib/server/stack-store';
 import type {
   FeatureStage,
@@ -184,7 +184,7 @@ export async function ensureImplementationSessionBootstrap(input: {
   let session = ensured.session;
   let reusedSession = !ensured.created;
 
-  if (!session.opencodeSessionId) {
+  if (!session.agentSessionId) {
     const planningSession = await getPlanningSessionByStackId(input.stack.id);
     const savedPlanAbsolutePath = resolvePlanningArtifactPath(
       repositoryRoot,
@@ -226,15 +226,15 @@ export async function ensureImplementationSessionBootstrap(input: {
       },
     );
 
-    const opencodeSessionId = await createAndSeedOpencodeSession({
+    const agentSessionId = await createAndSeedAgentSession({
       prompt,
       agent: 'build',
       directory: input.worktreeAbsolutePath,
     });
-    session = await setImplementationSessionOpencodeId(
+    session = await setImplementationSessionAgentId(
       input.stack.id,
       input.stage.id,
-      opencodeSessionId,
+      agentSessionId,
     );
     reusedSession = false;
   }

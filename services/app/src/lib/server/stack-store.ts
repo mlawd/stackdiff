@@ -361,11 +361,15 @@ function isStackPlanningSession(value: unknown): value is StackPlanningSession {
 
   const session = value as Partial<StackPlanningSession>;
 
+  const legacySession = session as { opencodeSessionId?: unknown };
+
   return (
     typeof session.id === 'string' &&
     typeof session.stackId === 'string' &&
-    (session.opencodeSessionId === undefined ||
-      typeof session.opencodeSessionId === 'string') &&
+    (session.agentSessionId === undefined ||
+      typeof session.agentSessionId === 'string') &&
+    (legacySession.opencodeSessionId === undefined ||
+      typeof legacySession.opencodeSessionId === 'string') &&
     typeof session.createdAt === 'string' &&
     typeof session.updatedAt === 'string' &&
     (session.savedPlanPath === undefined ||
@@ -385,6 +389,8 @@ function isStackImplementationSession(
 
   const session = value as Partial<StackImplementationSession>;
 
+  const legacySession = session as { opencodeSessionId?: unknown };
+
   return (
     typeof session.id === 'string' &&
     typeof session.stackId === 'string' &&
@@ -395,8 +401,10 @@ function isStackImplementationSession(
       typeof session.parentBranchNameAtStart === 'string') &&
     (session.parentHeadShaAtStart === undefined ||
       typeof session.parentHeadShaAtStart === 'string') &&
-    (session.opencodeSessionId === undefined ||
-      typeof session.opencodeSessionId === 'string') &&
+    (session.agentSessionId === undefined ||
+      typeof session.agentSessionId === 'string') &&
+    (legacySession.opencodeSessionId === undefined ||
+      typeof legacySession.opencodeSessionId === 'string') &&
     typeof session.createdAt === 'string' &&
     typeof session.updatedAt === 'string'
   );
@@ -409,12 +417,16 @@ function isStackReviewSession(value: unknown): value is StackReviewSession {
 
   const session = value as Partial<StackReviewSession>;
 
+  const legacySession = session as { opencodeSessionId?: unknown };
+
   return (
     typeof session.id === 'string' &&
     typeof session.stackId === 'string' &&
     typeof session.stageId === 'string' &&
-    (session.opencodeSessionId === undefined ||
-      typeof session.opencodeSessionId === 'string') &&
+    (session.agentSessionId === undefined ||
+      typeof session.agentSessionId === 'string') &&
+    (legacySession.opencodeSessionId === undefined ||
+      typeof legacySession.opencodeSessionId === 'string') &&
     typeof session.createdAt === 'string' &&
     typeof session.updatedAt === 'string'
   );
@@ -422,6 +434,44 @@ function isStackReviewSession(value: unknown): value is StackReviewSession {
 
 async function normalizeStackFile(file: StackFile): Promise<StackFile> {
   const defaultProject = await getDefaultProject();
+
+  const planningSessions = (file.planningSessions ?? []).map((session) => {
+    const legacySession = session as StackPlanningSession & {
+      opencodeSessionId?: string;
+    };
+    const { opencodeSessionId: legacySessionId, ...rest } = legacySession;
+
+    return {
+      ...rest,
+      agentSessionId: session.agentSessionId ?? legacySessionId ?? undefined,
+    };
+  });
+
+  const implementationSessions = (file.implementationSessions ?? []).map(
+    (session) => {
+      const legacySession = session as StackImplementationSession & {
+        opencodeSessionId?: string;
+      };
+      const { opencodeSessionId: legacySessionId, ...rest } = legacySession;
+
+      return {
+        ...rest,
+        agentSessionId: session.agentSessionId ?? legacySessionId ?? undefined,
+      };
+    },
+  );
+
+  const reviewSessions = (file.reviewSessions ?? []).map((session) => {
+    const legacySession = session as StackReviewSession & {
+      opencodeSessionId?: string;
+    };
+    const { opencodeSessionId: legacySessionId, ...rest } = legacySession;
+
+    return {
+      ...rest,
+      agentSessionId: session.agentSessionId ?? legacySessionId ?? undefined,
+    };
+  });
 
   return {
     ...file,
@@ -441,9 +491,9 @@ async function normalizeStackFile(file: StackFile): Promise<StackFile> {
         : 'created',
       stages: (stack.stages ?? []).map((stage) => normalizeFeatureStage(stage)),
     })),
-    planningSessions: file.planningSessions ?? [],
-    implementationSessions: file.implementationSessions ?? [],
-    reviewSessions: file.reviewSessions ?? [],
+    planningSessions,
+    implementationSessions,
+    reviewSessions,
   };
 }
 
@@ -687,7 +737,7 @@ export async function createOrGetImplementationSession(
     worktreePathKey,
     parentBranchNameAtStart: parentMetadata?.parentBranchNameAtStart,
     parentHeadShaAtStart: parentMetadata?.parentHeadShaAtStart,
-    opencodeSessionId: undefined,
+    agentSessionId: undefined,
     createdAt: now,
     updatedAt: now,
   };
@@ -701,10 +751,10 @@ export async function createOrGetImplementationSession(
   return { session: created, created: true };
 }
 
-export async function setImplementationSessionOpencodeId(
+export async function setImplementationSessionAgentId(
   stackId: string,
   stageId: string,
-  opencodeSessionId: string,
+  agentSessionId: string,
 ): Promise<StackImplementationSession> {
   const file = await readStackFile();
   const session = file.implementationSessions?.find(
@@ -716,7 +766,7 @@ export async function setImplementationSessionOpencodeId(
     throw new Error('Implementation session not found.');
   }
 
-  session.opencodeSessionId = opencodeSessionId;
+  session.agentSessionId = agentSessionId;
   session.updatedAt = new Date().toISOString();
   await writeStackFile(file);
 
@@ -776,7 +826,7 @@ export async function createOrGetPlanningSession(
   const created: StackPlanningSession = {
     id: createSessionId(),
     stackId: id,
-    opencodeSessionId: undefined,
+    agentSessionId: undefined,
     createdAt: now,
     updatedAt: now,
   };
@@ -815,7 +865,7 @@ export async function createOrGetReviewSession(
     id: createReviewSessionId(),
     stackId,
     stageId,
-    opencodeSessionId: undefined,
+    agentSessionId: undefined,
     createdAt: now,
     updatedAt: now,
   };
@@ -826,10 +876,10 @@ export async function createOrGetReviewSession(
   return created;
 }
 
-export async function setReviewSessionOpencodeId(
+export async function setReviewSessionAgentId(
   stackId: string,
   stageId: string,
-  opencodeSessionId: string,
+  agentSessionId: string,
 ): Promise<StackReviewSession> {
   const file = await readStackFile();
   const session = file.reviewSessions?.find(
@@ -841,7 +891,7 @@ export async function setReviewSessionOpencodeId(
     throw new Error('Review session not found.');
   }
 
-  session.opencodeSessionId = opencodeSessionId;
+  session.agentSessionId = agentSessionId;
   session.updatedAt = new Date().toISOString();
   await writeStackFile(file);
 
@@ -867,9 +917,9 @@ export async function touchReviewSessionUpdatedAt(
 
   return session;
 }
-export async function setPlanningSessionOpencodeId(
+export async function setPlanningSessionAgentId(
   id: string,
-  opencodeSessionId: string,
+  agentSessionId: string,
 ): Promise<StackPlanningSession> {
   const file = await readStackFile();
   const session = file.planningSessions?.find(
@@ -880,7 +930,7 @@ export async function setPlanningSessionOpencodeId(
     throw new Error('Planning session not found.');
   }
 
-  session.opencodeSessionId = opencodeSessionId;
+  session.agentSessionId = agentSessionId;
   session.updatedAt = new Date().toISOString();
 
   await writeStackFile(file);

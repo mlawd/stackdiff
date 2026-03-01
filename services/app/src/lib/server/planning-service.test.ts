@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/server/opencode', () => ({
-  createAndSeedOpencodeSession: vi.fn(),
-  getOpencodeSessionRuntimeState: vi.fn(),
-  getOpencodeSessionMessages: vi.fn(),
-  sendOpencodeSessionMessage: vi.fn(),
+vi.mock('$lib/server/agent-runtime', () => ({
+  createAndSeedAgentSession: vi.fn(),
+  getAgentSessionRuntimeState: vi.fn(),
+  getAgentSessionMessages: vi.fn(),
+  sendAgentSessionMessage: vi.fn(),
 }));
 
 vi.mock('$lib/server/plan-file', () => ({
@@ -18,18 +18,18 @@ vi.mock('$lib/server/stack-store', () => ({
   getStackById: vi.fn(),
   getPlanningSessionByStackId: vi.fn(),
   markPlanningSessionSaved: vi.fn(),
-  setPlanningSessionOpencodeId: vi.fn(),
+  setPlanningSessionAgentId: vi.fn(),
   setStackStatus: vi.fn(),
   setStackStages: vi.fn(),
   touchPlanningSessionUpdatedAt: vi.fn(),
 }));
 
 import {
-  createAndSeedOpencodeSession,
-  getOpencodeSessionMessages,
-  getOpencodeSessionRuntimeState,
-  sendOpencodeSessionMessage,
-} from '$lib/server/opencode';
+  createAndSeedAgentSession,
+  getAgentSessionMessages,
+  getAgentSessionRuntimeState,
+  sendAgentSessionMessage,
+} from '$lib/server/agent-runtime';
 import {
   createAndSeedPlanningSessionForStack,
   loadExistingPlanningSession,
@@ -39,25 +39,19 @@ import {
   createOrGetPlanningSession,
   getRuntimeRepositoryPath,
   getPlanningSessionByStackId,
-  setPlanningSessionOpencodeId,
+  setPlanningSessionAgentId,
   touchPlanningSessionUpdatedAt,
 } from '$lib/server/stack-store';
 
-const createAndSeedOpencodeSessionMock = vi.mocked(
-  createAndSeedOpencodeSession,
-);
-const getOpencodeSessionMessagesMock = vi.mocked(getOpencodeSessionMessages);
-const getOpencodeSessionRuntimeStateMock = vi.mocked(
-  getOpencodeSessionRuntimeState,
-);
-const sendOpencodeSessionMessageMock = vi.mocked(sendOpencodeSessionMessage);
+const createAndSeedAgentSessionMock = vi.mocked(createAndSeedAgentSession);
+const getAgentSessionMessagesMock = vi.mocked(getAgentSessionMessages);
+const getAgentSessionRuntimeStateMock = vi.mocked(getAgentSessionRuntimeState);
+const sendAgentSessionMessageMock = vi.mocked(sendAgentSessionMessage);
 
 const createOrGetPlanningSessionMock = vi.mocked(createOrGetPlanningSession);
 const getRuntimeRepositoryPathMock = vi.mocked(getRuntimeRepositoryPath);
 const getPlanningSessionByStackIdMock = vi.mocked(getPlanningSessionByStackId);
-const setPlanningSessionOpencodeIdMock = vi.mocked(
-  setPlanningSessionOpencodeId,
-);
+const setPlanningSessionAgentIdMock = vi.mocked(setPlanningSessionAgentId);
 const touchPlanningSessionUpdatedAtMock = vi.mocked(
   touchPlanningSessionUpdatedAt,
 );
@@ -67,12 +61,12 @@ describe('planning-service', () => {
     vi.clearAllMocks();
 
     getRuntimeRepositoryPathMock.mockResolvedValue('/repo');
-    getOpencodeSessionMessagesMock.mockResolvedValue([]);
-    getOpencodeSessionRuntimeStateMock.mockResolvedValue('idle');
+    getAgentSessionMessagesMock.mockResolvedValue([]);
+    getAgentSessionRuntimeStateMock.mockResolvedValue('idle');
     touchPlanningSessionUpdatedAtMock.mockResolvedValue({
       id: 'session-1',
       stackId: 'stack-1',
-      opencodeSessionId: 'opencode-1',
+      agentSessionId: 'opencode-1',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     });
@@ -82,15 +76,15 @@ describe('planning-service', () => {
     createOrGetPlanningSessionMock.mockResolvedValue({
       id: 'session-1',
       stackId: 'stack-1',
-      opencodeSessionId: undefined,
+      agentSessionId: undefined,
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     });
-    createAndSeedOpencodeSessionMock.mockResolvedValue('opencode-1');
-    setPlanningSessionOpencodeIdMock.mockResolvedValue({
+    createAndSeedAgentSessionMock.mockResolvedValue('opencode-1');
+    setPlanningSessionAgentIdMock.mockResolvedValue({
       id: 'session-1',
       stackId: 'stack-1',
-      opencodeSessionId: 'opencode-1',
+      agentSessionId: 'opencode-1',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     });
@@ -104,12 +98,12 @@ describe('planning-service', () => {
       stages: [],
     });
 
-    expect(createAndSeedOpencodeSessionMock).toHaveBeenCalledWith(
+    expect(createAndSeedAgentSessionMock).toHaveBeenCalledWith(
       expect.objectContaining({
         directory: '/repo',
       }),
     );
-    expect(getOpencodeSessionMessagesMock).toHaveBeenCalledWith('opencode-1', {
+    expect(getAgentSessionMessagesMock).toHaveBeenCalledWith('opencode-1', {
       directory: '/repo',
     });
   });
@@ -118,27 +112,24 @@ describe('planning-service', () => {
     getPlanningSessionByStackIdMock.mockResolvedValue({
       id: 'session-1',
       stackId: 'stack-1',
-      opencodeSessionId: 'opencode-1',
+      agentSessionId: 'opencode-1',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     });
-    sendOpencodeSessionMessageMock.mockResolvedValue('done');
+    sendAgentSessionMessageMock.mockResolvedValue('done');
 
     await loadExistingPlanningSession('stack-1');
 
-    expect(getOpencodeSessionMessagesMock).toHaveBeenCalledWith('opencode-1', {
+    expect(getAgentSessionMessagesMock).toHaveBeenCalledWith('opencode-1', {
       directory: '/repo',
     });
-    expect(getOpencodeSessionRuntimeStateMock).toHaveBeenCalledWith(
-      'opencode-1',
-      {
-        directory: '/repo',
-      },
-    );
+    expect(getAgentSessionRuntimeStateMock).toHaveBeenCalledWith('opencode-1', {
+      directory: '/repo',
+    });
 
     await sendPlanningMessage('stack-1', 'hello planner');
 
-    expect(sendOpencodeSessionMessageMock).toHaveBeenCalledWith(
+    expect(sendAgentSessionMessageMock).toHaveBeenCalledWith(
       'opencode-1',
       'hello planner',
       expect.objectContaining({

@@ -15,7 +15,9 @@ describe('POST /api/stacks/[id]/stages/[stageId]/review/session', () => {
   });
 
   it('returns 400 when stage id is missing', async () => {
-    const response = await POST({ params: { id: 'stack-1', stageId: '' } } as never);
+    const response = await POST({
+      params: { id: 'stack-1', stageId: '' },
+    } as never);
     const body = await response.json();
 
     expect(response.status).toBe(400);
@@ -33,7 +35,7 @@ describe('POST /api/stacks/[id]/stages/[stageId]/review/session', () => {
         id: 'review-1',
         stackId: 'stack-1',
         stageId: 'stage-1',
-        opencodeSessionId: 'ses_1',
+        agentSessionId: 'ses_1',
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
       },
@@ -41,9 +43,9 @@ describe('POST /api/stacks/[id]/stages/[stageId]/review/session', () => {
       awaitingResponse: false,
     });
 
-    const response = await POST(
-      { params: { id: 'stack-1', stageId: 'stage-1' } } as never,
-    );
+    const response = await POST({
+      params: { id: 'stack-1', stageId: 'stage-1' },
+    } as never);
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -53,7 +55,7 @@ describe('POST /api/stacks/[id]/stages/[stageId]/review/session', () => {
           id: 'review-1',
           stackId: 'stack-1',
           stageId: 'stage-1',
-          opencodeSessionId: 'ses_1',
+          agentSessionId: 'ses_1',
           createdAt: '2026-01-01T00:00:00.000Z',
           updatedAt: '2026-01-01T00:00:00.000Z',
         },
