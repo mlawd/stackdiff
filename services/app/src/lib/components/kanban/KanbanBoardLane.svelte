@@ -8,20 +8,18 @@
     title,
     accent,
     items,
-    animationDelayMs = 0,
     collapsed = false,
   }: {
     title: string;
     accent: string;
     items: TItem[];
-    animationDelayMs?: number;
     collapsed?: boolean;
   } = $props();
 </script>
 
 <section
-  class={`lane stacked-fade-in ${collapsed ? 'lane-collapsed' : ''}`}
-  style={`--lane-accent: ${accent}; animation-delay: ${animationDelayMs}ms`}
+  class={`lane ${collapsed ? 'lane-collapsed' : ''}`}
+  style={`--lane-accent: ${accent}`}
 >
   <div class="lane-header" class:flex={collapsed} class:flex-col={collapsed}>
     <div class="flex items-center gap-3">

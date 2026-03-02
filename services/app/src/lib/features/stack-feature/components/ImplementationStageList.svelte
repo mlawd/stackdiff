@@ -90,12 +90,7 @@
 </script>
 
 {#if stages.length > 0}
-  <KanbanBoard
-    items={stageItems}
-    {laneConfig}
-    collapseEmptyLanes
-    animationStaggerMs={20}
-  >
+  <KanbanBoard items={stageItems} {laneConfig} collapseEmptyLanes>
     {#snippet cardStatus(item)}
       <StageCardStatus item={item as StageKanbanItem} />
     {/snippet}

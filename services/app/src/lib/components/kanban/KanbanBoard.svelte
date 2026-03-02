@@ -25,14 +25,12 @@
     laneConfig,
     onCardClick,
     cardStatus,
-    animationStaggerMs = 0,
     collapseEmptyLanes = false,
   }: {
     items: TItem[];
     laneConfig: KanbanLaneConfig[];
     onCardClick?: (item: TItem) => void;
     cardStatus?: Snippet<[TItem]>;
-    animationStaggerMs?: number;
     collapseEmptyLanes?: boolean;
   } = $props();
 
@@ -53,7 +51,7 @@
 
 <div class="overflow-x-hidden pb-1">
   <div class="flex flex-col gap-3 md:flex-row md:items-start md:gap-4">
-    {#each lanes as lane, laneIndex (lane.id)}
+    {#each lanes as lane (lane.id)}
       <div
         class={lane.items.length === 0 && collapseEmptyLanes
           ? 'md:w-[4.5rem] md:shrink-0'
@@ -63,7 +61,6 @@
           title={lane.title}
           accent={lane.accent}
           items={lane.items}
-          animationDelayMs={laneIndex * animationStaggerMs}
           collapsed={collapseEmptyLanes && lane.items.length === 0}
         />
       </div>

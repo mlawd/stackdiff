@@ -86,12 +86,7 @@
         </p>
       </div>
     {:else}
-      <KanbanBoard
-        items={stacks}
-        {laneConfig}
-        onCardClick={openStack}
-        animationStaggerMs={35}
-      >
+      <KanbanBoard items={stacks} {laneConfig} onCardClick={openStack}>
         {#snippet cardStatus(item)}
           <StackCardStatus item={item as StackBoardItem} />
         {/snippet}
