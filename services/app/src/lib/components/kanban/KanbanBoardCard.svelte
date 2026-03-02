@@ -9,13 +9,26 @@
   const kanbanContext = getKanbanContext<TItem>();
   const onCardClick = $derived(kanbanContext.getOnCardClick());
   const cardStatus = $derived(kanbanContext.getCardStatus());
+
+  function handleCardKeydown(event: KeyboardEvent): void {
+    if (!onCardClick) {
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onCardClick(item);
+    }
+  }
 </script>
 
 {#if onCardClick}
-  <button
-    type="button"
-    class="lane-card stacked-panel-elevated block w-full p-3 text-left"
+  <div
+    role="button"
+    tabindex="0"
+    class="lane-card stacked-panel-elevated block w-full cursor-pointer p-3 text-left"
     onclick={() => onCardClick(item)}
+    onkeydown={handleCardKeydown}
   >
     <p class="text-sm font-semibold text-[var(--stacked-text)]">{item.title}</p>
     {#if cardStatus}
@@ -23,7 +36,7 @@
         {@render cardStatus(item)}
       </div>
     {/if}
-  </button>
+  </div>
 {:else}
   <div class="lane-card stacked-panel-elevated p-3">
     <p class="text-sm font-semibold text-[var(--stacked-text)]">{item.title}</p>

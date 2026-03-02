@@ -20,3 +20,11 @@ export function projectStacksNewPath(
 ): `/projects/${string}/stacks/new` {
   return `${projectStacksPath(projectId)}/new`;
 }
+
+export function projectStackStagePath(
+  projectId: string,
+  stackId: string,
+  stageId: string,
+): `/projects/${string}/stacks/${string}/stages/${string}` {
+  return `${projectStackPath(projectId, stackId)}/stages/${encodeURIComponent(stageId)}`;
+}

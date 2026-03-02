@@ -9,6 +9,8 @@
   import ImplementationStageList from './ImplementationStageList.svelte';
 
   let {
+    projectId,
+    stackId,
     hasSavedPlan,
     stages,
     stageSyncById,
@@ -27,6 +29,8 @@
     onSyncStack,
     onMergeDown,
   }: {
+    projectId: string;
+    stackId: string;
     hasSavedPlan: boolean;
     stages: FeatureStage[];
     stageSyncById: Record<string, StageSyncMetadata> | undefined;
@@ -122,6 +126,8 @@
     </div>
 
     <ImplementationStageList
+      {projectId}
+      {stackId}
       {stages}
       {stageSyncById}
       {implementationRuntimeByStageId}

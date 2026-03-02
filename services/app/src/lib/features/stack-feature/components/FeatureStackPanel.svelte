@@ -122,6 +122,8 @@
   />
 
   <FeatureImplementationSection
+    projectId={stack.projectId}
+    stackId={stack.id}
     {hasSavedPlan}
     stages={stack.stages ?? []}
     stageSyncById={stack.stageSyncById}

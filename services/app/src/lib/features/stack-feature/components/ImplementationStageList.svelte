@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
+  import { resolve } from '$app/paths';
   import KanbanBoard from '$lib/components/kanban/KanbanBoard.svelte';
+  import { projectStackStagePath } from '$lib/project-paths';
   import type {
     FeatureStage,
     FeatureStageStatus,
@@ -30,10 +33,14 @@
   ];
 
   let {
+    projectId,
+    stackId,
     stages,
     stageSyncById,
     implementationRuntimeByStageId,
   }: {
+    projectId: string;
+    stackId: string;
     stages: FeatureStage[];
     stageSyncById: Record<string, StageSyncMetadata> | undefined;
     implementationRuntimeByStageId: Record<string, ImplementationStageRuntime>;
@@ -87,10 +94,21 @@
 
     return 'var(--stacked-text-muted)';
   }
+
+  function openStage(item: StageKanbanItem): void {
+    void goto(
+      resolve(projectStackStagePath(projectId, stackId, item.stage.id)),
+    );
+  }
 </script>
 
 {#if stages.length > 0}
-  <KanbanBoard items={stageItems} {laneConfig} collapseEmptyLanes>
+  <KanbanBoard
+    items={stageItems}
+    {laneConfig}
+    onCardClick={openStage}
+    collapseEmptyLanes
+  >
     {#snippet cardStatus(item)}
       <StageCardStatus item={item as StageKanbanItem} />
     {/snippet}
