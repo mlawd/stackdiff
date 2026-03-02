@@ -22,6 +22,9 @@
   const stageStatusColor = $derived(
     implementationStageColor(data.stage.status),
   );
+  const stackHref = $derived(
+    projectStackPath(data.stack.projectId, data.stack.id),
+  );
 
   function setMarkdown(html: string) {
     return (node: HTMLElement) => {
@@ -36,11 +39,7 @@
       class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b stacked-divider pb-3"
     >
       <div class="flex flex-wrap items-center gap-3 text-sm font-semibold">
-        <a
-          href={resolve(projectStackPath(data.stack.projectId, data.stack.id))}
-          data-sveltekit-reload
-          class="stacked-link"
-        >
+        <a href={resolve(stackHref)} data-sveltekit-reload class="stacked-link">
           Back to feature
         </a>
         <a

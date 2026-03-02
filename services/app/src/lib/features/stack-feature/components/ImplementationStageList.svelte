@@ -1,8 +1,5 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
-  import { resolve } from '$app/paths';
   import KanbanBoard from '$lib/components/kanban/KanbanBoard.svelte';
-  import { projectStackStagePath } from '$lib/project-paths';
   import type {
     FeatureStage,
     FeatureStageStatus,
@@ -33,17 +30,15 @@
   ];
 
   let {
-    projectId,
-    stackId,
     stages,
     stageSyncById,
     implementationRuntimeByStageId,
+    onOpenStage,
   }: {
-    projectId: string;
-    stackId: string;
     stages: FeatureStage[];
     stageSyncById: Record<string, StageSyncMetadata> | undefined;
     implementationRuntimeByStageId: Record<string, ImplementationStageRuntime>;
+    onOpenStage?: (stageId: string) => void;
   } = $props();
 
   let stageItems = $derived<StageKanbanItem[]>(
@@ -96,9 +91,7 @@
   }
 
   function openStage(item: StageKanbanItem): void {
-    void goto(
-      resolve(projectStackStagePath(projectId, stackId, item.stage.id)),
-    );
+    onOpenStage?.(item.stage.id);
   }
 </script>
 
@@ -106,7 +99,7 @@
   <KanbanBoard
     items={stageItems}
     {laneConfig}
-    onCardClick={openStage}
+    onCardClick={onOpenStage ? openStage : undefined}
     collapseEmptyLanes
   >
     {#snippet cardStatus(item)}

@@ -9,8 +9,6 @@
   import ImplementationStageList from './ImplementationStageList.svelte';
 
   let {
-    projectId,
-    stackId,
     hasSavedPlan,
     stages,
     stageSyncById,
@@ -28,9 +26,8 @@
     onStartFeature,
     onSyncStack,
     onMergeDown,
+    onOpenStage,
   }: {
-    projectId: string;
-    stackId: string;
     hasSavedPlan: boolean;
     stages: FeatureStage[];
     stageSyncById: Record<string, StageSyncMetadata> | undefined;
@@ -48,6 +45,7 @@
     onStartFeature: () => void;
     onSyncStack: () => void;
     onMergeDown: () => void;
+    onOpenStage: (stageId: string) => void;
   } = $props();
 
   let streamStatusLabel = $derived.by(() => {
@@ -126,11 +124,10 @@
     </div>
 
     <ImplementationStageList
-      {projectId}
-      {stackId}
       {stages}
       {stageSyncById}
       {implementationRuntimeByStageId}
+      {onOpenStage}
     />
   </div>
 {:else}

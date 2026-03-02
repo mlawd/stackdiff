@@ -4,6 +4,7 @@
 
   import type { StackViewModel } from '$lib/types/stack';
   import { loadStageReviewSession } from '../api-client';
+  import { stageStatus } from '../behavior';
   import type {
     ImplementationStageRuntime,
     ReviewSessionResponse,
@@ -18,6 +19,7 @@
   import FeatureActionAlerts from './FeatureActionAlerts.svelte';
   import FeatureImplementationSection from './FeatureImplementationSection.svelte';
   import FeatureReviewDialog from './FeatureReviewDialog.svelte';
+  import FeatureStageDetailDialog from './FeatureStageDetailDialog.svelte';
 
   let {
     stack,
@@ -35,6 +37,7 @@
   >({});
   let reviewLoading = $state(false);
   let reviewError = $state<string | null>(null);
+  let selectedStageId = $state<string | null>(null);
   let selectedReviewStageId = $state<string | null>(null);
   let reviewSession = $state<ReviewSessionResponse | null>(null);
   let streamConnectionState = $state<
@@ -74,6 +77,23 @@
       : null,
   );
 
+  let selectedStage = $derived(
+    selectedStageId
+      ? ((stack.stages ?? []).find((stage) => stage.id === selectedStageId) ??
+          null)
+      : null,
+  );
+
+  let selectedStageStatus = $derived(
+    selectedStage
+      ? stageStatus(
+          implementationRuntimeByStageId,
+          selectedStage.id,
+          selectedStage.status,
+        )
+      : null,
+  );
+
   onMount(() => {
     const reviewReadyNotifier = createReviewReadyNotifier(stack.id);
     const runtimeStreamController = createRuntimeStreamController({
@@ -109,6 +129,14 @@
   function closeReviewStage(): void {
     reviewSessionController.close();
   }
+
+  function openStage(stageId: string): void {
+    selectedStageId = stageId;
+  }
+
+  function closeStage(): void {
+    selectedStageId = null;
+  }
 </script>
 
 <div class="space-y-4">
@@ -122,8 +150,6 @@
   />
 
   <FeatureImplementationSection
-    projectId={stack.projectId}
-    stackId={stack.id}
     {hasSavedPlan}
     stages={stack.stages ?? []}
     stageSyncById={stack.stageSyncById}
@@ -141,6 +167,7 @@
     onStartFeature={featureActionsController.startFeature}
     onSyncStack={featureActionsController.syncStack}
     onMergeDown={featureActionsController.mergeDownStack}
+    onOpenStage={openStage}
   />
 </div>
 
@@ -153,4 +180,12 @@
   {reviewError}
   {reviewSession}
   onClose={closeReviewStage}
+/>
+
+<FeatureStageDetailDialog
+  open={Boolean(selectedStage)}
+  stackName={stack.name}
+  stage={selectedStage}
+  status={selectedStageStatus}
+  onClose={closeStage}
 />

@@ -28,7 +28,9 @@
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 
-  function openCurrentPullRequest(): void {
+  function openCurrentPullRequest(event?: Event): void {
+    event?.stopPropagation();
+
     const url = model.pullRequest?.url;
     if (!url) {
       return;
