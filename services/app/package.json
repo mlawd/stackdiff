@@ -15,6 +15,7 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.15",
     "@opencode-ai/sdk": "^1.2.6",
     "@types/markdown-it": "^14.1.2",
     "flowbite": "^3.1.2",
