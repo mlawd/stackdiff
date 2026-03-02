@@ -26,9 +26,6 @@
     onStartFeature,
     onSyncStack,
     onMergeDown,
-    onOpenReview,
-    onApproveStage,
-    onMergeStage,
   }: {
     hasSavedPlan: boolean;
     stages: FeatureStage[];
@@ -47,9 +44,6 @@
     onStartFeature: () => void;
     onSyncStack: () => void;
     onMergeDown: () => void;
-    onOpenReview: (stageId: string) => void;
-    onApproveStage: (stageId: string) => void;
-    onMergeStage: (stageId: string) => void;
   } = $props();
 
   let streamStatusLabel = $derived.by(() => {
@@ -131,9 +125,6 @@
       {stages}
       {stageSyncById}
       {implementationRuntimeByStageId}
-      {onOpenReview}
-      {onApproveStage}
-      {onMergeStage}
     />
   </div>
 {:else}

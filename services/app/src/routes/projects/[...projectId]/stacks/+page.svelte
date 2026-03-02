@@ -1,21 +1,31 @@
 <script lang="ts">
-  import StackBoardLane from '$lib/components/stack/StackBoardLane.svelte';
+  import { resolve } from '$app/paths';
+  import { goto } from '$app/navigation';
+  import KanbanBoard from '$lib/components/kanban/KanbanBoard.svelte';
+  import StackCardStatus from '$lib/components/stack/StackCardStatus.svelte';
   import {
     STACK_BOARD_LANE_ORDER,
     STACK_BOARD_LANE_STATUS,
+    STACK_BOARD_LANE_ACCENT,
+    STACK_BOARD_LANE_TITLE,
   } from '$lib/components/stack/stack-board-lane';
   import { setProjectContext } from '$lib/context/project-context';
+  import { projectStackPath } from '$lib/project-paths';
+  import type { StackViewModel } from '$lib/types/stack';
 
   import type { PageData } from './$types';
 
+  type StackBoardItem = StackViewModel & { title: string };
+
   let { data }: { data: PageData } = $props();
-  let stacks = $derived(data.stacks);
-  let stacksByLane = $derived(
+  let stacks = $derived<StackBoardItem[]>(
+    data.stacks.map((stack) => ({ ...stack, title: stack.name })),
+  );
+  let laneConfig = $derived(
     STACK_BOARD_LANE_ORDER.map((type) => ({
-      type,
-      stacks: stacks.filter(
-        (stack) => stack.status === STACK_BOARD_LANE_STATUS[type],
-      ),
+      title: STACK_BOARD_LANE_TITLE[type],
+      status: STACK_BOARD_LANE_STATUS[type],
+      accent: STACK_BOARD_LANE_ACCENT[type],
     })),
   );
   let loadedAt = $derived(data.loadedAt);
@@ -28,6 +38,10 @@
   );
 
   setProjectContext(() => ({ id: data.projectId, name: projectName }));
+
+  function openStack(item: StackBoardItem): void {
+    void goto(resolve(projectStackPath(data.projectId, item.id)));
+  }
 </script>
 
 <main class="stacked-shell mx-auto w-full max-w-7xl px-4 py-5 sm:px-6 sm:py-6">
@@ -72,17 +86,16 @@
         </p>
       </div>
     {:else}
-      <div class="stacked-scroll overflow-x-auto pb-2">
-        <div class="grid min-w-[56rem] grid-cols-4 gap-0 lg:min-w-0">
-          {#each stacksByLane as lane, laneIndex (lane.type)}
-            <StackBoardLane
-              type={lane.type}
-              stacks={lane.stacks}
-              animationDelayMs={laneIndex * 35}
-            />
-          {/each}
-        </div>
-      </div>
+      <KanbanBoard
+        items={stacks}
+        {laneConfig}
+        onCardClick={openStack}
+        animationStaggerMs={35}
+      >
+        {#snippet cardStatus(item)}
+          <StackCardStatus item={item as StackBoardItem} />
+        {/snippet}
+      </KanbanBoard>
     {/if}
   </div>
 </main>

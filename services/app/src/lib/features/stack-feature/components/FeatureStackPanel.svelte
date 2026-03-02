@@ -139,9 +139,6 @@
     onStartFeature={featureActionsController.startFeature}
     onSyncStack={featureActionsController.syncStack}
     onMergeDown={featureActionsController.mergeDownStack}
-    onOpenReview={openReviewStage}
-    onApproveStage={featureActionsController.approveStage}
-    onMergeStage={featureActionsController.mergeStage}
   />
 </div>
 

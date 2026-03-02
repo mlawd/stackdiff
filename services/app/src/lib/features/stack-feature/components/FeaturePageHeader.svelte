@@ -2,6 +2,7 @@
   import { resolve } from '$app/paths';
   import StackStatusBadge from '$lib/components/stack/StackStatusBadge.svelte';
   import StackTypeBadge from '$lib/components/stack/StackTypeBadge.svelte';
+  import { renderMarkdown } from '$lib/markdown';
   import type { StackViewModel } from '$lib/types/stack';
 
   let {
@@ -13,6 +14,17 @@
     loadedAt: string;
     backHref: `/projects/${string}/stacks`;
   } = $props();
+
+  const hasNotes = $derived(Boolean(stack.notes?.trim()));
+  const renderedNotes = $derived(
+    hasNotes ? renderMarkdown(stack.notes ?? '') : '',
+  );
+
+  function setMarkdown(html: string) {
+    return (node: HTMLElement) => {
+      node.innerHTML = html;
+    };
+  }
 </script>
 
 <div
@@ -38,7 +50,14 @@
       <StackStatusBadge status={stack.status} />
     </div>
   </div>
-  <p class="mt-2 text-sm stacked-subtle">
-    {stack.notes ?? 'No description provided for this feature yet.'}
-  </p>
+  {#if hasNotes}
+    <div
+      class="stacked-markdown mt-2 text-sm stacked-subtle"
+      {@attach setMarkdown(renderedNotes)}
+    ></div>
+  {:else}
+    <p class="mt-2 text-sm stacked-subtle">
+      No description provided for this feature yet.
+    </p>
+  {/if}
 </div>

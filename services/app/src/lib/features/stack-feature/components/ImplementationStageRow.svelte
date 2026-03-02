@@ -9,10 +9,6 @@
 
   import type { FeatureStage, StageSyncMetadata } from '$lib/types/stack';
   import type { ImplementationStageRuntime } from '../contracts';
-  import {
-    implementationStageColor,
-    implementationStageLabel,
-  } from '../behavior';
   import { toImplementationStageRowModel } from '../implementation-stage-row-model';
 
   let {
@@ -73,13 +69,6 @@
           Out of sync
         </Badge>
       {/if}
-      <Badge
-        rounded
-        color={implementationStageColor(model.stageStatus)}
-        class="inline-flex items-center"
-      >
-        <span>{implementationStageLabel(model.stageStatus)}</span>
-      </Badge>
       {#if model.pullRequest?.url && model.pullRequest.number}
         <button
           type="button"

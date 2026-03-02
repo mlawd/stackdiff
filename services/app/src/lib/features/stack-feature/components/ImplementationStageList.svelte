@@ -1,8 +1,19 @@
 <script lang="ts">
-  import type { FeatureStage, StageSyncMetadata } from '$lib/types/stack';
+  import KanbanBoard from '$lib/components/kanban/KanbanBoard.svelte';
+  import type {
+    FeatureStage,
+    FeatureStageStatus,
+    StageSyncMetadata,
+  } from '$lib/types/stack';
 
+  import {
+    implementationStageColor,
+    implementationStageLabel,
+    stageStatus,
+  } from '../behavior';
   import type { ImplementationStageRuntime } from '../contracts';
-  import ImplementationStageRow from './ImplementationStageRow.svelte';
+  import type { StageKanbanItem } from '../stage-kanban-item';
+  import StageCardStatus from './StageCardStatus.svelte';
 
   const fallbackSyncMetadata: StageSyncMetadata = {
     isOutOfSync: false,
@@ -10,40 +21,85 @@
     reasonIfUnavailable: 'Stage sync status is unavailable.',
   };
 
+  const stageStatusOrder: FeatureStageStatus[] = [
+    'not-started',
+    'in-progress',
+    'review',
+    'approved',
+    'done',
+  ];
+
   let {
     stages,
     stageSyncById,
     implementationRuntimeByStageId,
-    onOpenReview,
-    onApproveStage,
-    onMergeStage,
   }: {
     stages: FeatureStage[];
     stageSyncById: Record<string, StageSyncMetadata> | undefined;
     implementationRuntimeByStageId: Record<string, ImplementationStageRuntime>;
-    onOpenReview?: (stageId: string) => void;
-    onApproveStage?: (stageId: string) => void;
-    onMergeStage?: (stageId: string) => void;
   } = $props();
+
+  let stageItems = $derived<StageKanbanItem[]>(
+    stages.map((stage) => ({
+      id: stage.id,
+      title: stage.title,
+      status: stageStatus(
+        implementationRuntimeByStageId,
+        stage.id,
+        stage.status,
+      ),
+      stage,
+      runtime: implementationRuntimeByStageId[stage.id],
+      syncMetadata: stageSyncMetadata(stage.id),
+    })),
+  );
+
+  let laneConfig = $derived(
+    stageStatusOrder.map((status) => ({
+      title: implementationStageLabel(status),
+      status,
+      accent: statusAccent(status),
+    })),
+  );
 
   function stageSyncMetadata(stageId: string): StageSyncMetadata {
     return stageSyncById?.[stageId] ?? fallbackSyncMetadata;
   }
+
+  function statusAccent(status: FeatureStageStatus): string {
+    const color = implementationStageColor(status);
+
+    if (color === 'green') {
+      return 'var(--stacked-success)';
+    }
+
+    if (color === 'lime') {
+      return '#84cc16';
+    }
+
+    if (color === 'purple') {
+      return '#9f7aea';
+    }
+
+    if (color === 'yellow') {
+      return 'var(--stacked-warning)';
+    }
+
+    return 'var(--stacked-text-muted)';
+  }
 </script>
 
 {#if stages.length > 0}
-  <div class="space-y-2">
-    {#each stages as stage (stage.id)}
-      <ImplementationStageRow
-        {stage}
-        runtime={implementationRuntimeByStageId[stage.id]}
-        syncMetadata={stageSyncMetadata(stage.id)}
-        {onOpenReview}
-        {onApproveStage}
-        {onMergeStage}
-      />
-    {/each}
-  </div>
+  <KanbanBoard
+    items={stageItems}
+    {laneConfig}
+    collapseEmptyLanes
+    animationStaggerMs={20}
+  >
+    {#snippet cardStatus(item)}
+      <StageCardStatus item={item as StageKanbanItem} />
+    {/snippet}
+  </KanbanBoard>
 {:else}
   <p class="text-sm stacked-subtle">
     Save a plan in planning chat to generate implementation stages.
